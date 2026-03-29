@@ -10,6 +10,40 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Set the adward_number tracking cookie when ?ads is present in the URL.
+ *
+ * Once set, the cookie keeps the adsense number visible site-wide for 30 days
+ * even after the ?ads parameter is gone — matching the old theme behaviour.
+ *
+ * Cookie flags:
+ *   httponly  – not accessible via JS (security)
+ *   samesite  – Lax (safe default, works with normal navigations)
+ *   secure    – only sent over HTTPS when the site uses it
+ */
+function ekwa_set_ad_tracking_cookie() {
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( ! isset( $_GET['ads'] ) ) {
+		return;
+	}
+
+	// Cookie already present — refresh its expiry.
+	$expiry = time() + ( 30 * DAY_IN_SECONDS );
+
+	setcookie( 'adward_number', '1', array(
+		'expires'  => $expiry,
+		'path'     => '/',
+		'secure'   => is_ssl(),
+		'httponly' => true,
+		'samesite' => 'Lax',
+	) );
+
+	// Make the cookie available within this same request so phone numbers
+	// swap immediately on the very first ?ads page load as well.
+	$_COOKIE['adward_number'] = '1';
+}
+add_action( 'init', 'ekwa_set_ad_tracking_cookie' );
+
+/**
  * Build a dialable tel: number from a human-readable phone string.
  *
  * Mirrors the old theme's mobile_number() function:
@@ -283,3 +317,84 @@ function ekwa_address_shortcode( $atts ) {
 	return ob_get_clean();
 }
 add_shortcode( 'ekwa_address', 'ekwa_address_shortcode' );
+
+/**
+ * Server-side render filter for the core/button block.
+ *
+ * When a button has { ekwaPhoneButton: true }, the href is replaced at
+ * request time with a tel: link — applying the same ad-tracking logic
+ * used by [ekwa_phone].
+ *
+ *   - ?ads in URL or adward_number cookie + type "new"  → adsense number
+ *   - ?ads / cookie + type "existing"                  → button hidden
+ *   - Normal                                            → number from saved locations
+ */
+function ekwa_render_button_phone( $block_content, $block ) {
+	if ( 'core/button' !== $block['blockName'] ) {
+		return $block_content;
+	}
+
+	if ( empty( $block['attrs']['ekwaPhoneButton'] ) ) {
+		return $block_content;
+	}
+
+	$type      = isset( $block['attrs']['ekwaPhoneType'] )     ? $block['attrs']['ekwaPhoneType']     : 'new';
+	$location  = isset( $block['attrs']['ekwaPhoneLocation'] ) ? (int) $block['attrs']['ekwaPhoneLocation'] : 1;
+	$loc_index = max( 1, $location ) - 1;
+
+	// Ad-tracking detection — same as ekwa_phone_shortcode.
+	$is_ad_tracking = (
+		isset( $_COOKIE['adward_number'] ) ||
+		isset( $_GET['ads'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	);
+
+	$phone_number = '';
+
+	if ( $is_ad_tracking ) {
+		if ( 'new' === $type ) {
+			$phone_number = get_option( 'ekwa_adsense_number', '' );
+		} else {
+			// Hide existing-patients button entirely during ad tracking.
+			return '';
+		}
+	} else {
+		$locations    = get_option( 'ekwa_locations', array() );
+		$loc          = isset( $locations[ $loc_index ] ) ? $locations[ $loc_index ] : array();
+		$phone_number = ( 'existing' === $type )
+			? ( isset( $loc['phone_existing'] ) ? $loc['phone_existing'] : '' )
+			: ( isset( $loc['phone_new'] )      ? $loc['phone_new']      : '' );
+	}
+
+	if ( empty( $phone_number ) ) {
+		return $block_content;
+	}
+
+	$tel_number = ekwa_mobile_number( $phone_number );
+	$tel_href   = 'tel:' . esc_attr( $tel_number );
+
+	// The core button renders without an href when the URL field is left blank:
+	//   <a class="wp-block-button__link …">Label</a>
+	// Handle both cases:
+	//   1. href already present (user typed something) → replace it.
+	//   2. href absent (URL left blank)               → inject it.
+	if ( preg_match( '/href=/i', $block_content ) ) {
+		// Replace existing href value.
+		$block_content = preg_replace(
+			'/(href=)["\'][^"\']*["\']/i',
+			'$1"' . $tel_href . '"',
+			$block_content,
+			1
+		);
+	} else {
+		// Inject href into the first <a …> tag.
+		$block_content = preg_replace(
+			'/<a\b/i',
+			'<a href="' . $tel_href . '"',
+			$block_content,
+			1
+		);
+	}
+
+	return $block_content;
+}
+add_filter( 'render_block', 'ekwa_render_button_phone', 10, 2 );

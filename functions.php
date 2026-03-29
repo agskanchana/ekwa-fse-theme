@@ -20,6 +20,11 @@ require_once get_template_directory() . '/inc/ekwa-settings.php';
 require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 
 /**
+ * Load custom block registrations and render callbacks.
+ */
+require_once get_template_directory() . '/inc/ekwa-blocks.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
@@ -51,6 +56,28 @@ function ekwa_enqueue_admin_fa() {
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_admin_fa' );
 add_action( 'admin_enqueue_scripts', 'ekwa_enqueue_admin_fa' );
+
+/**
+ * Enqueue the phone-button block extension in the editor.
+ */
+function ekwa_enqueue_button_phone_editor_script() {
+	wp_enqueue_script(
+		'ekwa-button-phone',
+		get_template_directory_uri() . '/assets/js/ekwa-button-phone.js',
+		array(
+			'wp-hooks',
+			'wp-blocks',
+			'wp-block-editor',
+			'wp-components',
+			'wp-compose',
+			'wp-element',
+			'wp-i18n',
+		),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_button_phone_editor_script' );
 
 /**
  * Register theme support.

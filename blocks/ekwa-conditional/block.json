@@ -1,0 +1,66 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/conditional",
+	"version": "1.0.0",
+	"title": "Ekwa Conditional",
+	"category": "design",
+	"description": "Wrap any blocks in display conditions: page, content type, device, user state, ad tracking, schedule, and day of week.",
+	"textdomain": "ekwa",
+	"icon": "visibility",
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"lock": false
+	},
+	"attributes": {
+		"pageVisibility": {
+			"type": "string",
+			"default": "everywhere"
+		},
+		"selectedPageIds": {
+			"type": "array",
+			"items": { "type": "number" },
+			"default": []
+		},
+		"contentType": {
+			"type": "string",
+			"default": "all"
+		},
+		"deviceType": {
+			"type": "string",
+			"default": "all"
+		},
+		"userState": {
+			"type": "string",
+			"default": "all"
+		},
+		"userRoles": {
+			"type": "array",
+			"items": { "type": "string" },
+			"default": []
+		},
+		"adTracking": {
+			"type": "string",
+			"default": "all"
+		},
+		"scheduleEnabled": {
+			"type": "boolean",
+			"default": false
+		},
+		"scheduleFrom": {
+			"type": "string",
+			"default": ""
+		},
+		"scheduleTo": {
+			"type": "string",
+			"default": ""
+		},
+		"daysOfWeek": {
+			"type": "array",
+			"items": { "type": "string" },
+			"default": []
+		}
+	},
+	"editorScript": "ekwa-conditional-editor"
+}
