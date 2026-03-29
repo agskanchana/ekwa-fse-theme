@@ -29,6 +29,22 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_conditional_block',
 		)
 	);
+
+	// Google Map block.
+	wp_register_script(
+		'ekwa-map-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-map-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-map',
+		array(
+			'render_callback' => 'ekwa_render_map_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -185,4 +201,52 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 
 	/* All conditions passed — output the inner blocks. */
 	return $content;
+}
+
+/**
+ * Server-side render callback for the ekwa/map block.
+ *
+ * Extracts the src from the saved iframe embed code, validates it is a
+ * legitimate Google Maps URL, then outputs a clean, full-width iframe.
+ * filter:none is applied so no theme stylesheet can accidentally make it grey.
+ *
+ * @param  array $attrs  Block attributes (embedCode, height).
+ * @return string        HTML output or empty string when no valid src is found.
+ */
+function ekwa_render_map_block( $attrs ) {
+	$embed_code = isset( $attrs['embedCode'] ) ? $attrs['embedCode'] : '';
+	$height     = isset( $attrs['height'] )    ? absint( $attrs['height'] ) : 450;
+	$colorful   = isset( $attrs['colorful'] )  ? (bool) $attrs['colorful'] : true;
+	$filter     = $colorful ? 'none' : 'grayscale(100%)';
+
+	if ( empty( $embed_code ) ) {
+		return '';
+	}
+
+	// Pull the src attribute out of the raw iframe string.
+	if ( ! preg_match( '/src=["\']([^"\']+)["\']/i', $embed_code, $matches ) ) {
+		return '';
+	}
+
+	$src = esc_url( $matches[1] );
+
+	// Accept Google Maps embed URLs only (security: prevent arbitrary iframe injection).
+	if ( ! preg_match( '#^https://www\.google\.com/maps/#', $src ) ) {
+		return '';
+	}
+
+	return sprintf(
+		'<div class="ekwa-map-wrapper" style="width:100%%;overflow:hidden;">' .
+		'<iframe src="%s" width="100%%" height="%d" ' .
+		'style="border:0;display:block;width:100%%;filter:%s;-webkit-filter:%s;" ' .
+		'allowfullscreen="" loading="lazy" ' .
+		'referrerpolicy="no-referrer-when-downgrade" ' .
+		'title="%s"></iframe>' .
+		'</div>',
+		$src,
+		$height,
+		$filter,
+		$filter,
+		esc_attr__( 'Google Map', 'ekwa' )
+	);
 }

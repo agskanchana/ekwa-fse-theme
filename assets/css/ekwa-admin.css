@@ -202,6 +202,213 @@
 	margin-top: 2px;
 }
 
+/* ---------- Icon picker ---------- */
+.ekwa-icon-field {
+	position: relative;
+}
+
+.ekwa-icon-field__row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.ekwa-icon-preview-wrap {
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	color: #1d2327;
+	flex-shrink: 0;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+
+.ekwa-icon-field__row .ekwa-icon-input {
+	flex: 1;
+	width: 100% !important;
+}
+
+.ekwa-icon-picker-dropdown {
+	display: none;
+	position: absolute;
+	top: calc(100% + 3px);
+	left: 0;
+	right: 0;
+	z-index: 99999;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	max-height: 260px;
+	overflow-y: auto;
+	box-shadow: 0 6px 16px rgba(0,0,0,.15);
+}
+
+.ekwa-icon-picker-dropdown.is-open {
+	display: block;
+}
+
+.ekwa-icon-grid {
+	display: grid;
+	grid-template-columns: repeat(6, 1fr);
+	gap: 2px;
+	padding: 8px;
+}
+
+.ekwa-icon-option {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 5px;
+	padding: 10px 4px 8px;
+	cursor: pointer;
+	border-radius: 4px;
+	text-align: center;
+	min-height: 56px;
+	transition: background 0.1s;
+}
+
+.ekwa-icon-option:hover {
+	background: #e8f0fe;
+}
+
+.ekwa-icon-option i {
+	font-size: 22px;
+	color: #1d2327;
+	height: 24px;
+	display: flex;
+	align-items: center;
+}
+
+.ekwa-icon-option span {
+	font-size: 9px;
+	color: #666;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+	line-height: 1.2;
+}
+
+.ekwa-icon-no-results {
+	grid-column: 1 / -1;
+	padding: 14px;
+	color: #999;
+	font-size: 13px;
+	font-style: italic;
+	text-align: center;
+}
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 782px) {
+	.ekwa-field-grid {
+		grid-template-columns: 1fr;
+	}
+	.ekwa-icon-grid {
+		grid-template-columns: repeat(4, 1fr);
+	}
+}
+	position: relative;
+}
+
+.ekwa-icon-field__row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.ekwa-icon-preview-wrap {
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 17px;
+	color: #1d2327;
+	flex-shrink: 0;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+
+.ekwa-icon-field__row .ekwa-icon-input {
+	flex: 1;
+	width: 100% !important;
+}
+
+.ekwa-icon-picker-dropdown {
+	display: none;
+	position: absolute;
+	top: calc(100% + 2px);
+	left: 0;
+	right: 0;
+	z-index: 9999;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	max-height: 230px;
+	overflow-y: auto;
+	box-shadow: 0 4px 10px rgba(0,0,0,.12);
+}
+
+.ekwa-icon-picker-dropdown.is-open {
+	display: block;
+}
+
+.ekwa-icon-option {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 12px;
+	cursor: pointer;
+	font-size: 13px;
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.ekwa-icon-option:last-child {
+	border-bottom: none;
+}
+
+.ekwa-icon-option:hover {
+	background: #f0f6fc;
+}
+
+.ekwa-icon-option i {
+	width: 20px;
+	text-align: center;
+	font-size: 16px;
+	color: #1d2327;
+	flex-shrink: 0;
+}
+
+.ekwa-icon-option span {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: #1d2327;
+}
+
+.ekwa-icon-option code {
+	font-size: 11px;
+	color: #888;
+	white-space: nowrap;
+	background: #f6f7f7;
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+
+.ekwa-icon-no-results {
+	padding: 10px 14px;
+	color: #999;
+	font-size: 13px;
+	font-style: italic;
+}
+
 /* ---------- Responsive ---------- */
 @media screen and (max-width: 782px) {
 	.ekwa-field-grid {

@@ -22,6 +22,7 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 /**
  * Load custom block registrations and render callbacks.
  */
+
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**

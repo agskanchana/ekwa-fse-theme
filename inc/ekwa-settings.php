@@ -43,6 +43,13 @@ function ekwa_admin_enqueue( $hook ) {
 		return;
 	}
 	wp_enqueue_media();
+	// Font Awesome — needed so icon previews render inside the admin settings page.
+	wp_enqueue_style(
+		'font-awesome',
+		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		array(),
+		'6.5.1'
+	);
 	wp_enqueue_style(
 		'ekwa-admin-css',
 		get_template_directory_uri() . '/assets/css/ekwa-admin.css',
@@ -698,7 +705,20 @@ function ekwa_render_social_row( $index, $data ) {
 				</div>
 				<div class="ekwa-field">
 					<label><?php esc_html_e( 'Icon Class', 'ekwa' ); ?></label>
-					<input type="text" name="<?php echo esc_attr( $prefix ); ?>[icon]" value="<?php echo esc_attr( $data['icon'] ); ?>" placeholder="<?php esc_attr_e( 'e.g., fab fa-facebook-f', 'ekwa' ); ?>" />
+					<div class="ekwa-icon-field">
+						<div class="ekwa-icon-field__row">
+							<span class="ekwa-icon-preview-wrap" title="<?php esc_attr_e( 'Icon preview', 'ekwa' ); ?>">
+								<i class="<?php echo esc_attr( $data['icon'] ); ?>"></i>
+							</span>
+							<input type="text"
+								name="<?php echo esc_attr( $prefix ); ?>[icon]"
+								value="<?php echo esc_attr( $data['icon'] ); ?>"
+								placeholder="<?php esc_attr_e( 'Search or paste icon class…', 'ekwa' ); ?>"
+								class="ekwa-icon-input"
+								autocomplete="off" />
+						</div>
+						<div class="ekwa-icon-picker-dropdown"></div>
+					</div>
 				</div>
 			</div>
 		</div>

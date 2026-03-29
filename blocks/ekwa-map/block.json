@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/map",
+	"version": "1.0.0",
+	"title": "Ekwa Google Map",
+	"category": "embed",
+	"description": "Paste a Google Maps iframe embed code to display a full-width, colorful map.",
+	"textdomain": "ekwa",
+	"icon": "location-alt",
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"embedCode": {
+			"type": "string",
+			"default": ""
+		},
+		"height": {
+			"type": "number",
+			"default": 450
+		},
+		"colorful": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"editorScript": "ekwa-map-editor"
+}

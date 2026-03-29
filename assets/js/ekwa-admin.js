@@ -1,4 +1,4 @@
-(function ($) {
+﻿(function ($) {
 	'use strict';
 
 	/* ============================================================
@@ -110,7 +110,7 @@
 	}
 
 	/* ============================================================
-	 *  Location repeater — add / remove
+	 *  Location repeater â€” add / remove
 	 * ============================================================ */
 	$('#ekwa-add-location').on('click', function () {
 		var count = $('#ekwa-locations-repeater .ekwa-location-item').length;
@@ -126,7 +126,7 @@
 	});
 
 	/* ============================================================
-	 *  Working hours sub-repeater — add / remove
+	 *  Working hours sub-repeater â€” add / remove
 	 * ============================================================ */
 	$(document).on('click', '.ekwa-add-wh', function () {
 		var $repeater = $(this).siblings('.ekwa-wh-repeater');
@@ -146,7 +146,7 @@
 	});
 
 	/* ============================================================
-	 *  Social repeater — add / remove
+	 *  Social repeater â€” add / remove
 	 * ============================================================ */
 	$('#ekwa-add-social').on('click', function () {
 		var count = $('#ekwa-social-repeater .ekwa-social-item').length;
@@ -159,6 +159,135 @@
 		if (!confirm(ekwaAdmin.confirmRemove)) return;
 		$(this).closest('.ekwa-social-item').remove();
 		reindexSocial();
+	});
+
+	/* ============================================================
+	 *  Icon picker for social media icon class fields
+	 * ============================================================ */
+
+	var EKWA_ICONS = [
+		// Brands
+		{ name: 'Facebook',         cls: 'fa-brands fa-facebook' },
+		{ name: 'Facebook F',       cls: 'fa-brands fa-facebook-f' },
+		{ name: 'X / Twitter',      cls: 'fa-brands fa-x-twitter' },
+		{ name: 'Instagram',        cls: 'fa-brands fa-instagram' },
+		{ name: 'LinkedIn',         cls: 'fa-brands fa-linkedin' },
+		{ name: 'LinkedIn In',      cls: 'fa-brands fa-linkedin-in' },
+		{ name: 'YouTube',          cls: 'fa-brands fa-youtube' },
+		{ name: 'TikTok',           cls: 'fa-brands fa-tiktok' },
+		{ name: 'Pinterest',        cls: 'fa-brands fa-pinterest' },
+		{ name: 'Pinterest P',      cls: 'fa-brands fa-pinterest-p' },
+		{ name: 'Snapchat',         cls: 'fa-brands fa-snapchat' },
+		{ name: 'WhatsApp',         cls: 'fa-brands fa-whatsapp' },
+		{ name: 'Google',           cls: 'fa-brands fa-google' },
+		{ name: 'Yelp',             cls: 'fa-brands fa-yelp' },
+		{ name: 'Tripadvisor',      cls: 'fa-brands fa-tripadvisor' },
+		{ name: 'Reddit',           cls: 'fa-brands fa-reddit' },
+		{ name: 'Tumblr',           cls: 'fa-brands fa-tumblr' },
+		{ name: 'Vimeo',            cls: 'fa-brands fa-vimeo' },
+		{ name: 'Vimeo V',          cls: 'fa-brands fa-vimeo-v' },
+		{ name: 'Twitch',           cls: 'fa-brands fa-twitch' },
+		{ name: 'Discord',          cls: 'fa-brands fa-discord' },
+		{ name: 'Slack',            cls: 'fa-brands fa-slack' },
+		{ name: 'GitHub',           cls: 'fa-brands fa-github' },
+		{ name: 'Spotify',          cls: 'fa-brands fa-spotify' },
+		{ name: 'Threads',          cls: 'fa-brands fa-threads' },
+		{ name: 'Bluesky',          cls: 'fa-brands fa-bluesky' },
+		{ name: 'Mastodon',         cls: 'fa-brands fa-mastodon' },
+		{ name: 'Medium',           cls: 'fa-brands fa-medium' },
+		{ name: 'Behance',          cls: 'fa-brands fa-behance' },
+		{ name: 'Dribbble',         cls: 'fa-brands fa-dribbble' },
+		{ name: 'Flickr',           cls: 'fa-brands fa-flickr' },
+		{ name: 'SoundCloud',       cls: 'fa-brands fa-soundcloud' },
+		{ name: 'Google Play',      cls: 'fa-brands fa-google-play' },
+		{ name: 'App Store',        cls: 'fa-brands fa-app-store-ios' },
+		// Solid
+		{ name: 'Phone',            cls: 'fa-solid fa-phone' },
+		{ name: 'Email',            cls: 'fa-solid fa-envelope' },
+		{ name: 'Location',         cls: 'fa-solid fa-location-dot' },
+		{ name: 'Globe',            cls: 'fa-solid fa-globe' },
+		{ name: 'Clock',            cls: 'fa-solid fa-clock' },
+		{ name: 'Star',             cls: 'fa-solid fa-star' },
+		{ name: 'Heart',            cls: 'fa-solid fa-heart' },
+		{ name: 'Share',            cls: 'fa-solid fa-share-nodes' },
+		{ name: 'Link',             cls: 'fa-solid fa-link' },
+		{ name: 'RSS',              cls: 'fa-solid fa-rss' },
+		{ name: 'Camera',           cls: 'fa-solid fa-camera' },
+		{ name: 'Video',            cls: 'fa-solid fa-video' },
+		{ name: 'Microphone',       cls: 'fa-solid fa-microphone' },
+		{ name: 'Podcast',          cls: 'fa-solid fa-podcast' },
+	];
+
+	function ekwaIconSearch(query) {
+		var q = query.toLowerCase().trim();
+		if (!q) return EKWA_ICONS;
+		return EKWA_ICONS.filter(function (icon) {
+			return icon.name.toLowerCase().indexOf(q) > -1 ||
+			       icon.cls.toLowerCase().indexOf(q) > -1;
+		});
+	}
+
+	function ekwaOpenPicker($input) {
+		var $field    = $input.closest('.ekwa-icon-field');
+		var $dropdown = $field.find('.ekwa-icon-picker-dropdown');
+		var results   = ekwaIconSearch($input.val());
+		var html      = '<div class="ekwa-icon-grid">';
+
+		if (results.length) {
+			$.each(results, function (i, icon) {
+				html += '<div class="ekwa-icon-option" data-cls="' + icon.cls + '" title="' + icon.name + '">' +
+				        '<i class="' + icon.cls + '"></i>' +
+				        '<span>' + icon.name + '</span>' +
+				        '</div>';
+			});
+		} else {
+			html += '<div class="ekwa-icon-no-results">No icons found. The class you typed will be used as-is.</div>';
+		}
+
+		html += '</div>';
+		$dropdown.html(html).addClass('is-open');
+	}
+
+	function ekwaClosePicker($field) {
+		$field.find('.ekwa-icon-picker-dropdown').removeClass('is-open').empty();
+	}
+
+	// Open on focus
+	$(document).on('focusin', '.ekwa-icon-input', function () {
+		ekwaOpenPicker($(this));
+	});
+
+	// Filter while typing + live preview
+	$(document).on('input', '.ekwa-icon-input', function () {
+		var $input   = $(this);
+		var $field   = $input.closest('.ekwa-icon-field');
+		$field.find('.ekwa-icon-preview-wrap i').attr('class', $input.val().trim());
+		ekwaOpenPicker($input);
+	});
+
+	// Select icon â€” mousedown + preventDefault keeps the input focused
+	// so blur doesn't fire and close the dropdown before click registers.
+	$(document).on('mousedown', '.ekwa-icon-option', function (e) {
+		e.preventDefault();
+		var cls    = $(this).data('cls');
+		var $field = $(this).closest('.ekwa-icon-field');
+		$field.find('.ekwa-icon-input').val(cls);
+		$field.find('.ekwa-icon-preview-wrap i').attr('class', cls);
+		ekwaClosePicker($field);
+	});
+
+	// Escape closes picker
+	$(document).on('keydown', '.ekwa-icon-input', function (e) {
+		if (e.key === 'Escape') {
+			ekwaClosePicker($(this).closest('.ekwa-icon-field'));
+			$(this).blur();
+		}
+	});
+
+	// Close on blur (with tiny delay so mousedown on option fires first)
+	$(document).on('blur', '.ekwa-icon-input', function () {
+		var $field = $(this).closest('.ekwa-icon-field');
+		setTimeout(function () { ekwaClosePicker($field); }, 120);
 	});
 
 })(jQuery);
