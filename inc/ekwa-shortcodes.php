@@ -192,28 +192,16 @@ function ekwa_phone_shortcode( $atts ) {
 	// Build the dialable tel: number (country code logic lives in ekwa_mobile_number).
 	$tel_number = ekwa_mobile_number( $phone_number, $country_code_override );
 
-	// Build the output.
-	ob_start();
-	?>
-	<span class="ekwa-phone-number">
-		<a href="tel:<?php echo esc_attr( $tel_number ); ?>"
-		   class="ekwa-phone-number__link"
-		   aria-label="<?php echo esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $phone_number ) ); ?>">
+	// Build compact single-line output — no newlines to prevent wpautop from injecting <p>/<br>.
+	$icon_html   = $show_icon ? '<i class="ekwa-phone-number__icon ' . esc_attr( $icon_class ) . '" aria-hidden="true"></i>' : '';
+	$prefix_html = ! empty( $prefix_text ) ? '<span class="ekwa-phone-number__prefix">' . esc_html( $prefix_text ) . ' </span>' : '';
 
-			<?php if ( $show_icon ) : ?>
-				<i class="ekwa-phone-number__icon <?php echo esc_attr( $icon_class ); ?>" aria-hidden="true"></i>
-			<?php endif; ?>
-
-			<span class="ekwa-phone-number__text">
-				<?php if ( ! empty( $prefix_text ) ) : ?>
-					<span class="ekwa-phone-number__prefix"><?php echo esc_html( $prefix_text ); ?> </span>
-				<?php endif; ?>
-				<span class="ekwa-phone-number__number"><?php echo esc_html( $phone_number ); ?></span>
-			</span>
-		</a>
-	</span>
-	<?php
-	return ob_get_clean();
+	return '<span class="ekwa-phone-number">'
+		. '<a href="tel:' . esc_attr( $tel_number ) . '" class="ekwa-phone-number__link" aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $phone_number ) ) . '">'
+		. $icon_html
+		. '<span class="ekwa-phone-number__text">' . $prefix_html . '<span class="ekwa-phone-number__number">' . esc_html( $phone_number ) . '</span></span>'
+		. '</a>'
+		. '</span>';
 }
 add_shortcode( 'ekwa_phone', 'ekwa_phone_shortcode' );
 
