@@ -10,6 +10,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Load theme settings page.
+ */
+require_once get_template_directory() . '/inc/ekwa-settings.php';
+
+/**
  * Enqueue theme stylesheet.
  */
 function ekwa_enqueue_styles() {
