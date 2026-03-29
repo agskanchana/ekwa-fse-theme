@@ -223,6 +223,14 @@ function ekwa_save_settings() {
 	}
 	delete_option( 'ekwa_country_custom' );
 
+	// Site logo — stored as custom_logo theme mod so the core Site Logo block uses it.
+	$site_logo_id = isset( $_POST['ekwa_site_logo'] ) ? absint( wp_unslash( $_POST['ekwa_site_logo'] ) ) : 0;
+	if ( $site_logo_id ) {
+		set_theme_mod( 'custom_logo', $site_logo_id );
+	} else {
+		remove_theme_mod( 'custom_logo' );
+	}
+
 	// Locations repeater.
 	$locations = isset( $_POST['ekwa_locations'] ) && is_array( $_POST['ekwa_locations'] )
 		? ekwa_sanitize_locations( wp_unslash( $_POST['ekwa_locations'] ) )
@@ -257,6 +265,7 @@ function ekwa_render_settings_page() {
 	$appt_type     = get_option( 'ekwa_appt_type', 'page' );
 	$appt_page     = get_option( 'ekwa_appt_page', 0 );
 	$appt_url      = get_option( 'ekwa_appt_url', '' );
+	$site_logo     = get_theme_mod( 'custom_logo', 0 );
 	$pub_logo      = get_option( 'ekwa_publisher_logo', 0 );
 	$share_img     = get_option( 'ekwa_share_image', 0 );
 	$country       = get_option( 'ekwa_country', '' );
@@ -376,6 +385,24 @@ function ekwa_render_settings_page() {
 			<div class="ekwa-section">
 				<h2><?php esc_html_e( 'Media', 'ekwa' ); ?></h2>
 				<table class="form-table">
+					<tr>
+						<th><label><?php esc_html_e( 'Site Logo', 'ekwa' ); ?></label></th>
+						<td>
+							<div class="ekwa-media-field" data-width="300" data-height="100">
+								<input type="hidden" name="ekwa_site_logo" value="<?php echo esc_attr( $site_logo ); ?>" class="ekwa-media-id" />
+								<div class="ekwa-media-preview">
+									<?php if ( $site_logo ) : ?>
+										<?php echo wp_get_attachment_image( $site_logo, array( 150, 50 ) ); ?>
+									<?php else : ?>
+										<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
+									<?php endif; ?>
+								</div>
+								<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
+								<button type="button" class="button ekwa-media-remove" <?php echo ! $site_logo ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
+								<p class="description"><?php esc_html_e( 'This sets the site logo used by the core Site Logo block.', 'ekwa' ); ?></p>
+							</div>
+						</td>
+					</tr>
 					<tr>
 						<th><label><?php esc_html_e( 'Publisher Logo', 'ekwa' ); ?></label></th>
 						<td>

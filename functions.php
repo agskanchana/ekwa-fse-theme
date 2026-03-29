@@ -15,7 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
- * Enqueue theme stylesheet.
+ * Load theme shortcodes.
+ */
+require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
+
+/**
+ * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
 	wp_enqueue_style(
@@ -24,8 +29,28 @@ function ekwa_enqueue_styles() {
 		array(),
 		wp_get_theme()->get( 'Version' )
 	);
+	wp_enqueue_style(
+		'font-awesome',
+		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		array(),
+		'6.5.1'
+	);
 }
 add_action( 'wp_enqueue_scripts', 'ekwa_enqueue_styles' );
+
+/**
+ * Enqueue Font Awesome in the block editor and admin.
+ */
+function ekwa_enqueue_admin_fa() {
+	wp_enqueue_style(
+		'font-awesome',
+		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		array(),
+		'6.5.1'
+	);
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_admin_fa' );
+add_action( 'admin_enqueue_scripts', 'ekwa_enqueue_admin_fa' );
 
 /**
  * Register theme support.
