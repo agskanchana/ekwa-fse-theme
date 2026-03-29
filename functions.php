@@ -37,7 +37,7 @@ function ekwa_enqueue_styles() {
 	);
 	wp_enqueue_style(
 		'font-awesome',
-		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		get_template_directory_uri() . '/assets/fontawesome/css/all.min.css',
 		array(),
 		'6.5.1'
 	);
@@ -45,18 +45,31 @@ function ekwa_enqueue_styles() {
 add_action( 'wp_enqueue_scripts', 'ekwa_enqueue_styles' );
 
 /**
- * Enqueue Font Awesome in the block editor and admin.
+ * Enqueue Font Awesome in the block editor outer shell and admin pages.
  */
 function ekwa_enqueue_admin_fa() {
 	wp_enqueue_style(
 		'font-awesome',
-		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		get_template_directory_uri() . '/assets/fontawesome/css/all.min.css',
 		array(),
 		'6.5.1'
 	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_admin_fa' );
 add_action( 'admin_enqueue_scripts', 'ekwa_enqueue_admin_fa' );
+
+/**
+ * Inject styles into the FSE iframed canvas.
+ *
+ * add_editor_style() with a RELATIVE theme path causes WordPress to set
+ * baseURL = the theme's asset URL, so relative font paths in the CSS
+ * (e.g. ../webfonts/) resolve correctly inside the iframe.
+ */
+function ekwa_editor_styles() {
+	add_editor_style( 'assets/fontawesome/css/all.min.css' );
+	add_editor_style( 'assets/css/ekwa-editor.css' );
+}
+add_action( 'after_setup_theme', 'ekwa_editor_styles' );
 
 /**
  * Enqueue the phone-button block extension in the editor.

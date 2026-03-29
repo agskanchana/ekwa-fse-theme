@@ -45,8 +45,49 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_map_block',
 		)
 	);
+
+	// Icon block (standalone FA icon element).
+	wp_register_script(
+		'ekwa-icon-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-icon-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-icon',
+		array(
+			'render_callback' => 'ekwa_render_icon_block',
+		)
+	);
+
+	// Inline FA icon format (inserted into RichText blocks via toolbar).
+	wp_register_script(
+		'ekwa-icon-format',
+		get_template_directory_uri() . '/assets/js/ekwa-icon-format.js',
+		array( 'wp-rich-text', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
+
+/**
+ * Enqueue editor-only assets: inline format script + picker CSS.
+ * The ekwa-editor-css style is also registered via add_editor_style() in
+ * functions.php so it loads inside the FSE iframe canvas too.
+ */
+function ekwa_enqueue_editor_assets() {
+	wp_enqueue_script( 'ekwa-icon-format' );
+	wp_enqueue_style(
+		'ekwa-editor-css',
+		get_template_directory_uri() . '/assets/css/ekwa-editor.css',
+		array(),
+		wp_get_theme()->get( 'Version' )
+	);
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_editor_assets' );
 
 
 /**
@@ -249,4 +290,36 @@ function ekwa_render_map_block( $attrs ) {
 		$filter,
 		esc_attr__( 'Google Map', 'ekwa' )
 	);
+}
+
+/**
+ * Server-side render callback for the ekwa/icon block.
+ *
+ * Outputs: <div class="way-icon"><i class="fa-solid fa-bolt" aria-hidden="true"></i></div>
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_icon_block( $attrs ) {
+	$icon_class    = sanitize_text_field( isset( $attrs['iconClass'] )    ? $attrs['iconClass']    : 'fa-solid fa-star' );
+	$wrapper_class = sanitize_text_field( isset( $attrs['wrapperClass'] ) ? $attrs['wrapperClass'] : 'way-icon' );
+	$size          = isset( $attrs['size'] ) ? absint( $attrs['size'] ) : 0;
+	$color         = sanitize_text_field( isset( $attrs['color'] ) ? $attrs['color'] : '' );
+	$align_raw     = isset( $attrs['align'] ) ? $attrs['align'] : '';
+	$anchor        = isset( $attrs['anchor'] ) ? sanitize_html_class( $attrs['anchor'] ) : '';
+
+	$align = in_array( $align_raw, array( 'left', 'center', 'right' ), true ) ? $align_raw : '';
+
+	$icon_style = '';
+	if ( $size )  { $icon_style .= 'font-size:' . $size . 'px;'; }
+	if ( $color ) { $icon_style .= 'color:' . esc_attr( $color ) . ';'; }
+
+	$wrapper_attrs  = ' class="' . esc_attr( $wrapper_class ) . '"';
+	if ( $anchor )  { $wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $align )   { $wrapper_attrs .= ' style="text-align:' . esc_attr( $align ) . ';"'; }
+
+	$icon_attrs  = ' class="' . esc_attr( $icon_class ) . '" aria-hidden="true"';
+	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
+
+	return '<div' . $wrapper_attrs . '><i' . $icon_attrs . '></i></div>';
 }

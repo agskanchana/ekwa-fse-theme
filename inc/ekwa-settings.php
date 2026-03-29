@@ -46,7 +46,7 @@ function ekwa_admin_enqueue( $hook ) {
 	// Font Awesome — needed so icon previews render inside the admin settings page.
 	wp_enqueue_style(
 		'font-awesome',
-		'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
+		get_template_directory_uri() . '/assets/fontawesome/css/all.min.css',
 		array(),
 		'6.5.1'
 	);

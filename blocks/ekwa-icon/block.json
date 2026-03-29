@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/icon",
+	"version": "1.0.0",
+	"title": "Ekwa Icon",
+	"category": "common",
+	"icon": "star-filled",
+	"description": "Insert a standalone Font Awesome icon element.",
+	"textdomain": "ekwa",
+	"keywords": [ "icon", "font awesome", "fa", "svg" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"iconClass":    { "type": "string", "default": "fa-solid fa-star" },
+		"wrapperClass": { "type": "string", "default": "way-icon" },
+		"size":         { "type": "number", "default": 0 },
+		"color":        { "type": "string", "default": "" },
+		"align":        { "type": "string", "default": "" }
+	},
+	"editorScript": "ekwa-icon-editor"
+}
