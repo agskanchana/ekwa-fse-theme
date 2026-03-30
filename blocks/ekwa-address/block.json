@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/address",
+	"version": "1.0.0",
+	"title": "Ekwa Address",
+	"category": "common",
+	"icon": "location-alt",
+	"description": "Display a location address with a directions link.",
+	"textdomain": "ekwa",
+	"keywords": [ "address", "location", "directions", "map" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"location":  { "type": "number",  "default": 1 },
+		"mode":      { "type": "string",  "default": "full" },
+		"label":     { "type": "string",  "default": "" },
+		"showIcon":  { "type": "boolean", "default": true },
+		"iconClass": { "type": "string",  "default": "fa-solid fa-location-dot" },
+		"newTab":    { "type": "boolean", "default": true }
+	},
+	"editorScript": "ekwa-address-editor"
+}

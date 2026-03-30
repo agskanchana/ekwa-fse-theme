@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/phone",
+	"version": "1.0.0",
+	"title": "Ekwa Phone Number",
+	"category": "common",
+	"icon": "phone",
+	"description": "Display a clickable phone number with ad-tracking support.",
+	"textdomain": "ekwa",
+	"keywords": [ "phone", "call", "number", "tel" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"type":        { "type": "string",  "default": "new" },
+		"location":    { "type": "number",  "default": 1 },
+		"prefix":      { "type": "string",  "default": "" },
+		"showIcon":    { "type": "boolean", "default": true },
+		"iconClass":   { "type": "string",  "default": "fa-solid fa-phone" },
+		"countryCode": { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-phone-editor"
+}

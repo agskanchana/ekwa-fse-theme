@@ -70,6 +70,38 @@ function ekwa_register_blocks() {
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
+
+	// Phone number block.
+	wp_register_script(
+		'ekwa-phone-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-phone-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-phone',
+		array(
+			'render_callback' => 'ekwa_render_phone_block',
+		)
+	);
+
+	// Address block.
+	wp_register_script(
+		'ekwa-address-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-address-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-address',
+		array(
+			'render_callback' => 'ekwa_render_address_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -322,4 +354,44 @@ function ekwa_render_icon_block( $attrs ) {
 	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
 
 	return '<div' . $wrapper_attrs . '><i' . $icon_attrs . '></i></div>';
+}
+
+/**
+ * Server-side render callback for the ekwa/phone block.
+ *
+ * Delegates to the shortcode function so rendering logic stays in one place.
+ *
+ * @param array $attrs Block attributes (camelCase from block.json).
+ * @return string
+ */
+function ekwa_render_phone_block( $attrs ) {
+	$shortcode_atts = array(
+		'type'         => isset( $attrs['type'] )        ? $attrs['type']                                          : 'new',
+		'location'     => isset( $attrs['location'] )    ? $attrs['location']                                      : 1,
+		'prefix'       => isset( $attrs['prefix'] )      ? $attrs['prefix']                                        : '',
+		'show_icon'    => isset( $attrs['showIcon'] )    ? ( $attrs['showIcon'] ? 'true' : 'false' )               : 'true',
+		'icon_class'   => isset( $attrs['iconClass'] )   ? $attrs['iconClass']                                     : 'fa-solid fa-phone',
+		'country_code' => isset( $attrs['countryCode'] ) ? $attrs['countryCode']                                   : '',
+	);
+	return ekwa_phone_shortcode( $shortcode_atts );
+}
+
+/**
+ * Server-side render callback for the ekwa/address block.
+ *
+ * Delegates to the shortcode function so rendering logic stays in one place.
+ *
+ * @param array $attrs Block attributes (camelCase from block.json).
+ * @return string
+ */
+function ekwa_render_address_block( $attrs ) {
+	$shortcode_atts = array(
+		'location'   => isset( $attrs['location'] )  ? $attrs['location']                                    : 1,
+		'mode'       => isset( $attrs['mode'] )       ? $attrs['mode']                                        : 'full',
+		'label'      => isset( $attrs['label'] )      ? $attrs['label']                                       : '',
+		'show_icon'  => isset( $attrs['showIcon'] )   ? ( $attrs['showIcon'] ? 'true' : 'false' )             : 'true',
+		'icon_class' => isset( $attrs['iconClass'] )  ? $attrs['iconClass']                                   : 'fa-solid fa-location-dot',
+		'new_tab'    => isset( $attrs['newTab'] )     ? ( $attrs['newTab'] ? 'true' : 'false' )               : 'true',
+	);
+	return ekwa_address_shortcode( $shortcode_atts );
 }
