@@ -15,6 +15,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * Load shortcode builder admin page.
+ */
+require_once get_template_directory() . '/inc/ekwa-shortcode-builder.php';
+
+/**
  * Load theme shortcodes.
  */
 require_once get_template_directory() . '/inc/ekwa-shortcodes.php';

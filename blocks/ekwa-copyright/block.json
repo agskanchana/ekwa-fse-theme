@@ -1,0 +1,17 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/copyright",
+	"version": "1.0.0",
+	"title": "Ekwa Copyright",
+	"category": "common",
+	"icon": "shield",
+	"description": "Renders the site copyright line with the practice name and current year.",
+	"textdomain": "ekwa",
+	"keywords": [ "copyright", "footer", "legal" ],
+	"supports": {
+		"html": false
+	},
+	"attributes": {},
+	"editorScript": "ekwa-copyright-editor"
+}

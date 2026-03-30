@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/hours",
+	"version": "1.0.0",
+	"title": "Ekwa Working Hours",
+	"category": "common",
+	"icon": "clock",
+	"description": "Display formatted working hours for a saved location.",
+	"textdomain": "ekwa",
+	"keywords": [ "hours", "working hours", "schedule", "time" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"location":    { "type": "number",  "default": 1 },
+		"group":       { "type": "string",  "default": "none" },
+		"showClosed":  { "type": "boolean", "default": true },
+		"shortDays":   { "type": "boolean", "default": false },
+		"showNotes":   { "type": "boolean", "default": true },
+		"closedLabel": { "type": "string",  "default": "Closed" }
+	},
+	"editorScript": "ekwa-hours-editor"
+}

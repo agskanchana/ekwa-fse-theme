@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/social",
+	"version": "1.0.0",
+	"title": "Ekwa Social Icons",
+	"category": "common",
+	"icon": "share",
+	"description": "Display social media icons with optional share button and per-icon color control.",
+	"textdomain": "ekwa",
+	"keywords": [ "social", "icons", "share", "facebook", "twitter" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"showShare":  { "type": "boolean", "default": true },
+		"iconSize":   { "type": "number",  "default": 0 },
+		"iconColor":  { "type": "string",  "default": "" },
+		"iconColors":     { "type": "object",  "default": {} },
+		"shareIconColor": { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-social-editor"
+}

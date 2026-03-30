@@ -102,6 +102,54 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_address_block',
 		)
 	);
+
+	// Working Hours block.
+	wp_register_script(
+		'ekwa-hours-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-hours-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-hours',
+		array(
+			'render_callback' => 'ekwa_render_hours_block',
+		)
+	);
+
+	// Copyright block.
+	wp_register_script(
+		'ekwa-copyright-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-copyright-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-copyright',
+		array(
+			'render_callback' => 'ekwa_render_copyright_block',
+		)
+	);
+
+	// Social Icons block.
+	wp_register_script(
+		'ekwa-social-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-social-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'wp-api-fetch' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-social',
+		array(
+			'render_callback' => 'ekwa_render_social_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -395,3 +443,196 @@ function ekwa_render_address_block( $attrs ) {
 	);
 	return ekwa_address_shortcode( $shortcode_atts );
 }
+
+/**
+ * Server-side render callback for the ekwa/hours block.
+ *
+ * @param array $attrs Block attributes (camelCase from block.json).
+ * @return string
+ */
+function ekwa_render_hours_block( $attrs ) {
+	$shortcode_atts = array(
+		'location'     => isset( $attrs['location'] )    ? $attrs['location']                                        : 1,
+		'group'        => isset( $attrs['group'] )        ? $attrs['group']                                          : 'none',
+		'show_closed'  => isset( $attrs['showClosed'] )   ? ( $attrs['showClosed']  ? 'true' : 'false' )            : 'true',
+		'short_days'   => isset( $attrs['shortDays'] )    ? ( $attrs['shortDays']   ? 'true' : 'false' )            : 'false',
+		'show_notes'   => isset( $attrs['showNotes'] )    ? ( $attrs['showNotes']   ? 'true' : 'false' )            : 'true',
+		'closed_label' => isset( $attrs['closedLabel'] )  ? $attrs['closedLabel']                                   : 'Closed',
+	);
+	return ekwa_hours_shortcode( $shortcode_atts );
+}
+
+/**
+ * Server-side render callback for the ekwa/copyright block.
+ *
+ * @return string
+ */
+function ekwa_render_copyright_block() {
+	return ekwa_copyright_shortcode();
+}
+
+/**
+ * Server-side render callback for the ekwa/social block.
+ *
+ * Mirrors the [ekwa_social] shortcode output but adds per-icon colour and
+ * size support via block attributes.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_social_block( $attrs ) {
+	$show_share       = isset( $attrs['showShare'] )       ? (bool) $attrs['showShare']  : true;
+	$icon_size        = isset( $attrs['iconSize'] )        ? absint( $attrs['iconSize'] ) : 0;
+	$icon_color       = isset( $attrs['iconColor'] )       ? sanitize_hex_color( $attrs['iconColor'] ) : '';
+	$icon_colors      = ( isset( $attrs['iconColors'] ) && is_array( $attrs['iconColors'] ) )
+		? $attrs['iconColors']
+		: array();
+	// Share button icon colour: explicit value wins, then falls back to global colour.
+	$share_icon_color = isset( $attrs['shareIconColor'] ) ? sanitize_hex_color( $attrs['shareIconColor'] ) : '';
+	if ( ! $share_icon_color ) {
+		$share_icon_color = $icon_color;
+	}
+
+	$links = get_option( 'ekwa_social', array() );
+	if ( empty( $links ) || ! is_array( $links ) ) {
+		return '';
+	}
+
+	static $instance = 0;
+	$instance++;
+	$uid   = 'ekwa-soc-blk-' . $instance;
+	$js_fn = 'ekwaSocBlkToggle' . $instance;
+
+	// Emit the shared CSS once per page — uses a global flag so it is not
+	// duplicated if both the shortcode and the block appear on the same page.
+	global $ekwa_social_css_printed;
+	$out = '';
+	if ( empty( $ekwa_social_css_printed ) ) {
+		$ekwa_social_css_printed = true;
+		$out .= '<style id="ekwa-social-css">'
+			. '.ekwa-social-icons .social-media{display:flex;gap:10px;align-items:center;flex-wrap:wrap}'
+			. '.ekwa-social-icons .sm-icons{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:none;background:none;padding:0}'
+			. '.ekwa-social-icons .addthis{position:relative;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer}'
+			. '.ekwa-social-icons .addthis span.hide{display:none}'
+			. '.ekwa-social-icons .share-toggle{visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px;transition:all .3s ease;z-index:99;white-space:nowrap}'
+			. '.ekwa-social-icons .share-toggle.active{visibility:visible;opacity:1;transform:translateX(-50%) translateY(0)}'
+			. '.ekwa-social-icons .share-toggle::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:10px solid transparent;border-top-color:#fff;filter:drop-shadow(0 3px 2px rgba(0,0,0,.1))}'
+			. '.ekwa-social-icons .share-toggle a{color:#fff;width:44px;height:44px;margin:4px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:8px;transition:all .2s ease}'
+			. '.ekwa-social-icons .share-toggle a:hover{transform:scale(1.1)}'
+			. '.ekwa-social-icons .share-toggle i{font-size:20px}'
+			. '.share-facebook{background:#3b5998}'
+			. '.share-twit{background:#38A1F3}'
+			. '.share-pinterest{background:#E60023}'
+			. '</style>';
+	}
+
+	static $global_js_done = false;
+	if ( $show_share && ! $global_js_done ) {
+		$global_js_done = true;
+		$out .= '<script>document.addEventListener("click",function(e){'
+			. 'if(!e.target.closest(".ekwa-social-icons .addthis")){'
+			. 'document.querySelectorAll(".ekwa-social-icons .share-toggle.active")'
+			. '.forEach(function(el){el.classList.remove("active");});}'
+			. '});</script>';
+	}
+
+	$permalink = urlencode( (string) get_permalink() );
+	$title     = urlencode( (string) get_the_title() );
+
+	$out .= '<div id="' . esc_attr( $uid ) . '" class="ekwa-social-icons"><div class="social-media">';
+
+	foreach ( $links as $idx => $link ) {
+		$link = wp_parse_args( $link, array( 'name' => '', 'link' => '', 'icon' => '' ) );
+		if ( empty( $link['link'] ) ) {
+			continue;
+		}
+
+		$label = ! empty( $link['name'] ) ? esc_attr( $link['name'] ) : esc_attr__( 'Social Media', 'ekwa' );
+
+		// Per-icon colour overrides global colour.
+		$color = '';
+		if ( ! empty( $icon_colors[ $idx ] ) ) {
+			$color = sanitize_hex_color( $icon_colors[ $idx ] );
+		} elseif ( $icon_color ) {
+			$color = $icon_color;
+		}
+
+		$icon_style = '';
+		if ( $icon_size ) { $icon_style .= 'font-size:' . $icon_size . 'px;'; }
+		if ( $color )     { $icon_style .= 'color:' . esc_attr( $color ) . ';'; }
+
+		$out .= '<a class="sm-icons" aria-label="' . $label . '" rel="noopener noreferrer" target="_blank" href="' . esc_url( $link['link'] ) . '">';
+		if ( ! empty( $link['icon'] ) ) {
+			$style_attr = $icon_style ? ' style="' . esc_attr( $icon_style ) . '"' : '';
+			$out .= '<i class="' . esc_attr( $link['icon'] ) . '"' . $style_attr . '></i>';
+		}
+		$out .= '</a>';
+	}
+
+	if ( $show_share ) {
+		$share_icon_style = '';
+		if ( $icon_size )        { $share_icon_style .= 'font-size:' . $icon_size . 'px;'; }
+		if ( $share_icon_color ) { $share_icon_style .= 'color:' . esc_attr( $share_icon_color ) . ';'; }
+		$share_icon_attr = $share_icon_style ? ' style="' . esc_attr( $share_icon_style ) . '"' : '';
+
+		$out .= '<button class="addthis" aria-label="' . esc_attr__( 'Toggle Share', 'ekwa' ) . '" onclick="' . esc_js( $js_fn ) . '()" type="button">'
+			. '<i class="fa-solid fa-share-nodes"' . $share_icon_attr . '></i>'
+			. '<span class="hide">' . esc_html__( 'Share', 'ekwa' ) . '</span>'
+			. '<div id="share-toggle-' . esc_attr( $uid ) . '" class="share-toggle">'
+			. '<a aria-label="' . esc_attr__( 'Share on Facebook', 'ekwa' ) . '" class="share-facebook" rel="noopener noreferrer"'
+			. ' href="https://www.facebook.com/sharer/sharer.php?u=' . $permalink . '&amp;t=' . $title . '"'
+			. ' onclick="window.open(this.href,\'\',\'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,height=300,width=600\');return false;"'
+			. ' target="_blank"><i class="fa-brands fa-facebook-f"></i></a>'
+			. '<a aria-label="' . esc_attr__( 'Share on X / Twitter', 'ekwa' ) . '" class="share-twit" rel="noopener noreferrer"'
+			. ' href="https://twitter.com/share?url=' . $permalink . '&amp;text=' . $title . '"'
+			. ' onclick="window.open(this.href,\'\',\'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,height=300,width=600\');return false;"'
+			. ' target="_blank"><i class="fa-brands fa-x-twitter"></i></a>'
+			. '<a aria-label="' . esc_attr__( 'Share on Pinterest', 'ekwa' ) . '" class="share-pinterest" rel="noopener noreferrer"'
+			. ' href="https://www.pinterest.com/pin/create/button/?url=' . $permalink . '"'
+			. ' target="_blank"><i class="fa-brands fa-pinterest-p"></i></a>'
+			. '</div>'
+			. '</button>';
+
+		$out .= '<script>function ' . esc_js( $js_fn ) . '(){'
+			. 'var el=document.getElementById("share-toggle-' . esc_js( $uid ) . '");'
+			. 'if(el){el.classList.toggle("active");}'
+			. '}</script>';
+	}
+
+	$out .= '</div></div>';
+	return $out;
+}
+
+/**
+ * REST endpoint: GET /ekwa/v1/social-links
+ *
+ * Returns the name + icon of each saved social link so the block editor can
+ * render per-icon colour pickers with meaningful labels.
+ * Restricted to users who can edit posts.
+ */
+add_action( 'rest_api_init', function () {
+	register_rest_route(
+		'ekwa/v1',
+		'/social-links',
+		array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => function () {
+				$links = get_option( 'ekwa_social', array() );
+				if ( ! is_array( $links ) ) {
+					return rest_ensure_response( array() );
+				}
+				$safe = array();
+				foreach ( $links as $link ) {
+					$safe[] = array(
+						'name' => sanitize_text_field( $link['name'] ?? '' ),
+						'icon' => sanitize_text_field( $link['icon'] ?? '' ),
+					);
+				}
+				return rest_ensure_response( $safe );
+			},
+			'permission_callback' => function () {
+				return current_user_can( 'edit_posts' );
+			},
+		)
+	);
+} );
