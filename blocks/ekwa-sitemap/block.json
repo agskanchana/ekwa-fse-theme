@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/sitemap",
+	"version": "1.0.0",
+	"title": "Ekwa Sitemap",
+	"category": "common",
+	"icon": "admin-site-alt3",
+	"description": "Interactive collapsible sitemap with Collapse All / Expand All controls. Builds from pages automatically or from a custom nav menu.",
+	"textdomain": "ekwa",
+	"keywords": [ "sitemap", "pages", "navigation", "hierarchy", "site map", "tree" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"title":           { "type": "string",  "default": "" },
+		"depth":           { "type": "number",  "default": 0 },
+		"columns":         { "type": "number",  "default": 1 },
+		"sortBy":          { "type": "string",  "default": "menu_order" },
+		"sortOrder":       { "type": "string",  "default": "ASC" },
+		"excludeIds":      { "type": "string",  "default": "" },
+		"showDescription": { "type": "boolean", "default": false },
+		"showDate":        { "type": "boolean", "default": false },
+		"showControls":    { "type": "boolean", "default": true },
+		"startCollapsed":  { "type": "boolean", "default": true },
+		"useMenu":         { "type": "boolean", "default": false },
+		"menuSlug":        { "type": "string",  "default": "site-map" },
+		"linkColor":       { "type": "string",  "default": "" },
+		"controlColor":    { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-sitemap-editor"
+}
