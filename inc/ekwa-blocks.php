@@ -166,6 +166,22 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_sitemap_block',
 		)
 	);
+
+	// Search block.
+	wp_register_script(
+		'ekwa-search-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-search-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-search',
+		array(
+			'render_callback' => 'ekwa_render_search_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -964,6 +980,228 @@ function ekwa_sitemap_menu_tree( $menu_slug ) {
 	};
 
 	return $build( $items, 0 );
+}
+
+/**
+ * Server-side render callback for the ekwa/search block.
+ *
+ * Outputs a small search-icon trigger button. Clicking the button opens a
+ * full-screen modal overlay with a search form. The modal, its styles, and
+ * the open/close JavaScript are all emitted inline — no external assets needed.
+ * A single shared CSS block is printed once per page via a global flag.
+ *
+ * @param array $attrs Block attributes.
+ * @return string HTML output.
+ */
+function ekwa_render_search_block( $attrs ) {
+
+	$icon_size       = absint( $attrs['iconSize']       ?? 20 );
+	$icon_color      = sanitize_hex_color( $attrs['iconColor']     ?? '' );
+	$button_bg       = sanitize_hex_color( $attrs['buttonBg']      ?? '' );
+	$placeholder     = sanitize_text_field( $attrs['placeholder']  ?? 'Type to search...' );
+	$btn_label       = sanitize_text_field( $attrs['buttonLabel']  ?? 'Search' );
+	$overlay_bg      = $attrs['overlayBg']                         ?? 'rgba(15,23,42,0.85)';
+	$overlay_blur    = (bool) ( $attrs['overlayBlur']              ?? true );
+	$search_btn_bg   = sanitize_hex_color( $attrs['searchBtnBg']   ?? '' );
+	$search_btn_col  = sanitize_hex_color( $attrs['searchBtnColor'] ?? '' );
+	$anchor          = sanitize_html_class( $attrs['anchor']       ?? '' );
+
+	// Sanitise the overlay background — allow rgba/hsla but strip anything suspicious.
+	$overlay_bg = preg_replace( '/[^a-zA-Z0-9%(),.\s#]/', '', $overlay_bg );
+
+	/* ---- Shared CSS — printed once per page ---- */
+	global $ekwa_search_css_done;
+	$out = '';
+	if ( empty( $ekwa_search_css_done ) ) {
+		$ekwa_search_css_done = true;
+		$out .= '<style id="ekwa-search-css">'
+			/* Trigger button */
+			. '.ekwa-search-trigger{'
+			. 'display:inline-flex;align-items:center;justify-content:center;'
+			. 'background:none;border:none;padding:6px;cursor:pointer;'
+			. 'line-height:1;border-radius:4px;transition:opacity .2s}'
+			. '.ekwa-search-trigger:hover{opacity:.75}'
+			. '.ekwa-search-trigger svg{display:block}'
+			/* Overlay */
+			. '.ekwa-search-overlay{'
+			. 'display:none;position:fixed;inset:0;z-index:99999;'
+			. 'align-items:center;justify-content:center}'
+			. '.ekwa-search-overlay.is-open{display:flex}'
+			. '.ekwa-search-overlay__bg{'
+			. 'position:absolute;inset:0;cursor:pointer}'
+			/* Modal box */
+			. '.ekwa-search-overlay__box{'
+			. 'position:relative;z-index:1;'
+			. 'background:#fff;border-radius:12px;'
+			. 'padding:20px 24px;'
+			. 'width:min(560px,90vw);'
+			. 'box-shadow:0 8px 40px rgba(0,0,0,.3)}'
+			/* Form row */
+			. '.ekwa-search-overlay__form{'
+			. 'display:flex;gap:0;align-items:stretch}'
+			. '.ekwa-search-overlay__input{'
+			. 'flex:1;min-width:0;'
+			. 'border:1.5px solid #e0e0e0;border-right:none;'
+			. 'border-radius:8px 0 0 8px;'
+			. 'padding:12px 16px;font-size:16px;outline:none;'
+			. 'background:#f8f8f8;transition:border-color .2s}'
+			. '.ekwa-search-overlay__input:focus{'
+			. 'border-color:var(--ekwa-srch-btn-bg,#1a6ef5);background:#fff}'
+			. '.ekwa-search-overlay__submit{'
+			. 'background:var(--ekwa-srch-btn-bg,#1a6ef5);'
+			. 'color:var(--ekwa-srch-btn-col,#fff);'
+			. 'border:none;border-radius:0 8px 8px 0;'
+			. 'padding:12px 22px;font-size:15px;font-weight:600;'
+			. 'cursor:pointer;white-space:nowrap;transition:opacity .2s}'
+			. '.ekwa-search-overlay__submit:hover{opacity:.85}'
+			/* Close button */
+			. '.ekwa-search-overlay__close{'
+			. 'position:absolute;top:-14px;right:-14px;'
+			. 'width:32px;height:32px;border-radius:50%;'
+			. 'background:#fff;border:none;cursor:pointer;'
+			. 'display:flex;align-items:center;justify-content:center;'
+			. 'box-shadow:0 2px 8px rgba(0,0,0,.2);'
+			. 'font-size:18px;line-height:1;color:#444;transition:background .2s}'
+			. '.ekwa-search-overlay__close:hover{background:#f0f0f0}'
+			. '</style>';
+	}
+
+	/* ---- Unique IDs for this instance ---- */
+	static $srch_n = 0;
+	++$srch_n;
+	$trigger_id = 'ekwa-search-trigger-' . $srch_n;
+	$overlay_id = 'ekwa-search-overlay-' . $srch_n;
+	$input_id   = 'ekwa-search-input-'   . $srch_n;
+
+	/* ---- CSS custom properties scoped to this instance ---- */
+	$instance_style = '';
+	if ( $search_btn_bg  ) { $instance_style .= '--ekwa-srch-btn-bg:' . esc_attr( $search_btn_bg ) . ';'; }
+	if ( $search_btn_col ) { $instance_style .= '--ekwa-srch-btn-col:' . esc_attr( $search_btn_col ) . ';'; }
+
+	/* ---- Trigger button ---- */
+	$btn_style = '';
+	if ( $button_bg   ) { $btn_style .= 'background:' . esc_attr( $button_bg ) . ';'; }
+	if ( $icon_color  ) { $btn_style .= 'color:' . esc_attr( $icon_color ) . ';'; }
+
+	$wrapper_attrs = ' class="ekwa-search-block"';
+	if ( $anchor ) {
+		$wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"';
+	}
+	if ( $instance_style ) {
+		$wrapper_attrs .= ' style="' . esc_attr( $instance_style ) . '"';
+	}
+
+	$out .= '<div' . $wrapper_attrs . '>';
+
+	$out .= '<button'
+		. ' id="' . esc_attr( $trigger_id ) . '"'
+		. ' class="ekwa-search-trigger"'
+		. ' type="button"'
+		. ' aria-label="' . esc_attr__( 'Open Search', 'ekwa' ) . '"'
+		. ' aria-controls="' . esc_attr( $overlay_id ) . '"'
+		. ' aria-expanded="false"'
+		. ( $btn_style ? ' style="' . esc_attr( $btn_style ) . '"' : '' )
+		. '>';
+
+	// Inline SVG magnifying-glass icon — scales with iconSize.
+	$sz = $icon_size;
+	$ic = $icon_color ? ' fill="' . esc_attr( $icon_color ) . '"' : ' fill="currentColor"';
+	$out .= '<svg xmlns="http://www.w3.org/2000/svg" width="' . $sz . '" height="' . $sz . '" viewBox="0 0 24 24" aria-hidden="true"' . $ic . '>'
+		. '<path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>'
+		. '</svg>';
+
+	$out .= '</button>';
+
+	/* ---- Overlay modal ---- */
+	$bg_style = 'background:' . esc_attr( $overlay_bg ) . ';';
+	if ( $overlay_blur ) {
+		$bg_style .= 'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+	}
+
+	$search_url = esc_url( home_url( '/' ) );
+
+	$out .= '<div'
+		. ' id="' . esc_attr( $overlay_id ) . '"'
+		. ' class="ekwa-search-overlay"'
+		. ' role="dialog"'
+		. ' aria-modal="true"'
+		. ' aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '"'
+		. '>';
+
+	// Click-outside-to-close backdrop.
+	$out .= '<div class="ekwa-search-overlay__bg" style="' . esc_attr( $bg_style ) . '" aria-hidden="true"></div>';
+
+	$out .= '<div class="ekwa-search-overlay__box">';
+
+	// Close button.
+	$out .= '<button class="ekwa-search-overlay__close" type="button" aria-label="' . esc_attr__( 'Close Search', 'ekwa' ) . '">&#x2715;</button>';
+
+	// Search form.
+	$out .= '<form class="ekwa-search-overlay__form" role="search" method="get" action="' . $search_url . '">';
+	$out .= '<input'
+		. ' id="' . esc_attr( $input_id ) . '"'
+		. ' class="ekwa-search-overlay__input"'
+		. ' type="search"'
+		. ' name="s"'
+		. ' placeholder="' . esc_attr( $placeholder ) . '"'
+		. ' autocomplete="off"'
+		. ' aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '"'
+		. '/>';
+	$out .= '<button class="ekwa-search-overlay__submit" type="submit">'
+		. esc_html( $btn_label )
+		. '</button>';
+	$out .= '</form>';
+
+	$out .= '</div>'; // .box
+	$out .= '</div>'; // .overlay
+	$out .= '</div>'; // .ekwa-search-block
+
+	/* ---- Inline JS: open / close / focus ---- */
+	$out .= '<script>(function(tid,oid,iid){'
+		. 'var trigger=document.getElementById(tid);'
+		. 'var overlay=document.getElementById(oid);'
+		. 'var inp=document.getElementById(iid);'
+		. 'if(!trigger||!overlay||!inp)return;'
+
+		// Open.
+		. 'function openModal(){'
+		. 'overlay.classList.add("is-open");'
+		. 'trigger.setAttribute("aria-expanded","true");'
+		. 'document.body.style.overflow="hidden";'
+		. 'inp.value="";'
+		. 'setTimeout(function(){inp.focus();},60);'
+		. '}'
+
+		// Close.
+		. 'function closeModal(){'
+		. 'overlay.classList.remove("is-open");'
+		. 'trigger.setAttribute("aria-expanded","false");'
+		. 'document.body.style.overflow="";'
+		. 'trigger.focus();'
+		. '}'
+
+		. 'trigger.addEventListener("click",openModal);'
+
+		// Close button.
+		. 'var cb=overlay.querySelector(".ekwa-search-overlay__close");'
+		. 'if(cb)cb.addEventListener("click",closeModal);'
+
+		// Click backdrop.
+		. 'var bd=overlay.querySelector(".ekwa-search-overlay__bg");'
+		. 'if(bd)bd.addEventListener("click",closeModal);'
+
+		// Escape key.
+		. 'document.addEventListener("keydown",function(e){'
+		. 'if(e.key==="Escape"&&overlay.classList.contains("is-open"))closeModal();'
+		. '});'
+
+		. '})('
+		. wp_json_encode( $trigger_id ) . ','
+		. wp_json_encode( $overlay_id ) . ','
+		. wp_json_encode( $input_id )
+		. ');</script>';
+
+	return $out;
 }
 
 /**

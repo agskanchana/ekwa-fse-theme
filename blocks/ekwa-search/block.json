@@ -1,0 +1,28 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/search",
+	"version": "1.0.0",
+	"title": "Ekwa Search",
+	"category": "common",
+	"icon": "search",
+	"description": "Displays a search icon. Clicking it opens a full-screen modal search overlay.",
+	"textdomain": "ekwa",
+	"keywords": [ "search", "find", "modal", "overlay", "popup" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"iconSize":        { "type": "number",  "default": 20 },
+		"iconColor":       { "type": "string",  "default": "" },
+		"buttonBg":        { "type": "string",  "default": "" },
+		"placeholder":     { "type": "string",  "default": "Type to search..." },
+		"buttonLabel":     { "type": "string",  "default": "Search" },
+		"overlayBg":       { "type": "string",  "default": "rgba(15,23,42,0.85)" },
+		"overlayBlur":     { "type": "boolean", "default": true },
+		"searchBtnColor":  { "type": "string",  "default": "" },
+		"searchBtnBg":     { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-search-editor"
+}
