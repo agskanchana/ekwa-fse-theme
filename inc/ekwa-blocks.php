@@ -182,6 +182,22 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_search_block',
 		)
 	);
+
+	// Scroll-to-top block.
+	wp_register_script(
+		'ekwa-scroll-top-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-scroll-top-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-scroll-top',
+		array(
+			'render_callback' => 'ekwa_render_scroll_top_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -1200,6 +1216,103 @@ function ekwa_render_search_block( $attrs ) {
 		. wp_json_encode( $overlay_id ) . ','
 		. wp_json_encode( $input_id )
 		. ');</script>';
+
+	return $out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scroll-to-top block                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Server-side render callback for ekwa/scroll-top.
+ *
+ * Outputs a fixed-position button that appears after the user scrolls past a
+ * configurable threshold and smoothly scrolls the page back to the top.
+ */
+function ekwa_render_scroll_top_block( $attributes ) {
+	static $css_printed = false;
+
+	$icon_size   = absint( $attributes['iconSize'] ?? 20 );
+	$btn_size    = absint( $attributes['buttonSize'] ?? 48 );
+	$icon_color  = sanitize_hex_color( $attributes['iconColor'] ?? '' ) ?: '#ffffff';
+	$btn_bg      = sanitize_hex_color( $attributes['buttonBg'] ?? '' ) ?: '#0073aa';
+	$radius      = absint( $attributes['borderRadius'] ?? 8 );
+	$bottom      = absint( $attributes['offsetBottom'] ?? 30 );
+	$right       = absint( $attributes['offsetRight'] ?? 30 );
+	$threshold   = absint( $attributes['scrollThreshold'] ?? 300 );
+
+	$uid       = 'ekwa-scroll-top-' . wp_unique_id();
+	$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST;
+
+	$out = '';
+
+	/* ---- CSS (once per page) ---- */
+	if ( ! $css_printed ) {
+		$css_printed = true;
+		$out .= '<style>'
+			. '.ekwa-scroll-top-btn{'
+				. 'position:fixed;z-index:9999;'
+				. 'display:flex;align-items:center;justify-content:center;'
+				. 'border:none;cursor:pointer;'
+				. 'opacity:0;visibility:hidden;'
+				. 'transition:opacity .3s ease,visibility .3s ease,background .2s ease;'
+				. 'box-shadow:0 2px 8px rgba(0,0,0,.18);'
+			. '}'
+			. '.ekwa-scroll-top-btn.is-visible{'
+				. 'opacity:1;visibility:visible;'
+			. '}'
+			. '.ekwa-scroll-top-btn:hover{'
+				. 'filter:brightness(1.15);'
+			. '}'
+			. '.ekwa-scroll-top-btn svg{'
+				. 'display:block;fill:none;'
+			. '}'
+			. '</style>';
+	}
+
+	/* In the editor, render inline and always visible so the preview is useful. */
+	$editor_style = $is_editor
+		? 'position:static;opacity:1;visibility:visible;'
+		: 'bottom:' . $bottom . 'px;right:' . $right . 'px;';
+
+	/* ---- Button markup ---- */
+	$out .= '<button'
+		. ' id="' . esc_attr( $uid ) . '"'
+		. ' class="ekwa-scroll-top-btn' . ( $is_editor ? ' is-visible' : '' ) . '"'
+		. ' aria-label="' . esc_attr__( 'Scroll to top', 'ekwa' ) . '"'
+		. ' style="'
+			. $editor_style
+			. 'width:' . $btn_size . 'px;'
+			. 'height:' . $btn_size . 'px;'
+			. 'border-radius:' . $radius . 'px;'
+			. 'background:' . esc_attr( $btn_bg ) . ';'
+			. 'color:' . esc_attr( $icon_color ) . ';'
+		. '">'
+		. '<svg xmlns="http://www.w3.org/2000/svg" width="' . $icon_size . '" height="' . $icon_size . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+			. '<polyline points="18 15 12 9 6 15"></polyline>'
+		. '</svg>'
+		. '</button>';
+
+	/* ---- JavaScript (frontend only) ---- */
+	if ( ! $is_editor ) {
+		$out .= '<script>'
+			. '(function(){'
+				. 'var btn=document.getElementById(' . wp_json_encode( $uid ) . ');'
+				. 'if(!btn)return;'
+				. 'var threshold=' . $threshold . ';'
+				. 'function toggle(){'
+					. 'if(window.scrollY>threshold){btn.classList.add("is-visible")}'
+					. 'else{btn.classList.remove("is-visible")}'
+				. '}'
+				. 'window.addEventListener("scroll",toggle,{passive:true});'
+				. 'toggle();'
+				. 'btn.addEventListener("click",function(){'
+					. 'window.scrollTo({top:0,behavior:"smooth"});'
+				. '});'
+			. '})();'
+			. '</script>';
+	}
 
 	return $out;
 }

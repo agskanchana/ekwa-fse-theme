@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/scroll-top",
+	"version": "1.0.0",
+	"title": "Ekwa Scroll Up",
+	"category": "common",
+	"icon": "arrow-up-alt",
+	"description": "Displays a scroll-to-top button that appears after the user scrolls down the page.",
+	"textdomain": "ekwa",
+	"keywords": [ "scroll", "top", "back to top", "arrow", "up" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"iconSize":      { "type": "number",  "default": 20 },
+		"buttonSize":    { "type": "number",  "default": 48 },
+		"iconColor":     { "type": "string",  "default": "#ffffff" },
+		"buttonBg":      { "type": "string",  "default": "#0073aa" },
+		"borderRadius":  { "type": "number",  "default": 8 },
+		"offsetBottom":  { "type": "number",  "default": 30 },
+		"offsetRight":   { "type": "number",  "default": 30 },
+		"scrollThreshold": { "type": "number", "default": 300 }
+	},
+	"editorScript": "ekwa-scroll-top-editor"
+}
