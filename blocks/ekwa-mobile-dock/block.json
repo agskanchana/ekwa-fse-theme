@@ -1,0 +1,19 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/mobile-dock",
+	"version": "1.0.0",
+	"title": "Ekwa Mobile Dock",
+	"category": "common",
+	"icon": "smartphone",
+	"description": "Floating bottom dock bar for mobile with Call, Book, Scroll Up, Services, and Find Us.",
+	"textdomain": "ekwa",
+	"keywords": [ "mobile", "dock", "floating", "menu", "call", "book" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"multiple": false
+	},
+	"attributes": {},
+	"editorScript": "ekwa-mobile-dock-editor"
+}

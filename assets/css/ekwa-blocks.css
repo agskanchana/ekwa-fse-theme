@@ -1,0 +1,587 @@
+/**
+ * Ekwa Custom Blocks — shared styles.
+ *
+ * Covers: search, hamburger-menu, mobile-dock, scroll-top, social.
+ *
+ * @package ekwa
+ */
+
+/* ================================================================
+   Search block
+   ================================================================ */
+.ekwa-search-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	padding: 6px;
+	cursor: pointer;
+	line-height: 1;
+	border-radius: 4px;
+	transition: opacity 0.2s;
+}
+.ekwa-search-trigger:hover { opacity: 0.75; }
+.ekwa-search-trigger svg { display: block; }
+
+.ekwa-search-overlay {
+	display: none;
+	position: fixed;
+	inset: 0;
+	z-index: 99999;
+	align-items: center;
+	justify-content: center;
+	padding: 20px;
+}
+.ekwa-search-overlay.is-open { display: flex; }
+
+.ekwa-search-overlay__bg {
+	position: absolute;
+	inset: 0;
+	cursor: pointer;
+}
+.ekwa-search-overlay__box {
+	position: relative;
+	z-index: 1;
+	background: #fff;
+	border-radius: 12px;
+	padding: 20px 24px;
+	width: min(560px, 90vw);
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+.ekwa-search-overlay__form {
+	display: flex;
+	gap: 0;
+	align-items: stretch;
+}
+.ekwa-search-overlay__input {
+	flex: 1;
+	min-width: 0;
+	border: 1.5px solid #e0e0e0;
+	border-right: none;
+	border-radius: 8px 0 0 8px;
+	padding: 12px 16px;
+	font-size: 16px;
+	outline: none;
+	background: #f8f8f8;
+	transition: border-color 0.2s;
+}
+.ekwa-search-overlay__input:focus {
+	border-color: var(--ekwa-srch-btn-bg, #1a6ef5);
+	background: #fff;
+}
+.ekwa-search-overlay__submit {
+	background: var(--ekwa-srch-btn-bg, #1a6ef5);
+	color: var(--ekwa-srch-btn-col, #fff);
+	border: none;
+	border-radius: 0 8px 8px 0;
+	padding: 12px 22px;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: opacity 0.2s;
+}
+.ekwa-search-overlay__submit:hover { opacity: 0.85; }
+
+.ekwa-search-overlay__close {
+	position: absolute;
+	top: -14px;
+	right: -14px;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: #fff;
+	border: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	font-size: 18px;
+	line-height: 1;
+	color: #444;
+	transition: background 0.2s;
+}
+.ekwa-search-overlay__close:hover { background: #f0f0f0; }
+
+/* ================================================================
+   Hamburger-menu block
+   ================================================================ */
+.ekwa-hamburger-btn {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 8px;
+	color: inherit;
+}
+.ekwa-hamburger-btn:focus-visible {
+	outline: 2px solid var(--wp--preset--color--primary);
+	outline-offset: 2px;
+}
+.ekwa-hamburger-bar {
+	display: block;
+	background: currentColor;
+	border-radius: 2px;
+	transition: all 0.3s ease;
+}
+
+/* Hidden mobile nav (before mmenu-light processes it) */
+#ekwa-mobile-nav:not(.mm-spn) {
+	display: none;
+}
+
+/* mmenu-light theme overrides */
+.mm-ocd {
+	--mm-ocd-width: 85%;
+	--mm-ocd-max-width: 380px;
+}
+.mm-ocd .mm-ocd__content {
+	background: var(--wp--preset--color--background, #fff);
+}
+.mm-spn {
+	background: var(--wp--preset--color--background, #fff);
+}
+.mm-spn li {
+	border-color: var(--wp--preset--color--surface, #e8ecf4);
+}
+.mm-spn a,
+.mm-spn span {
+	font-family: var(--wp--preset--font-family--body);
+	font-size: var(--wp--preset--font-size--base);
+	color: var(--wp--preset--color--foreground, #1a1a2e);
+	padding: 14px 20px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.mm-spn a i,
+.mm-spn span i {
+	width: 20px;
+	text-align: center;
+	font-size: 1.1em;
+	color: var(--wp--preset--color--primary, #2563eb);
+}
+.mm-spn.mm-spn--navbar {
+	background: var(--wp--preset--color--primary, #2563eb);
+	color: #fff;
+}
+.mm-spn.mm-spn--navbar a { color: #fff; }
+
+/* ================================================================
+   Mobile dock block
+   ================================================================ */
+.ekwa-mobile-dock {
+	display: none;
+	position: fixed;
+	bottom: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 9998;
+}
+@media (max-width: 1199px) {
+	.ekwa-mobile-dock { display: block; }
+}
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+	.ekwa-mobile-dock {
+		bottom: calc(16px + env(safe-area-inset-bottom));
+	}
+}
+.ekwa-mobile-dock .dock-wrap {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 16px;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(20px) saturate(180%);
+	-webkit-backdrop-filter: blur(20px) saturate(180%);
+	border-radius: 24px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+	            0 2px 8px rgba(0, 0, 0, 0.08),
+	            inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+	border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.ekwa-mobile-dock .dock-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	text-decoration: none;
+	color: #333;
+	padding: 10px 14px;
+	border-radius: 16px;
+	position: relative;
+	transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	overflow: hidden;
+	cursor: pointer;
+	border: none;
+	background: none;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.ekwa-mobile-dock .dock-item::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: 16px;
+	opacity: 0;
+	transition: opacity 0.3s ease;
+}
+.ekwa-mobile-dock .dock-item:hover::before,
+.ekwa-mobile-dock .dock-item:focus::before { opacity: 1; }
+.ekwa-mobile-dock .dock-item:hover {
+	transform: translateY(-8px) scale(1.1);
+	color: #fff;
+}
+.ekwa-mobile-dock .dock-item:active {
+	transform: translateY(-4px) scale(1.05);
+}
+
+/* Per-type gradients */
+.ekwa-mobile-dock .dock-item.call-item::before    { background: linear-gradient(135deg, #10b981, #059669); }
+.ekwa-mobile-dock .dock-item.book-item::before    { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.ekwa-mobile-dock .dock-item.services-item::before { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+.ekwa-mobile-dock .dock-item.findus-item::before   { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+
+/* SVG icons */
+.ekwa-mobile-dock .dock-item svg {
+	width: 22px;
+	height: 22px;
+	stroke: #333;
+	stroke-width: 1.8;
+	fill: none;
+	position: relative;
+	z-index: 1;
+	transition: all 0.3s ease;
+}
+.ekwa-mobile-dock .dock-item:hover svg {
+	stroke: #fff;
+	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* Labels */
+.ekwa-mobile-dock .dock-item .dock-label {
+	font-size: 9px;
+	font-weight: 600;
+	letter-spacing: 0.3px;
+	text-transform: uppercase;
+	position: relative;
+	z-index: 1;
+	transition: all 0.3s ease;
+	white-space: nowrap;
+}
+
+/* Divider */
+.ekwa-mobile-dock .dock-divider {
+	width: 1px;
+	height: 32px;
+	background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.15), transparent);
+	margin: 0 4px;
+}
+
+/* FAB (scroll-up) */
+.ekwa-mobile-dock .dock-item.scroll-up-item {
+	background: linear-gradient(135deg,
+		var(--wp--preset--color--primary, #2563eb),
+		var(--wp--preset--color--primary, #2563eb)cc);
+	color: #fff;
+	width: 52px;
+	height: 52px;
+	border-radius: 50%;
+	padding: 0;
+	margin: -10px 4px;
+	box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4),
+	            0 2px 6px rgba(0, 0, 0, 0.1);
+}
+.ekwa-mobile-dock .dock-item.scroll-up-item::before { display: none; }
+.ekwa-mobile-dock .dock-item.scroll-up-item:hover {
+	transform: translateY(-12px) scale(1.15) rotate(180deg);
+	box-shadow: 0 12px 28px rgba(37, 99, 235, 0.5),
+	            0 4px 10px rgba(0, 0, 0, 0.15);
+}
+.ekwa-mobile-dock .dock-item.scroll-up-item svg {
+	width: 24px;
+	height: 24px;
+	stroke: #fff;
+	stroke-width: 2.5;
+}
+.ekwa-mobile-dock .dock-item.scroll-up-item:hover svg { stroke: #fff; }
+.ekwa-mobile-dock .dock-item.scroll-up-item .dock-label { display: none; }
+
+/* Pulse animation */
+.ekwa-mobile-dock .dock-item.scroll-up-item::after {
+	content: "";
+	position: absolute;
+	inset: -4px;
+	border-radius: 50%;
+	background: var(--wp--preset--color--primary, #2563eb);
+	opacity: 0;
+	z-index: -1;
+	animation: ekwa-dock-pulse 2s ease-out infinite;
+}
+@keyframes ekwa-dock-pulse {
+	0%   { transform: scale(1);   opacity: 0.4; }
+	100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* Small screens */
+@media (max-width: 400px) {
+	.ekwa-mobile-dock .dock-wrap { gap: 2px; padding: 8px 10px; }
+	.ekwa-mobile-dock .dock-item { padding: 8px 10px; }
+	.ekwa-mobile-dock .dock-item .dock-label { font-size: 8px; }
+}
+
+/* ================================================================
+   Dock popup overlay (shared with mobile-dock)
+   ================================================================ */
+.ekwa-dock-popup {
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	width: 100%; height: 100%;
+	background: rgba(0, 0, 0, 0.5);
+	z-index: 9999;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	padding: 20px;
+}
+.ekwa-dock-popup.active { display: flex; }
+
+.ekwa-dock-popup .popup-content {
+	background: #fff;
+	border-radius: 16px;
+	padding: 0;
+	max-width: 420px;
+	width: 100%;
+	max-height: 85vh;
+	overflow: hidden;
+	position: relative;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+.ekwa-dock-popup .popup-header {
+	padding: 24px 60px 24px 24px;
+	border-bottom: 1px solid #f0f0f0;
+	background: #fafafa;
+	position: relative;
+}
+.ekwa-dock-popup .popup-title {
+	font-size: 22px;
+	font-weight: 700;
+	margin: 0;
+	color: #1a1a1a;
+}
+.ekwa-dock-popup .popup-close {
+	position: absolute;
+	top: 20px;
+	right: 20px;
+	background: rgba(0, 0, 0, 0.05);
+	border: none;
+	font-size: 20px;
+	cursor: pointer;
+	width: 36px;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #666;
+	border-radius: 50%;
+	transition: all 0.2s ease;
+}
+.ekwa-dock-popup .popup-close:hover {
+	background: rgba(0, 0, 0, 0.1);
+	transform: rotate(90deg);
+}
+.ekwa-dock-popup .popup-body {
+	padding: 8px;
+	max-height: calc(85vh - 80px);
+	overflow-y: auto;
+}
+
+/* Accordion */
+.ekwa-dock-popup .accordion-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px;
+	background: #fff;
+	cursor: pointer;
+	border: none;
+	width: 100%;
+	text-align: left;
+	transition: background 0.2s ease;
+}
+.ekwa-dock-popup .accordion-header:hover { background: #f9f9f9; }
+.ekwa-dock-popup .accordion-header.active { background: #f5f5f5; }
+.ekwa-dock-popup .accordion-icon {
+	width: 20px;
+	height: 20px;
+	transition: transform 0.3s ease;
+	flex-shrink: 0;
+}
+.ekwa-dock-popup .accordion-header.active .accordion-icon {
+	transform: rotate(180deg);
+}
+.ekwa-dock-popup .accordion-body {
+	max-height: 0;
+	overflow: hidden;
+	transition: max-height 0.3s ease;
+	background: #fafafa;
+}
+.ekwa-dock-popup .accordion-body.active { max-height: 500px; }
+.ekwa-dock-popup .accordion-content { padding: 16px; }
+.ekwa-dock-popup .location-name {
+	font-size: 16px;
+	font-weight: 600;
+	margin: 0;
+	color: #1a1a1a;
+	flex: 1;
+}
+.ekwa-dock-popup .phone-item,
+.ekwa-dock-popup .address-item {
+	margin-bottom: 12px;
+	padding: 12px;
+	background: #fff;
+	border-radius: 8px;
+	border: 1px solid #e8e8e8;
+}
+.ekwa-dock-popup .phone-item:last-child,
+.ekwa-dock-popup .address-item:last-child { margin-bottom: 0; }
+.ekwa-dock-popup .phone-label {
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #666;
+	margin-bottom: 6px;
+}
+.ekwa-dock-popup .phone-link,
+.ekwa-dock-popup .address-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--wp--preset--color--primary, #2563eb);
+	text-decoration: none;
+	font-size: 16px;
+	font-weight: 600;
+	padding: 8px 16px;
+	background: rgba(37, 99, 235, 0.06);
+	border-radius: 6px;
+	transition: all 0.2s ease;
+}
+.ekwa-dock-popup .phone-link:hover,
+.ekwa-dock-popup .address-link:hover {
+	background: rgba(37, 99, 235, 0.12);
+	transform: translateX(2px);
+}
+.ekwa-dock-popup .phone-link svg,
+.ekwa-dock-popup .address-link svg {
+	width: 16px;
+	height: 16px;
+	stroke: currentColor;
+	fill: none;
+	flex-shrink: 0;
+}
+
+/* ================================================================
+   Scroll-to-top block
+   ================================================================ */
+.ekwa-scroll-top-btn {
+	position: fixed;
+	z-index: 9999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	cursor: pointer;
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.3s ease, visibility 0.3s ease, background 0.2s ease;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.ekwa-scroll-top-btn.is-visible {
+	opacity: 1;
+	visibility: visible;
+}
+.ekwa-scroll-top-btn:hover { filter: brightness(1.15); }
+.ekwa-scroll-top-btn svg { display: block; fill: none; }
+
+/* ================================================================
+   Social block
+   ================================================================ */
+.ekwa-social-icons .social-media {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+.ekwa-social-icons .sm-icons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-decoration: none;
+	border: none;
+	background: none;
+	padding: 0;
+}
+.ekwa-social-icons .addthis {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+}
+.ekwa-social-icons .addthis span.hide { display: none; }
+.ekwa-social-icons .share-toggle {
+	visibility: hidden;
+	opacity: 0;
+	position: absolute;
+	bottom: calc(100% + 12px);
+	left: 50%;
+	transform: translateX(-50%) translateY(10px);
+	background: #fff;
+	border-radius: 12px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+	padding: 8px;
+	transition: all 0.3s ease;
+	z-index: 99;
+	white-space: nowrap;
+}
+.ekwa-social-icons .share-toggle.active {
+	visibility: visible;
+	opacity: 1;
+	transform: translateX(-50%) translateY(0);
+}
+.ekwa-social-icons .share-toggle::after {
+	content: "";
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	border: 10px solid transparent;
+	border-top-color: #fff;
+	filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.1));
+}
+.ekwa-social-icons .share-toggle a {
+	color: #fff;
+	width: 44px;
+	height: 44px;
+	margin: 4px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-decoration: none;
+	border-radius: 8px;
+	transition: all 0.2s ease;
+}
+.ekwa-social-icons .share-toggle a:hover { transform: scale(1.1); }
+.ekwa-social-icons .share-toggle i { font-size: 20px; }
+.share-facebook  { background: #3b5998; }
+.share-twit      { background: #38A1F3; }
+.share-pinterest { background: #E60023; }

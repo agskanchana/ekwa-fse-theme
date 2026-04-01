@@ -14,3 +14,15 @@ Text Domain: ekwa
 Tags: full-site-editing, block-theme, custom-colors,
       custom-typography, wide-blocks, accessibility-ready
 */
+
+/* ── Desktop / Mobile header toggle (1200px breakpoint) ─────────── */
+@media (max-width: 1199px) {
+	.ekwa-desktop-header {
+		display: none !important;
+	}
+}
+@media (min-width: 1200px) {
+	.ekwa-mobile-header {
+		display: none !important;
+	}
+}

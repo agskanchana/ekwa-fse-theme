@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/hamburger-menu",
+	"version": "1.0.0",
+	"title": "Ekwa Hamburger Menu",
+	"category": "common",
+	"icon": "menu",
+	"description": "Hamburger button that opens an off-canvas mobile menu powered by mmenu-light.",
+	"textdomain": "ekwa",
+	"keywords": [ "mobile", "menu", "hamburger", "navigation", "mmenu" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true
+		}
+	},
+	"attributes": {
+		"iconSize": {
+			"type": "number",
+			"default": 24
+		}
+	},
+	"editorScript": "ekwa-hamburger-menu-editor"
+}

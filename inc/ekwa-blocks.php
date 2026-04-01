@@ -198,6 +198,38 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_scroll_top_block',
 		)
 	);
+
+	// Hamburger menu block (mobile off-canvas nav).
+	wp_register_script(
+		'ekwa-hamburger-menu-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-hamburger-menu-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-hamburger-menu',
+		array(
+			'render_callback' => 'ekwa_render_hamburger_menu_block',
+		)
+	);
+
+	// Mobile dock block (floating bottom bar).
+	wp_register_script(
+		'ekwa-mobile-dock-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-mobile-dock-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-mobile-dock',
+		array(
+			'render_callback' => 'ekwa_render_mobile_dock_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -551,38 +583,8 @@ function ekwa_render_social_block( $attrs ) {
 	$uid   = 'ekwa-soc-blk-' . $instance;
 	$js_fn = 'ekwaSocBlkToggle' . $instance;
 
-	// Emit the shared CSS once per page — uses a global flag so it is not
-	// duplicated if both the shortcode and the block appear on the same page.
-	global $ekwa_social_css_printed;
+	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
 	$out = '';
-	if ( empty( $ekwa_social_css_printed ) ) {
-		$ekwa_social_css_printed = true;
-		$out .= '<style id="ekwa-social-css">'
-			. '.ekwa-social-icons .social-media{display:flex;gap:10px;align-items:center;flex-wrap:wrap}'
-			. '.ekwa-social-icons .sm-icons{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:none;background:none;padding:0}'
-			. '.ekwa-social-icons .addthis{position:relative;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer}'
-			. '.ekwa-social-icons .addthis span.hide{display:none}'
-			. '.ekwa-social-icons .share-toggle{visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px;transition:all .3s ease;z-index:99;white-space:nowrap}'
-			. '.ekwa-social-icons .share-toggle.active{visibility:visible;opacity:1;transform:translateX(-50%) translateY(0)}'
-			. '.ekwa-social-icons .share-toggle::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:10px solid transparent;border-top-color:#fff;filter:drop-shadow(0 3px 2px rgba(0,0,0,.1))}'
-			. '.ekwa-social-icons .share-toggle a{color:#fff;width:44px;height:44px;margin:4px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:8px;transition:all .2s ease}'
-			. '.ekwa-social-icons .share-toggle a:hover{transform:scale(1.1)}'
-			. '.ekwa-social-icons .share-toggle i{font-size:20px}'
-			. '.share-facebook{background:#3b5998}'
-			. '.share-twit{background:#38A1F3}'
-			. '.share-pinterest{background:#E60023}'
-			. '</style>';
-	}
-
-	static $global_js_done = false;
-	if ( $show_share && ! $global_js_done ) {
-		$global_js_done = true;
-		$out .= '<script>document.addEventListener("click",function(e){'
-			. 'if(!e.target.closest(".ekwa-social-icons .addthis")){'
-			. 'document.querySelectorAll(".ekwa-social-icons .share-toggle.active")'
-			. '.forEach(function(el){el.classList.remove("active");});}'
-			. '});</script>';
-	}
 
 	$permalink = urlencode( (string) get_permalink() );
 	$title     = urlencode( (string) get_the_title() );
@@ -1025,69 +1027,14 @@ function ekwa_render_search_block( $attrs ) {
 	// Sanitise the overlay background — allow rgba/hsla but strip anything suspicious.
 	$overlay_bg = preg_replace( '/[^a-zA-Z0-9%(),.\s#]/', '', $overlay_bg );
 
-	/* ---- Shared CSS — printed once per page ---- */
-	global $ekwa_search_css_done;
+	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
 	$out = '';
-	if ( empty( $ekwa_search_css_done ) ) {
-		$ekwa_search_css_done = true;
-		$out .= '<style id="ekwa-search-css">'
-			/* Trigger button */
-			. '.ekwa-search-trigger{'
-			. 'display:inline-flex;align-items:center;justify-content:center;'
-			. 'background:none;border:none;padding:6px;cursor:pointer;'
-			. 'line-height:1;border-radius:4px;transition:opacity .2s}'
-			. '.ekwa-search-trigger:hover{opacity:.75}'
-			. '.ekwa-search-trigger svg{display:block}'
-			/* Overlay */
-			. '.ekwa-search-overlay{'
-			. 'display:none;position:fixed;inset:0;z-index:99999;'
-			. 'align-items:center;justify-content:center}'
-			. '.ekwa-search-overlay.is-open{display:flex}'
-			. '.ekwa-search-overlay__bg{'
-			. 'position:absolute;inset:0;cursor:pointer}'
-			/* Modal box */
-			. '.ekwa-search-overlay__box{'
-			. 'position:relative;z-index:1;'
-			. 'background:#fff;border-radius:12px;'
-			. 'padding:20px 24px;'
-			. 'width:min(560px,90vw);'
-			. 'box-shadow:0 8px 40px rgba(0,0,0,.3)}'
-			/* Form row */
-			. '.ekwa-search-overlay__form{'
-			. 'display:flex;gap:0;align-items:stretch}'
-			. '.ekwa-search-overlay__input{'
-			. 'flex:1;min-width:0;'
-			. 'border:1.5px solid #e0e0e0;border-right:none;'
-			. 'border-radius:8px 0 0 8px;'
-			. 'padding:12px 16px;font-size:16px;outline:none;'
-			. 'background:#f8f8f8;transition:border-color .2s}'
-			. '.ekwa-search-overlay__input:focus{'
-			. 'border-color:var(--ekwa-srch-btn-bg,#1a6ef5);background:#fff}'
-			. '.ekwa-search-overlay__submit{'
-			. 'background:var(--ekwa-srch-btn-bg,#1a6ef5);'
-			. 'color:var(--ekwa-srch-btn-col,#fff);'
-			. 'border:none;border-radius:0 8px 8px 0;'
-			. 'padding:12px 22px;font-size:15px;font-weight:600;'
-			. 'cursor:pointer;white-space:nowrap;transition:opacity .2s}'
-			. '.ekwa-search-overlay__submit:hover{opacity:.85}'
-			/* Close button */
-			. '.ekwa-search-overlay__close{'
-			. 'position:absolute;top:-14px;right:-14px;'
-			. 'width:32px;height:32px;border-radius:50%;'
-			. 'background:#fff;border:none;cursor:pointer;'
-			. 'display:flex;align-items:center;justify-content:center;'
-			. 'box-shadow:0 2px 8px rgba(0,0,0,.2);'
-			. 'font-size:18px;line-height:1;color:#444;transition:background .2s}'
-			. '.ekwa-search-overlay__close:hover{background:#f0f0f0}'
-			. '</style>';
-	}
 
-	/* ---- Unique IDs for this instance ---- */
-	static $srch_n = 0;
-	++$srch_n;
-	$trigger_id = 'ekwa-search-trigger-' . $srch_n;
-	$overlay_id = 'ekwa-search-overlay-' . $srch_n;
-	$input_id   = 'ekwa-search-input-'   . $srch_n;
+	/*
+	 * Single shared overlay: the first instance registers the wp_footer
+	 * output, all subsequent instances just render a trigger button.
+	 */
+	static $shared_overlay_registered = false;
 
 	/* ---- CSS custom properties scoped to this instance ---- */
 	$instance_style = '';
@@ -1110,11 +1057,9 @@ function ekwa_render_search_block( $attrs ) {
 	$out .= '<div' . $wrapper_attrs . '>';
 
 	$out .= '<button'
-		. ' id="' . esc_attr( $trigger_id ) . '"'
 		. ' class="ekwa-search-trigger"'
 		. ' type="button"'
 		. ' aria-label="' . esc_attr__( 'Open Search', 'ekwa' ) . '"'
-		. ' aria-controls="' . esc_attr( $overlay_id ) . '"'
 		. ' aria-expanded="false"'
 		. ( $btn_style ? ' style="' . esc_attr( $btn_style ) . '"' : '' )
 		. '>';
@@ -1127,95 +1072,36 @@ function ekwa_render_search_block( $attrs ) {
 		. '</svg>';
 
 	$out .= '</button>';
-
-	/* ---- Overlay modal ---- */
-	$bg_style = 'background:' . esc_attr( $overlay_bg ) . ';';
-	if ( $overlay_blur ) {
-		$bg_style .= 'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
-	}
-
-	$search_url = esc_url( home_url( '/' ) );
-
-	$out .= '<div'
-		. ' id="' . esc_attr( $overlay_id ) . '"'
-		. ' class="ekwa-search-overlay"'
-		. ' role="dialog"'
-		. ' aria-modal="true"'
-		. ' aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '"'
-		. '>';
-
-	// Click-outside-to-close backdrop.
-	$out .= '<div class="ekwa-search-overlay__bg" style="' . esc_attr( $bg_style ) . '" aria-hidden="true"></div>';
-
-	$out .= '<div class="ekwa-search-overlay__box">';
-
-	// Close button.
-	$out .= '<button class="ekwa-search-overlay__close" type="button" aria-label="' . esc_attr__( 'Close Search', 'ekwa' ) . '">&#x2715;</button>';
-
-	// Search form.
-	$out .= '<form class="ekwa-search-overlay__form" role="search" method="get" action="' . $search_url . '">';
-	$out .= '<input'
-		. ' id="' . esc_attr( $input_id ) . '"'
-		. ' class="ekwa-search-overlay__input"'
-		. ' type="search"'
-		. ' name="s"'
-		. ' placeholder="' . esc_attr( $placeholder ) . '"'
-		. ' autocomplete="off"'
-		. ' aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '"'
-		. '/>';
-	$out .= '<button class="ekwa-search-overlay__submit" type="submit">'
-		. esc_html( $btn_label )
-		. '</button>';
-	$out .= '</form>';
-
-	$out .= '</div>'; // .box
-	$out .= '</div>'; // .overlay
 	$out .= '</div>'; // .ekwa-search-block
 
-	/* ---- Inline JS: open / close / focus ---- */
-	$out .= '<script>(function(tid,oid,iid){'
-		. 'var trigger=document.getElementById(tid);'
-		. 'var overlay=document.getElementById(oid);'
-		. 'var inp=document.getElementById(iid);'
-		. 'if(!trigger||!overlay||!inp)return;'
+	/*
+	 * Overlay modal — rendered via wp_footer so it sits at the <body> level
+	 * and is never hidden by a parent container (e.g. display:none on a
+	 * header template part at a certain breakpoint).  Registered once.
+	 */
+	if ( ! $shared_overlay_registered ) {
+		$shared_overlay_registered = true;
 
-		// Open.
-		. 'function openModal(){'
-		. 'overlay.classList.add("is-open");'
-		. 'trigger.setAttribute("aria-expanded","true");'
-		. 'document.body.style.overflow="hidden";'
-		. 'inp.value="";'
-		. 'setTimeout(function(){inp.focus();},60);'
-		. '}'
+		$bg_style = 'background:' . esc_attr( $overlay_bg ) . ';';
+		if ( $overlay_blur ) {
+			$bg_style .= 'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+		}
 
-		// Close.
-		. 'function closeModal(){'
-		. 'overlay.classList.remove("is-open");'
-		. 'trigger.setAttribute("aria-expanded","false");'
-		. 'document.body.style.overflow="";'
-		. 'trigger.focus();'
-		. '}'
+		$search_url = esc_url( home_url( '/' ) );
+		$ph         = $placeholder;
+		$bl         = $btn_label;
 
-		. 'trigger.addEventListener("click",openModal);'
-
-		// Close button.
-		. 'var cb=overlay.querySelector(".ekwa-search-overlay__close");'
-		. 'if(cb)cb.addEventListener("click",closeModal);'
-
-		// Click backdrop.
-		. 'var bd=overlay.querySelector(".ekwa-search-overlay__bg");'
-		. 'if(bd)bd.addEventListener("click",closeModal);'
-
-		// Escape key.
-		. 'document.addEventListener("keydown",function(e){'
-		. 'if(e.key==="Escape"&&overlay.classList.contains("is-open"))closeModal();'
-		. '});'
-
-		. '})('
-		. wp_json_encode( $trigger_id ) . ','
-		. wp_json_encode( $overlay_id ) . ','
-		. wp_json_encode( $input_id )
-		. ');</script>';
+		add_action( 'wp_footer', function () use ( $bg_style, $search_url, $ph, $bl ) {
+			echo '<div id="ekwa-search-overlay-1" class="ekwa-search-overlay" role="dialog" aria-modal="true" aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '">';
+			echo '<div class="ekwa-search-overlay__bg" style="' . esc_attr( $bg_style ) . '" aria-hidden="true"></div>';
+			echo '<div class="ekwa-search-overlay__box">';
+			echo '<button class="ekwa-search-overlay__close" type="button" aria-label="' . esc_attr__( 'Close Search', 'ekwa' ) . '">&#x2715;</button>';
+			echo '<form class="ekwa-search-overlay__form" role="search" method="get" action="' . $search_url . '">';
+			echo '<input id="ekwa-search-input-1" class="ekwa-search-overlay__input" type="search" name="s" placeholder="' . esc_attr( $ph ) . '" autocomplete="off" aria-label="' . esc_attr__( 'Search', 'ekwa' ) . '"/>';
+			echo '<button class="ekwa-search-overlay__submit" type="submit">' . esc_html( $bl ) . '</button>';
+			echo '</form></div></div>';
+		} );
+	}
 
 	return $out;
 }
@@ -1231,8 +1117,6 @@ function ekwa_render_search_block( $attrs ) {
  * configurable threshold and smoothly scrolls the page back to the top.
  */
 function ekwa_render_scroll_top_block( $attributes ) {
-	static $css_printed = false;
-
 	$icon_size   = absint( $attributes['iconSize'] ?? 20 );
 	$btn_size    = absint( $attributes['buttonSize'] ?? 48 );
 	$icon_color  = sanitize_hex_color( $attributes['iconColor'] ?? '' ) ?: '#ffffff';
@@ -1242,45 +1126,20 @@ function ekwa_render_scroll_top_block( $attributes ) {
 	$right       = absint( $attributes['offsetRight'] ?? 30 );
 	$threshold   = absint( $attributes['scrollThreshold'] ?? 300 );
 
-	$uid       = 'ekwa-scroll-top-' . wp_unique_id();
 	$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST;
 
-	$out = '';
-
-	/* ---- CSS (once per page) ---- */
-	if ( ! $css_printed ) {
-		$css_printed = true;
-		$out .= '<style>'
-			. '.ekwa-scroll-top-btn{'
-				. 'position:fixed;z-index:9999;'
-				. 'display:flex;align-items:center;justify-content:center;'
-				. 'border:none;cursor:pointer;'
-				. 'opacity:0;visibility:hidden;'
-				. 'transition:opacity .3s ease,visibility .3s ease,background .2s ease;'
-				. 'box-shadow:0 2px 8px rgba(0,0,0,.18);'
-			. '}'
-			. '.ekwa-scroll-top-btn.is-visible{'
-				. 'opacity:1;visibility:visible;'
-			. '}'
-			. '.ekwa-scroll-top-btn:hover{'
-				. 'filter:brightness(1.15);'
-			. '}'
-			. '.ekwa-scroll-top-btn svg{'
-				. 'display:block;fill:none;'
-			. '}'
-			. '</style>';
-	}
+	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
 
 	/* In the editor, render inline and always visible so the preview is useful. */
 	$editor_style = $is_editor
 		? 'position:static;opacity:1;visibility:visible;'
 		: 'bottom:' . $bottom . 'px;right:' . $right . 'px;';
 
-	/* ---- Button markup ---- */
-	$out .= '<button'
-		. ' id="' . esc_attr( $uid ) . '"'
+	/* ---- Button markup — data-threshold for the external JS ---- */
+	$out = '<button'
 		. ' class="ekwa-scroll-top-btn' . ( $is_editor ? ' is-visible' : '' ) . '"'
 		. ' aria-label="' . esc_attr__( 'Scroll to top', 'ekwa' ) . '"'
+		. ' data-threshold="' . $threshold . '"'
 		. ' style="'
 			. $editor_style
 			. 'width:' . $btn_size . 'px;'
@@ -1293,26 +1152,6 @@ function ekwa_render_scroll_top_block( $attributes ) {
 			. '<polyline points="18 15 12 9 6 15"></polyline>'
 		. '</svg>'
 		. '</button>';
-
-	/* ---- JavaScript (frontend only) ---- */
-	if ( ! $is_editor ) {
-		$out .= '<script>'
-			. '(function(){'
-				. 'var btn=document.getElementById(' . wp_json_encode( $uid ) . ');'
-				. 'if(!btn)return;'
-				. 'var threshold=' . $threshold . ';'
-				. 'function toggle(){'
-					. 'if(window.scrollY>threshold){btn.classList.add("is-visible")}'
-					. 'else{btn.classList.remove("is-visible")}'
-				. '}'
-				. 'window.addEventListener("scroll",toggle,{passive:true});'
-				. 'toggle();'
-				. 'btn.addEventListener("click",function(){'
-					. 'window.scrollTo({top:0,behavior:"smooth"});'
-				. '});'
-			. '})();'
-			. '</script>';
-	}
 
 	return $out;
 }
@@ -1350,3 +1189,278 @@ add_action( 'rest_api_init', function () {
 		)
 	);
 } );
+
+
+/**
+ * Server-side render callback for the ekwa/hamburger-menu block.
+ *
+ * Outputs a hamburger button + hidden mobile nav that mmenu-light initialises on.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_hamburger_menu_block( $attrs ) {
+	$icon_size = isset( $attrs['iconSize'] ) ? absint( $attrs['iconSize'] ) : 24;
+	$bar_h     = max( 2, round( $icon_size / 8 ) );
+	$bar_gap   = max( 3, round( $icon_size / 5 ) );
+
+	// Enqueue mmenu-light only when this block is present.
+	wp_enqueue_style(
+		'mmenu-light',
+		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
+		array(),
+		'3.2.2'
+	);
+	wp_enqueue_script(
+		'mmenu-light',
+		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
+		array(),
+		'3.2.2',
+		true
+	);
+
+	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	$out = '';
+
+	// ── Hamburger button ────────────────────────────────────────
+	$out .= '<button class="ekwa-hamburger-btn"'
+		. ' aria-controls="ekwa-mobile-nav" aria-expanded="false"'
+		. ' aria-label="' . esc_attr__( 'Open Menu', 'ekwa' ) . '">';
+	for ( $i = 0; $i < 3; $i++ ) {
+		$out .= '<span class="ekwa-hamburger-bar" style="width:'
+			. $icon_size . 'px;height:' . $bar_h . 'px;'
+			. ( $i < 2 ? 'margin-bottom:' . $bar_gap . 'px' : '' )
+			. '"></span>';
+	}
+	$out .= '</button>';
+
+	// ── Mobile nav (rendered from wp_nav_menu) ──────────────────
+	if ( has_nav_menu( 'mobile' ) ) {
+		ob_start();
+		wp_nav_menu( array(
+			'theme_location'  => 'mobile',
+			'container'       => 'nav',
+			'container_id'    => 'ekwa-mobile-nav',
+			'container_class' => 'ekwa-mobile-nav',
+			'walker'          => new Ekwa_Mobile_Menu_Walker(),
+			'fallback_cb'     => false,
+			'depth'           => 3,
+		) );
+		$out .= ob_get_clean();
+	}
+
+	return $out;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/mobile-dock block.
+ *
+ * Floating bottom dock for mobile: Call, Book, Scroll Up, Services, Find Us.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_mobile_dock_block( $attrs ) {
+	$locations  = get_option( 'ekwa_locations', array() );
+	$appt_type  = get_option( 'ekwa_appt_type', 'page' );
+	$appt_page  = get_option( 'ekwa_appt_page', 0 );
+	$appt_url   = get_option( 'ekwa_appt_url', '' );
+	$adsense    = get_option( 'ekwa_adsense_number', '' );
+
+	// Determine appointment link.
+	if ( 'external' === $appt_type && $appt_url ) {
+		$appt_link   = $appt_url;
+		$appt_target = ' target="_blank" rel="noopener"';
+	} elseif ( $appt_page ) {
+		$appt_link   = get_permalink( $appt_page );
+		$appt_target = '';
+	} else {
+		$appt_link   = '#';
+		$appt_target = '';
+	}
+
+	// Build phone data per location.
+	$phone_data          = array();
+	$total_phones        = 0;
+	$has_both_types      = false;
+	foreach ( $locations as $i => $loc ) {
+		$pn  = isset( $loc['phone_new'] )      ? $loc['phone_new']      : '';
+		$pe  = isset( $loc['phone_existing'] )  ? $loc['phone_existing']  : '';
+		$dir = isset( $loc['direction'] )       ? $loc['direction']       : '';
+
+		$city = '';
+		$parts = array();
+		if ( ! empty( $loc['city'] ) )           { $city = $loc['city']; }
+		if ( ! empty( $loc['street_address'] ) ) { $parts[] = $loc['street_address']; }
+		if ( ! empty( $loc['city'] ) )           { $parts[] = $loc['city']; }
+		if ( ! empty( $loc['state'] ) )          { $parts[] = $loc['state']; }
+		if ( ! empty( $loc['zip'] ) )            { $parts[] = $loc['zip']; }
+		$address = implode( ', ', $parts );
+
+		if ( $pn ) { $total_phones++; }
+		if ( $pe ) { $total_phones++; }
+		if ( $pn && $pe ) { $has_both_types = true; }
+
+		$phone_data[] = array(
+			'city'     => $city ?: 'Location ' . ( $i + 1 ),
+			'new'      => $pn,
+			'existing' => $pe,
+			'dir'      => $dir,
+			'address'  => $address,
+		);
+	}
+
+	// Ad tracking override.
+	$is_ad = ( isset( $_COOKIE['adward_number'] ) || isset( $_GET['ads'] ) );
+
+	if ( $is_ad && $adsense ) {
+		$needs_call_popup = false;
+		$single_phone     = preg_replace( '/[^0-9+]/', '', $adsense );
+	} else {
+		$needs_call_popup = ( count( $phone_data ) > 1 ) || ( count( $phone_data ) === 1 && $has_both_types );
+		$single_phone     = '';
+		if ( ! $needs_call_popup && $total_phones === 1 ) {
+			foreach ( $phone_data as $d ) {
+				if ( $d['existing'] ) { $single_phone = preg_replace( '/[^0-9+]/', '', $d['existing'] ); break; }
+				if ( $d['new'] )      { $single_phone = preg_replace( '/[^0-9+]/', '', $d['new'] );      break; }
+			}
+		}
+	}
+
+	$needs_loc_popup  = count( $phone_data ) > 1;
+	$single_direction = '';
+	if ( ! $needs_loc_popup && ! empty( $phone_data[0]['dir'] ) ) {
+		$single_direction = $phone_data[0]['dir'];
+	}
+
+	$bid = 'ekwa-mobile-dock';
+
+	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	// ── HTML ─────────────────────────────────────────────────────
+	$html  = '<div class="ekwa-mobile-dock">';
+	$html .= '<div class="dock-wrap">';
+
+	// SVG icons.
+	$svg_phone    = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+	$svg_calendar = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+	$svg_arrow_up = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+	$svg_services = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path d="M12 8v8M8 12h8"/></svg>';
+	$svg_pin      = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+	$svg_chevron  = '<svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+	// 1. Call
+	if ( $needs_call_popup ) {
+		$html .= '<button class="dock-item call-item" data-popup="call-popup-' . $bid . '" aria-label="Call">';
+	} else {
+		$html .= '<a href="tel:' . esc_attr( $single_phone ) . '" class="dock-item call-item" aria-label="Call">';
+	}
+	$html .= $svg_phone . '<span class="dock-label">Call</span>';
+	$html .= $needs_call_popup ? '</button>' : '</a>';
+
+	// 2. Book
+	$html .= '<a href="' . esc_url( $appt_link ) . '" class="dock-item book-item" aria-label="Book"' . $appt_target . '>';
+	$html .= $svg_calendar . '<span class="dock-label">Book</span></a>';
+
+	$html .= '<span class="dock-divider"></span>';
+
+	// 3. Scroll Up (FAB)
+	$html .= '<button class="dock-item scroll-up-item" aria-label="Scroll to Top">';
+	$html .= $svg_arrow_up . '<span class="dock-label">Up</span></button>';
+
+	$html .= '<span class="dock-divider"></span>';
+
+	// 4. Services
+	$html .= '<button class="dock-item services-item" aria-label="Services">';
+	$html .= $svg_services . '<span class="dock-label">Services</span></button>';
+
+	// 5. Find Us
+	if ( $needs_loc_popup ) {
+		$html .= '<button class="dock-item findus-item" data-popup="location-popup-' . $bid . '" aria-label="Find Us">';
+	} else {
+		$html .= '<a href="' . esc_url( $single_direction ) . '" class="dock-item findus-item" target="_blank" rel="noopener" aria-label="Find Us">';
+	}
+	$html .= $svg_pin . '<span class="dock-label">Find Us</span>';
+	$html .= $needs_loc_popup ? '</button>' : '</a>';
+
+	$html .= '</div>'; // .dock-wrap
+	$html .= '</div>'; // #bid
+
+	// ── Call popup ──────────────────────────────────────────────
+	if ( $needs_call_popup ) {
+		$html .= '<div class="ekwa-dock-popup" id="call-popup-' . esc_attr( $bid ) . '">';
+		$html .= '<div class="popup-content"><div class="popup-header">';
+		$html .= '<div class="popup-title">Call Us</div>';
+		$html .= '<button class="popup-close" aria-label="Close">&times;</button>';
+		$html .= '</div><div class="popup-body">';
+
+		$li = 0;
+		foreach ( $phone_data as $loc ) {
+			if ( ! $loc['new'] && ! $loc['existing'] ) { continue; }
+			$aid   = 'call-acc-' . $bid . '-' . $li;
+			$first = ( 0 === $li );
+
+			$html .= '<div class="location-accordion">';
+			if ( count( $phone_data ) > 1 ) {
+				$html .= '<button class="accordion-header' . ( $first ? ' active' : '' )
+					. '" data-accordion="' . esc_attr( $aid ) . '">'
+					. '<div class="location-name">' . esc_html( $loc['city'] ) . '</div>'
+					. $svg_chevron . '</button>';
+			}
+			$html .= '<div class="accordion-body' . ( $first ? ' active' : '' ) . '" id="' . esc_attr( $aid ) . '">';
+			$html .= '<div class="accordion-content">';
+			if ( $loc['existing'] ) {
+				$tel = preg_replace( '/[^0-9+]/', '', $loc['existing'] );
+				$html .= '<div class="phone-item"><span class="phone-label">Existing Patient</span>'
+					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
+					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
+					. esc_html( $loc['existing'] ) . '</a></div>';
+			}
+			if ( $loc['new'] ) {
+				$tel = preg_replace( '/[^0-9+]/', '', $loc['new'] );
+				$html .= '<div class="phone-item"><span class="phone-label">New Patient</span>'
+					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
+					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
+					. esc_html( $loc['new'] ) . '</a></div>';
+			}
+			$html .= '</div></div></div>'; // .accordion-content, .accordion-body, .location-accordion
+			$li++;
+		}
+
+		$html .= '</div></div></div>'; // .popup-body, .popup-content, .ekwa-dock-popup
+	}
+
+	// ── Location popup ──────────────────────────────────────────
+	if ( $needs_loc_popup ) {
+		$html .= '<div class="ekwa-dock-popup" id="location-popup-' . esc_attr( $bid ) . '">';
+		$html .= '<div class="popup-content"><div class="popup-header">';
+		$html .= '<div class="popup-title">Find Us</div>';
+		$html .= '<button class="popup-close" aria-label="Close">&times;</button>';
+		$html .= '</div><div class="popup-body">';
+
+		$li = 0;
+		foreach ( $phone_data as $loc ) {
+			if ( ! $loc['dir'] || ! $loc['address'] ) { continue; }
+			$aid   = 'loc-acc-' . $bid . '-' . $li;
+			$first = ( 0 === $li );
+
+			$html .= '<div class="location-accordion">';
+			$html .= '<button class="accordion-header' . ( $first ? ' active' : '' )
+				. '" data-accordion="' . esc_attr( $aid ) . '">'
+				. '<div class="location-name">' . esc_html( $loc['city'] ) . '</div>'
+				. $svg_chevron . '</button>';
+			$html .= '<div class="accordion-body' . ( $first ? ' active' : '' ) . '" id="' . esc_attr( $aid ) . '">';
+			$html .= '<div class="accordion-content"><div class="address-item">';
+			$html .= '<a href="' . esc_url( $loc['dir'] ) . '" class="address-link" target="_blank" rel="noopener">'
+				. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+				. '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+				. '<span>' . esc_html( $loc['address'] ) . '</span></a>';
+			$html .= '</div></div></div></div>'; // .address-item, .accordion-content, .accordion-body, .location-accordion
+			$li++;
+		}
+
+		$html .= '</div></div></div>'; // .popup-body, .popup-content, .ekwa-dock-popup
+	}
+
+	return $html;
+}

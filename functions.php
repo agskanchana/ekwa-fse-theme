@@ -31,6 +31,11 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**
+ * Load mobile menu: nav location, icon meta field, custom walker.
+ */
+require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
@@ -45,6 +50,25 @@ function ekwa_enqueue_styles() {
 		get_template_directory_uri() . '/assets/fontawesome/css/all.min.css',
 		array(),
 		'6.5.1'
+	);
+	wp_enqueue_style(
+		'ekwa-mobile',
+		get_template_directory_uri() . '/assets/css/ekwa-mobile.css',
+		array( 'ekwa-style' ),
+		wp_get_theme()->get( 'Version' )
+	);
+	wp_enqueue_style(
+		'ekwa-blocks-css',
+		get_template_directory_uri() . '/assets/css/ekwa-blocks.css',
+		array( 'ekwa-style' ),
+		wp_get_theme()->get( 'Version' )
+	);
+	wp_enqueue_script(
+		'ekwa-blocks-js',
+		get_template_directory_uri() . '/assets/js/ekwa-blocks.js',
+		array(),
+		wp_get_theme()->get( 'Version' ),
+		true
 	);
 }
 add_action( 'wp_enqueue_scripts', 'ekwa_enqueue_styles' );
@@ -102,6 +126,9 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_button_phone_editor_scr
  * Register theme support.
  */
 function ekwa_setup() {
+	register_nav_menus( array(
+		'mobile' => __( 'Mobile Menu', 'ekwa' ),
+	) );
 	add_theme_support( 'post-thumbnails' );
 	add_theme_support( 'title-tag' );
 	add_theme_support( 'responsive-embeds' );

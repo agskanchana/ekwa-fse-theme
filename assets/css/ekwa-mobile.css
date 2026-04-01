@@ -1,0 +1,18 @@
+/**
+ * Responsive visibility for desktop / mobile header & footer.
+ * Breakpoint: 1200px.
+ */
+
+/* Desktop header: hide on mobile */
+@media (max-width: 1199px) {
+	.ekwa-desktop-header {
+		display: none !important;
+	}
+}
+
+/* Mobile header: hide on desktop */
+@media (min-width: 1200px) {
+	.ekwa-mobile-header {
+		display: none !important;
+	}
+}
