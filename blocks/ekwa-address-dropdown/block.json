@@ -1,0 +1,35 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/address-dropdown",
+	"version": "1.0.0",
+	"title": "Ekwa Address Dropdown",
+	"category": "common",
+	"icon": "location-alt",
+	"description": "A directions button that shows a dropdown of all locations with addresses and direction links.",
+	"textdomain": "ekwa",
+	"keywords": [ "address", "directions", "location", "dropdown", "map" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true
+		}
+	},
+	"attributes": {
+		"label": {
+			"type": "string",
+			"default": "Directions"
+		},
+		"iconClass": {
+			"type": "string",
+			"default": "fa-solid fa-location-dot"
+		},
+		"showIcon": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"editorScript": "ekwa-address-dropdown-editor"
+}

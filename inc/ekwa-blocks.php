@@ -215,6 +215,38 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Phone dropdown block.
+	wp_register_script(
+		'ekwa-phone-dropdown-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-phone-dropdown-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-phone-dropdown',
+		array(
+			'render_callback' => 'ekwa_render_phone_dropdown_block',
+		)
+	);
+
+	// Address dropdown block.
+	wp_register_script(
+		'ekwa-address-dropdown-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-address-dropdown-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-address-dropdown',
+		array(
+			'render_callback' => 'ekwa_render_address_dropdown_block',
+		)
+	);
+
 	// Mobile dock block (floating bottom bar).
 	wp_register_script(
 		'ekwa-mobile-dock-editor',
@@ -1463,4 +1495,223 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 	}
 
 	return $html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/address-dropdown block.
+ *
+ * Shows a "Directions" button. If there is a single location, it links
+ * directly.  If there are multiple locations, clicking opens a dropdown
+ * listing every location's address with its direction link.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_address_dropdown_block( $attrs ) {
+	$label      = sanitize_text_field( $attrs['label']     ?? 'Directions' );
+	$icon_class = sanitize_text_field( $attrs['iconClass'] ?? 'fa-solid fa-location-dot' );
+	$show_icon  = (bool) ( $attrs['showIcon'] ?? true );
+
+	$locations = get_option( 'ekwa_locations', array() );
+	if ( empty( $locations ) || ! is_array( $locations ) ) {
+		return '';
+	}
+
+	// Build location data.
+	$items = array();
+	foreach ( $locations as $i => $loc ) {
+		$loc = wp_parse_args( $loc, array(
+			'street' => '', 'city' => '', 'state' => '', 'zip' => '', 'direction' => '',
+		) );
+
+		$city_line = trim( implode( ', ', array_filter( array( $loc['city'], $loc['state'] ) ) ) );
+		if ( $loc['zip'] ) {
+			$city_line = trim( $city_line . ' ' . $loc['zip'] );
+		}
+		$full = trim( implode( ', ', array_filter( array( $loc['street'], $city_line ) ) ) );
+		$dir  = $loc['direction'];
+
+		if ( $full && $dir ) {
+			$items[] = array(
+				'city'    => $loc['city'] ?: ( 'Location ' . ( $i + 1 ) ),
+				'address' => $full,
+				'dir'     => $dir,
+			);
+		}
+	}
+	if ( empty( $items ) ) {
+		return '';
+	}
+
+	$icon_html = '';
+	if ( $show_icon && $icon_class ) {
+		$icon_html = '<i class="' . esc_attr( $icon_class ) . '" aria-hidden="true"></i> ';
+	}
+
+	$out = '';
+
+	// Always show the dropdown, even for a single location.
+	static $inst = 0;
+	$inst++;
+	$uid = 'ekwa-addr-dd-' . $inst;
+
+	$out .= '<div class="ekwa-addr-dd" id="' . esc_attr( $uid ) . '">';
+
+	// Trigger button.
+	$out .= '<button class="ekwa-addr-dd__trigger" type="button"'
+		. ' aria-expanded="false" aria-controls="' . esc_attr( $uid ) . '-panel">'
+		. $icon_html . '<span>' . esc_html( $label ) . '</span>'
+		. '<svg class="ekwa-addr-dd__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>'
+		. '</button>';
+
+	// Dropdown panel.
+	$out .= '<div class="ekwa-addr-dd__panel" id="' . esc_attr( $uid ) . '-panel">';
+
+	foreach ( $items as $item ) {
+		$out .= '<div class="ekwa-addr-dd__location">';
+		$out .= '<div class="ekwa-addr-dd__city">'
+			. '<i class="fa-solid fa-location-dot" aria-hidden="true"></i> '
+			. esc_html( $item['city'] )
+			. '</div>';
+		$out .= '<a href="' . esc_url( $item['dir'] ) . '" class="ekwa-addr-dd__link"'
+			. ' target="_blank" rel="noopener noreferrer"'
+			. ' aria-label="' . esc_attr( sprintf( __( 'Get directions to %s', 'ekwa' ), $item['address'] ) ) . '">'
+			. '<i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i> '
+			. esc_html( $item['address'] )
+			. '</a>';
+		$out .= '</div>';
+	}
+
+	$out .= '</div>'; // .panel
+	$out .= '</div>'; // .ekwa-addr-dd
+
+	return $out;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/phone-dropdown block.
+ *
+ * Shows a "Call Us" button.  Clicking opens a dropdown listing every
+ * location's new-patient and existing-patient phone numbers.
+ *
+ * Ad-tracking override: when the adward_number cookie or ?ads query param
+ * is present, the dropdown is replaced by a single direct tel: link to
+ * the adsense number.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_phone_dropdown_block( $attrs ) {
+	$label      = sanitize_text_field( $attrs['label']     ?? 'Call Us' );
+	$icon_class = sanitize_text_field( $attrs['iconClass'] ?? 'fa-solid fa-phone' );
+	$show_icon  = (bool) ( $attrs['showIcon'] ?? true );
+
+	$locations = get_option( 'ekwa_locations', array() );
+	$adsense   = get_option( 'ekwa_adsense_number', '' );
+
+	$icon_html = '';
+	if ( $show_icon && $icon_class ) {
+		$icon_html = '<i class="' . esc_attr( $icon_class ) . '" aria-hidden="true"></i> ';
+	}
+
+	// ── Ad-tracking override — direct link, no dropdown ─────────
+	$is_ad = ( isset( $_COOKIE['adward_number'] ) || isset( $_GET['ads'] ) );
+
+	if ( $is_ad && $adsense ) {
+		$tel = ekwa_mobile_number( $adsense );
+		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link"'
+			. ' aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $adsense ) ) . '">'
+			. $icon_html . '<span>' . esc_html( $label ) . '</span>'
+			. ' <span class="ekwa-phone-dd__number">' . esc_html( $adsense ) . '</span>'
+			. '</a>';
+	}
+
+	// ── Build phone data per location ───────────────────────────
+	$items = array();
+	foreach ( $locations as $i => $loc ) {
+		$loc = wp_parse_args( $loc, array(
+			'phone_new' => '', 'phone_existing' => '', 'city' => '',
+		) );
+		$pn = $loc['phone_new'];
+		$pe = $loc['phone_existing'];
+
+		if ( $pn || $pe ) {
+			$items[] = array(
+				'city'     => $loc['city'] ?: ( 'Location ' . ( $i + 1 ) ),
+				'new'      => $pn,
+				'existing' => $pe,
+			);
+		}
+	}
+	if ( empty( $items ) ) {
+		return '';
+	}
+
+	// If only one location with only one phone type, render a direct link.
+	if ( count( $items ) === 1 && ( ! $items[0]['new'] || ! $items[0]['existing'] ) ) {
+		$phone = $items[0]['new'] ?: $items[0]['existing'];
+		$tel   = ekwa_mobile_number( $phone );
+		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link"'
+			. ' aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $phone ) ) . '">'
+			. $icon_html . '<span>' . esc_html( $label ) . '</span>'
+			. '</a>';
+	}
+
+	// ── Dropdown ────────────────────────────────────────────────
+	static $inst = 0;
+	$inst++;
+	$uid = 'ekwa-phone-dd-' . $inst;
+
+	$out  = '<div class="ekwa-phone-dd" id="' . esc_attr( $uid ) . '">';
+	$out .= '<button class="ekwa-phone-dd__trigger" type="button"'
+		. ' aria-expanded="false" aria-controls="' . esc_attr( $uid ) . '-panel">'
+		. $icon_html . '<span>' . esc_html( $label ) . '</span>'
+		. '<svg class="ekwa-phone-dd__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>'
+		. '</button>';
+
+	$out .= '<div class="ekwa-phone-dd__panel" id="' . esc_attr( $uid ) . '-panel">';
+
+	$multi = ( count( $items ) > 1 );
+
+	foreach ( $items as $item ) {
+		$out .= '<div class="ekwa-phone-dd__location">';
+
+		// City header (always show when multiple, optional for single).
+		if ( $multi ) {
+			$out .= '<div class="ekwa-phone-dd__city">'
+				. '<i class="fa-solid fa-location-dot" aria-hidden="true"></i> '
+				. esc_html( $item['city'] )
+				. '</div>';
+		}
+
+		if ( $item['new'] ) {
+			$tel = ekwa_mobile_number( $item['new'] );
+			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link"'
+				. ' aria-label="' . esc_attr( sprintf( __( 'Call New Patients %s', 'ekwa' ), $item['new'] ) ) . '">'
+				. '<i class="fa-solid fa-phone" aria-hidden="true"></i>'
+				. '<span class="ekwa-phone-dd__info">'
+				. '<span class="ekwa-phone-dd__label">New Patients</span>'
+				. '<span class="ekwa-phone-dd__num">' . esc_html( $item['new'] ) . '</span>'
+				. '</span></a>';
+		}
+		if ( $item['existing'] ) {
+			$tel = ekwa_mobile_number( $item['existing'] );
+			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link"'
+				. ' aria-label="' . esc_attr( sprintf( __( 'Call Existing Patients %s', 'ekwa' ), $item['existing'] ) ) . '">'
+				. '<i class="fa-solid fa-user-check" aria-hidden="true"></i>'
+				. '<span class="ekwa-phone-dd__info">'
+				. '<span class="ekwa-phone-dd__label">Existing Patients</span>'
+				. '<span class="ekwa-phone-dd__num">' . esc_html( $item['existing'] ) . '</span>'
+				. '</span></a>';
+		}
+
+		$out .= '</div>';
+	}
+
+	$out .= '</div>'; // .panel
+	$out .= '</div>'; // .ekwa-phone-dd
+
+	return $out;
 }

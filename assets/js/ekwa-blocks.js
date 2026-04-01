@@ -185,5 +185,130 @@
 			}
 		});
 
+		/* =============================================================
+		   Address dropdown block
+		   ============================================================= */
+		function positionAddrPanel(dd) {
+			var panel = dd.querySelector('.ekwa-addr-dd__panel');
+			if (!panel) return;
+
+			// Reset positioning before measuring.
+			panel.classList.remove('ekwa-addr-dd__panel--right');
+
+			// Measure after a frame so the panel is visible for getBoundingClientRect.
+			requestAnimationFrame(function () {
+				var rect = panel.getBoundingClientRect();
+				var vw   = window.innerWidth || document.documentElement.clientWidth;
+
+				// If panel overflows right edge, flip to right-aligned.
+				if (rect.right > vw - 8) {
+					panel.classList.add('ekwa-addr-dd__panel--right');
+				}
+			});
+		}
+
+		document.addEventListener('click', function (e) {
+			var trigger = e.target.closest('.ekwa-addr-dd__trigger');
+
+			if (trigger) {
+				var dd = trigger.closest('.ekwa-addr-dd');
+				if (!dd) return;
+
+				var isOpen = dd.classList.contains('is-open');
+
+				// Close all open dropdowns (address + phone).
+				document.querySelectorAll('.ekwa-addr-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-addr-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+				document.querySelectorAll('.ekwa-phone-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-phone-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+
+				// Toggle this one.
+				if (!isOpen) {
+					dd.classList.add('is-open');
+					trigger.setAttribute('aria-expanded', 'true');
+					positionAddrPanel(dd);
+				}
+				return;
+			}
+
+			// Click outside → close all.
+			if (!e.target.closest('.ekwa-addr-dd')) {
+				document.querySelectorAll('.ekwa-addr-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-addr-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+			}
+		});
+
+		/* =============================================================
+		   Phone dropdown block (same pattern as address dropdown)
+		   ============================================================= */
+		function positionPhonePanel(dd) {
+			var panel = dd.querySelector('.ekwa-phone-dd__panel');
+			if (!panel) return;
+			panel.classList.remove('ekwa-phone-dd__panel--right');
+			requestAnimationFrame(function () {
+				var rect = panel.getBoundingClientRect();
+				var vw   = window.innerWidth || document.documentElement.clientWidth;
+				if (rect.right > vw - 8) {
+					panel.classList.add('ekwa-phone-dd__panel--right');
+				}
+			});
+		}
+
+		document.addEventListener('click', function (e) {
+			var trigger = e.target.closest('.ekwa-phone-dd__trigger');
+
+			if (trigger) {
+				var dd = trigger.closest('.ekwa-phone-dd');
+				if (!dd) return;
+				var isOpen = dd.classList.contains('is-open');
+
+				// Close all open phone dropdowns.
+				document.querySelectorAll('.ekwa-phone-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-phone-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+				// Also close any open address dropdowns.
+				document.querySelectorAll('.ekwa-addr-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-addr-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+
+				if (!isOpen) {
+					dd.classList.add('is-open');
+					trigger.setAttribute('aria-expanded', 'true');
+					positionPhonePanel(dd);
+				}
+				return;
+			}
+
+			// Click outside → close all phone dropdowns.
+			if (!e.target.closest('.ekwa-phone-dd')) {
+				document.querySelectorAll('.ekwa-phone-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-phone-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+			}
+		});
+
+		// Escape key closes all dropdowns (address + phone).
+		document.addEventListener('keydown', function (e) {
+			if (e.key === 'Escape') {
+				document.querySelectorAll('.ekwa-addr-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-addr-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+				document.querySelectorAll('.ekwa-phone-dd.is-open').forEach(function (el) {
+					el.classList.remove('is-open');
+					el.querySelector('.ekwa-phone-dd__trigger').setAttribute('aria-expanded', 'false');
+				});
+			}
+		});
+
 	}); // DOMContentLoaded
 })();

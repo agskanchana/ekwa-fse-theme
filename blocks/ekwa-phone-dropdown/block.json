@@ -1,0 +1,35 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/phone-dropdown",
+	"version": "1.0.0",
+	"title": "Ekwa Phone Dropdown",
+	"category": "common",
+	"icon": "phone",
+	"description": "A call button that shows a dropdown of phone numbers grouped by location with new/existing patient lines. Supports ad tracking.",
+	"textdomain": "ekwa",
+	"keywords": [ "phone", "call", "dropdown", "telephone", "contact" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true
+		}
+	},
+	"attributes": {
+		"label": {
+			"type": "string",
+			"default": "Call Us"
+		},
+		"iconClass": {
+			"type": "string",
+			"default": "fa-solid fa-phone"
+		},
+		"showIcon": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"editorScript": "ekwa-phone-dropdown-editor"
+}
