@@ -215,6 +215,38 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Inner page banner block.
+	wp_register_script(
+		'ekwa-inner-banner-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-inner-banner-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-inner-banner',
+		array(
+			'render_callback' => 'ekwa_render_inner_banner_block',
+		)
+	);
+
+	// Page title block (conditional).
+	wp_register_script(
+		'ekwa-page-title-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-page-title-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-page-title',
+		array(
+			'render_callback' => 'ekwa_render_page_title_block',
+		)
+	);
+
 	// Phone dropdown block.
 	wp_register_script(
 		'ekwa-phone-dropdown-editor',
@@ -1714,4 +1746,190 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
 	$out .= '</div>'; // .ekwa-phone-dd
 
 	return $out;
+}
+
+
+/* ====================================================================
+ * Inner Page Banner + Conditional Page Title
+ * ==================================================================== */
+
+/**
+ * Look up the current page's menu-item title from the "primary" menu location.
+ *
+ * Walks the menu items assigned to the "primary" location and returns
+ * the title of the item whose object_id matches the given post ID.
+ * Also checks parent items (in case the page is a child page listed
+ * under a parent menu item).
+ *
+ * @param int $post_id The current post/page ID.
+ * @return string Menu item title, or empty string if not found.
+ */
+function ekwa_get_menu_name_for_page( $post_id ) {
+	$locations = get_nav_menu_locations();
+	if ( empty( $locations['primary'] ) ) {
+		return '';
+	}
+
+	$menu_items = wp_get_nav_menu_items( $locations['primary'] );
+	if ( empty( $menu_items ) || ! is_array( $menu_items ) ) {
+		return '';
+	}
+
+	foreach ( $menu_items as $item ) {
+		if ( 'post_type' === $item->type && (int) $item->object_id === (int) $post_id ) {
+			return $item->title;
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Determine the banner heading mode for the current page.
+ *
+ * Returns an array:
+ *   'mode'       => 'same' | 'different'
+ *   'page_title' => The full page title (string).
+ *   'menu_name'  => The menu item title (string), empty if page not in menu.
+ *
+ * "same"      — menu name equals page title (or page is not in the menu).
+ *               Banner shows the page title as <h1>.
+ * "different" — menu name differs from page title.
+ *               Banner shows the menu name (non-h tag), page title shown separately.
+ *
+ * @return array
+ */
+function ekwa_inner_banner_heading_data() {
+	$post_id    = get_the_ID();
+	$page_title = get_the_title( $post_id );
+	$menu_name  = ekwa_get_menu_name_for_page( $post_id );
+
+	if ( '' === $menu_name || strtolower( trim( $menu_name ) ) === strtolower( trim( $page_title ) ) ) {
+		return array(
+			'mode'       => 'same',
+			'page_title' => $page_title,
+			'menu_name'  => $menu_name,
+		);
+	}
+
+	return array(
+		'mode'       => 'different',
+		'page_title' => $page_title,
+		'menu_name'  => $menu_name,
+	);
+}
+
+
+/**
+ * Server-side render callback for the ekwa/inner-banner block.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_inner_banner_block( $attrs ) {
+	// Only render on singular pages (not front page, not archives).
+	if ( ! is_page() || is_front_page() ) {
+		// In the editor, show a placeholder.
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return '<div class="ekwa-inner-banner ekwa-inner-banner--preview">'
+				. '<div class="ekwa-inner-banner__content">'
+				. '<p class="ekwa-inner-banner__heading" style="opacity:.5">Inner Page Banner</p>'
+				. '</div></div>';
+		}
+		return '';
+	}
+
+	$overlay_opacity  = isset( $attrs['overlayOpacity'] ) ? absint( $attrs['overlayOpacity'] ) : 50;
+	$min_height       = isset( $attrs['minHeight'] )      ? absint( $attrs['minHeight'] )      : 200;
+	$show_breadcrumbs = (bool) ( $attrs['showBreadcrumbs'] ?? true );
+
+	$post_id = get_the_ID();
+	$data    = ekwa_inner_banner_heading_data();
+
+	// Determine background image: featured image if set.
+	$bg_style = '';
+	if ( has_post_thumbnail( $post_id ) ) {
+		$img_url  = get_the_post_thumbnail_url( $post_id, 'full' );
+		$bg_style = 'background-image:url(' . esc_url( $img_url ) . ');';
+	}
+
+	$classes = 'ekwa-inner-banner';
+	if ( $bg_style ) {
+		$classes .= ' ekwa-inner-banner--has-bg';
+	}
+
+	$out  = '<section class="' . esc_attr( $classes ) . '"'
+		. ' style="min-height:' . $min_height . 'px;' . $bg_style . '">';
+
+	// Overlay.
+	if ( $overlay_opacity > 0 ) {
+		$out .= '<div class="ekwa-inner-banner__overlay" style="opacity:' . ( $overlay_opacity / 100 ) . '"></div>';
+	}
+
+	$out .= '<div class="ekwa-inner-banner__content">';
+
+	// Heading logic.
+	if ( 'same' === $data['mode'] ) {
+		// Menu name = page title (or not in menu) → show as <h1>.
+		$out .= '<h1 class="ekwa-inner-banner__heading">' . esc_html( $data['page_title'] ) . '</h1>';
+	} else {
+		// Menu name ≠ page title → show menu name (not an h-tag).
+		$out .= '<p class="ekwa-inner-banner__heading">' . esc_html( $data['menu_name'] ) . '</p>';
+	}
+
+	// Breadcrumbs (Yoast SEO, RankMath, or simple fallback).
+	if ( $show_breadcrumbs ) {
+		$out .= '<nav class="ekwa-inner-banner__breadcrumbs" aria-label="' . esc_attr__( 'Breadcrumb', 'ekwa' ) . '">';
+		if ( function_exists( 'yoast_breadcrumb' ) ) {
+			$out .= yoast_breadcrumb( '<span>', '</span>', false );
+		} elseif ( function_exists( 'rank_math_the_breadcrumbs' ) ) {
+			ob_start();
+			rank_math_the_breadcrumbs();
+			$out .= ob_get_clean();
+		} else {
+			// Simple fallback: Home > Page Title.
+			$out .= '<span><a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html__( 'Home', 'ekwa' ) . '</a>'
+				. ' &raquo; <span>' . esc_html( get_the_title() ) . '</span></span>';
+		}
+		$out .= '</nav>';
+	}
+
+	$out .= '</div>'; // .content
+	$out .= '</section>';
+
+	return $out;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/page-title block.
+ *
+ * Only renders the page title (<h1>) when the menu name differs from
+ * the page title — because in that case the banner shows the shorter
+ * menu name and the full title needs to appear below the banner.
+ *
+ * When menu name equals page title (or page is not in the menu), the
+ * banner already contains the <h1>, so this block outputs nothing.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_page_title_block( $attrs ) {
+	if ( ! is_page() || is_front_page() ) {
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return '<div class="ekwa-page-title" style="opacity:.5"><h1>Page Title (conditional)</h1></div>';
+		}
+		return '';
+	}
+
+	$data = ekwa_inner_banner_heading_data();
+
+	// Only show when menu name differs from page title.
+	if ( 'different' !== $data['mode'] ) {
+		return '';
+	}
+
+	return '<div class="ekwa-page-title"><h1 class="ekwa-page-title__heading">'
+		. esc_html( $data['page_title'] )
+		. '</h1></div>';
 }

@@ -1,0 +1,36 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/inner-banner",
+	"version": "1.0.0",
+	"title": "Ekwa Inner Page Banner",
+	"category": "common",
+	"icon": "format-image",
+	"description": "Inner page banner with smart title logic: shows menu name or page title based on whether they differ.",
+	"textdomain": "ekwa",
+	"keywords": [ "banner", "header", "hero", "page", "inner" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "full", "wide" ],
+		"color": {
+			"background": true,
+			"text": true
+		}
+	},
+	"attributes": {
+		"overlayOpacity": {
+			"type": "number",
+			"default": 50
+		},
+		"minHeight": {
+			"type": "number",
+			"default": 200
+		},
+		"showBreadcrumbs": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"editorScript": "ekwa-inner-banner-editor"
+}

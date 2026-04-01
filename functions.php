@@ -127,7 +127,8 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_button_phone_editor_scr
  */
 function ekwa_setup() {
 	register_nav_menus( array(
-		'mobile' => __( 'Mobile Menu', 'ekwa' ),
+		'primary' => __( 'Primary Menu', 'ekwa' ),
+		'mobile'  => __( 'Mobile Menu', 'ekwa' ),
 	) );
 	add_theme_support( 'post-thumbnails' );
 	add_theme_support( 'title-tag' );

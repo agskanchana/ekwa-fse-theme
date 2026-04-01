@@ -875,3 +875,84 @@
 	color: var(--wp--preset--color--primary, #2563eb);
 	font-size: 0.95em;
 }
+
+/* ================================================================
+   Inner page banner block
+   ================================================================ */
+.ekwa-inner-banner {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	background-color: var(--wp--preset--color--primary, #1a1a2e);
+	background-size: cover;
+	background-position: center;
+	background-repeat: no-repeat;
+	color: #fff;
+}
+.ekwa-inner-banner__overlay {
+	position: absolute;
+	inset: 0;
+	background: var(--wp--preset--color--foreground, #000);
+	pointer-events: none;
+	z-index: 1;
+}
+.ekwa-inner-banner__content {
+	position: relative;
+	z-index: 2;
+	width: 100%;
+	max-width: var(--wp--style--global--content-size, 1280px);
+	padding: 40px 20px;
+	margin: 0 auto;
+}
+.ekwa-inner-banner__heading {
+	margin: 0;
+	font-family: var(--wp--preset--font-family--heading, inherit);
+	font-size: clamp(1.5rem, 3vw, 2.25rem);
+	font-weight: 700;
+	line-height: 1.2;
+	color: inherit;
+}
+/* When it's a <p> (menu name, not h1), match the visual weight */
+p.ekwa-inner-banner__heading {
+	font-size: clamp(1.5rem, 3vw, 2.25rem);
+	font-weight: 700;
+	line-height: 1.2;
+}
+.ekwa-inner-banner__breadcrumbs {
+	margin-top: 12px;
+	font-size: 0.85em;
+	opacity: 0.85;
+}
+.ekwa-inner-banner__breadcrumbs a {
+	color: inherit;
+	text-decoration: none;
+	opacity: 0.8;
+}
+.ekwa-inner-banner__breadcrumbs a:hover {
+	opacity: 1;
+	text-decoration: underline;
+}
+
+/* Editor preview placeholder */
+.ekwa-inner-banner--preview {
+	min-height: 150px;
+	background: #334;
+}
+
+/* ================================================================
+   Conditional page title block
+   ================================================================ */
+.ekwa-page-title {
+	padding: 0;
+}
+.ekwa-page-title__heading {
+	margin: 0;
+	font-family: var(--wp--preset--font-family--heading, inherit);
+	font-size: var(--wp--preset--font-size--xl, 2rem);
+	font-weight: 700;
+	line-height: 1.3;
+	color: var(--wp--preset--color--foreground, #1a1a2e);
+}

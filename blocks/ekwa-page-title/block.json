@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/page-title",
+	"version": "1.0.0",
+	"title": "Ekwa Page Title",
+	"category": "common",
+	"icon": "heading",
+	"description": "Conditionally displays the page title as H1 only when the menu name differs from the page title (title already shown in the inner banner).",
+	"textdomain": "ekwa",
+	"keywords": [ "title", "heading", "page", "conditional" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true
+		},
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"attributes": {},
+	"editorScript": "ekwa-page-title-editor"
+}
