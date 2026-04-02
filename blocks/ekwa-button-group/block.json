@@ -1,0 +1,26 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/button-group",
+	"version": "1.0.0",
+	"title": "Ekwa Button Group",
+	"category": "design",
+	"icon": "button",
+	"description": "A flex wrapper for grouping buttons.",
+	"textdomain": "ekwa",
+	"keywords": [ "buttons", "group", "row", "actions" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"spacing": {
+			"padding": true,
+			"margin": true,
+			"blockGap": true
+		}
+	},
+	"attributes": {
+		"justifyContent": { "type": "string", "default": "flex-start" },
+		"direction":      { "type": "string", "default": "row" }
+	},
+	"editorScript": "ekwa-button-group-editor"
+}

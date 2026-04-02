@@ -70,6 +70,56 @@
 					"name": "Surface"
 				},
 				{
+					"slug": "gray-100",
+					"color": "#f3f4f6",
+					"name": "Gray 100"
+				},
+				{
+					"slug": "gray-200",
+					"color": "#e5e7eb",
+					"name": "Gray 200"
+				},
+				{
+					"slug": "gray-300",
+					"color": "#d1d5db",
+					"name": "Gray 300"
+				},
+				{
+					"slug": "gray-500",
+					"color": "#6b7280",
+					"name": "Gray 500"
+				},
+				{
+					"slug": "gray-700",
+					"color": "#374151",
+					"name": "Gray 700"
+				},
+				{
+					"slug": "gray-900",
+					"color": "#111827",
+					"name": "Gray 900"
+				},
+				{
+					"slug": "success",
+					"color": "#10b981",
+					"name": "Success"
+				},
+				{
+					"slug": "danger",
+					"color": "#ef4444",
+					"name": "Danger"
+				},
+				{
+					"slug": "warning",
+					"color": "#f59e0b",
+					"name": "Warning"
+				},
+				{
+					"slug": "info",
+					"color": "#3b82f6",
+					"name": "Info"
+				},
+				{
 					"slug": "white",
 					"color": "#ffffff",
 					"name": "White"
@@ -90,6 +140,16 @@
 					"slug": "primary-dark-overlay",
 					"gradient": "linear-gradient(180deg, rgba(26,110,245,0.9) 0%, rgba(15,79,194,0.95) 100%)",
 					"name": "Primary Dark Overlay"
+				},
+				{
+					"slug": "dark-overlay",
+					"gradient": "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%)",
+					"name": "Dark Overlay"
+				},
+				{
+					"slug": "light-overlay",
+					"gradient": "linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.3) 100%)",
+					"name": "Light Overlay"
 				}
 			],
 			"duotone": [
@@ -305,14 +365,29 @@
 					"name": "Small"
 				},
 				{
+					"slug": "sm-md",
+					"size": "12px",
+					"name": "Small-Medium"
+				},
+				{
 					"slug": "md",
 					"size": "16px",
 					"name": "Medium"
 				},
 				{
+					"slug": "md-lg",
+					"size": "24px",
+					"name": "Medium-Large"
+				},
+				{
 					"slug": "lg",
 					"size": "32px",
 					"name": "Large"
+				},
+				{
+					"slug": "lg-xl",
+					"size": "48px",
+					"name": "Large-Extra Large"
 				},
 				{
 					"slug": "xl",
@@ -472,7 +547,9 @@
 				},
 				"border": {
 					"radius": "6px",
-					"width": "0"
+					"width": "2px",
+					"style": "solid",
+					"color": "transparent"
 				},
 				"spacing": {
 					"padding": {

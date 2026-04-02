@@ -29,11 +29,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">🦷</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-tooth","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">General Dentistry</h4>
 				<!-- /wp:heading -->
@@ -47,11 +45,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">✨</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-star","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">Cosmetic Dentistry</h4>
 				<!-- /wp:heading -->
@@ -65,11 +61,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">🔧</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-screwdriver-wrench","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">Restorative Care</h4>
 				<!-- /wp:heading -->
@@ -89,11 +83,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">👶</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-child","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">Pediatric Dentistry</h4>
 				<!-- /wp:heading -->
@@ -107,11 +99,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">🚨</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-triangle-exclamation","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">Emergency Dental</h4>
 				<!-- /wp:heading -->
@@ -125,11 +115,9 @@
 
 		<!-- wp:column -->
 		<div class="wp-block-column">
-			<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
-			<div class="wp-block-group has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
-				<!-- wp:paragraph {"textColor":"primary","fontSize":"2-xl"} -->
-				<p class="has-primary-color has-text-color has-2-xl-font-size">😁</p>
-				<!-- /wp:paragraph -->
+			<!-- wp:group {"className":"is-style-service-card","style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"var:preset|spacing|lg","left":"var:preset|spacing|lg","right":"var:preset|spacing|lg"},"blockGap":"var:preset|spacing|md"},"border":{"radius":"6px"}},"backgroundColor":"background","shadow":"var:preset|shadow|md","layout":{"type":"default"}} -->
+			<div class="wp-block-group is-style-service-card has-background-background-color has-background" style="border-radius:6px;padding-top:var(--wp--preset--spacing--lg);padding-right:var(--wp--preset--spacing--lg);padding-bottom:var(--wp--preset--spacing--lg);padding-left:var(--wp--preset--spacing--lg)">
+				<!-- wp:ekwa/icon {"iconClass":"fa-solid fa-teeth-open","size":40,"color":"var(--wp--preset--color--primary)"} /-->
 				<!-- wp:heading {"level":4,"fontSize":"lg"} -->
 				<h4 class="wp-block-heading has-lg-font-size">Orthodontics</h4>
 				<!-- /wp:heading -->

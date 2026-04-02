@@ -294,6 +294,134 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_mobile_dock_block',
 		)
 	);
+
+	// Card link block (linked card wrapper with InnerBlocks).
+	wp_register_script(
+		'ekwa-card-link-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-card-link-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-card-link',
+		array(
+			'render_callback' => 'ekwa_render_card_link_block',
+		)
+	);
+
+	// Section block (semantic section wrapper with bg image + overlay).
+	wp_register_script(
+		'ekwa-section-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-section-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-section',
+		array(
+			'render_callback' => 'ekwa_render_section_block',
+		)
+	);
+
+	// Container block (centered max-width wrapper).
+	wp_register_script(
+		'ekwa-container-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-container-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-container',
+		array(
+			'render_callback' => 'ekwa_render_container_block',
+		)
+	);
+
+	// Flex block (flexbox container).
+	wp_register_script(
+		'ekwa-flex-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-flex-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-flex',
+		array(
+			'render_callback' => 'ekwa_render_flex_block',
+		)
+	);
+
+	// Grid block (CSS Grid with responsive breakpoints).
+	wp_register_script(
+		'ekwa-grid-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-grid-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-grid',
+		array(
+			'render_callback' => 'ekwa_render_grid_block',
+		)
+	);
+
+	// Button block (clean <a> or <button>).
+	wp_register_script(
+		'ekwa-button-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-button-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-button',
+		array(
+			'render_callback' => 'ekwa_render_button_block',
+		)
+	);
+
+	// Button Group block (flex wrapper for buttons).
+	wp_register_script(
+		'ekwa-button-group-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-button-group-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-button-group',
+		array(
+			'render_callback' => 'ekwa_render_button_group_block',
+		)
+	);
+
+	// Text block (inline text element — <span>, <small>, etc.).
+	wp_register_script(
+		'ekwa-text-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-text-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-text',
+		array(
+			'render_callback' => 'ekwa_render_text_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -531,6 +659,9 @@ function ekwa_render_icon_block( $attrs ) {
 	$color         = sanitize_text_field( isset( $attrs['color'] ) ? $attrs['color'] : '' );
 	$align_raw     = isset( $attrs['align'] ) ? $attrs['align'] : '';
 	$anchor        = isset( $attrs['anchor'] ) ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$url           = isset( $attrs['url'] )        ? esc_url( $attrs['url'] )                   : '';
+	$link_target   = isset( $attrs['linkTarget'] ) ? sanitize_text_field( $attrs['linkTarget'] ) : '';
+	$link_rel      = isset( $attrs['linkRel'] )    ? sanitize_text_field( $attrs['linkRel'] )    : '';
 
 	$align = in_array( $align_raw, array( 'left', 'center', 'right' ), true ) ? $align_raw : '';
 
@@ -545,7 +676,23 @@ function ekwa_render_icon_block( $attrs ) {
 	$icon_attrs  = ' class="' . esc_attr( $icon_class ) . '" aria-hidden="true"';
 	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
 
-	return '<div' . $wrapper_attrs . '><i' . $icon_attrs . '></i></div>';
+	$icon_html = '<i' . $icon_attrs . '></i>';
+
+	if ( $url ) {
+		$target_attr = ( '_blank' === $link_target ) ? ' target="_blank"' : '';
+		$rel_parts   = array();
+		if ( '_blank' === $link_target ) {
+			$rel_parts[] = 'noopener';
+			$rel_parts[] = 'noreferrer';
+		}
+		if ( $link_rel ) {
+			$rel_parts[] = $link_rel;
+		}
+		$rel_attr  = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
+		$icon_html = '<a href="' . esc_url( $url ) . '"' . $target_attr . $rel_attr . '>' . $icon_html . '</a>';
+	}
+
+	return '<div' . $wrapper_attrs . '>' . $icon_html . '</div>';
 }
 
 /**
@@ -1932,4 +2079,321 @@ function ekwa_render_page_title_block( $attrs ) {
 	return '<div class="ekwa-page-title"><h1 class="ekwa-page-title__heading">'
 		. esc_html( $data['page_title'] )
 		. '</h1></div>';
+}
+
+/**
+ * Server-side render callback for the ekwa/card-link block.
+ *
+ * Renders the card as an <a> tag wrapping InnerBlocks content.
+ * Falls back to a <div> when no URL is provided.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_card_link_block( $attrs, $content ) {
+	$url     = isset( $attrs['url'] )    ? esc_url( $attrs['url'] ) : '';
+	$new_tab = ! empty( $attrs['newTab'] );
+	$rel_val = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
+
+	$extra_attrs = array( 'class' => 'ekwa-card-link' );
+
+	$wrapper_attrs = get_block_wrapper_attributes( $extra_attrs );
+
+	if ( ! $url ) {
+		return '<div ' . $wrapper_attrs . '>' . $content . '</div>';
+	}
+
+	$target_attr = $new_tab ? ' target="_blank"' : '';
+	$rel_parts   = array();
+	if ( $new_tab ) {
+		$rel_parts[] = 'noopener';
+		$rel_parts[] = 'noreferrer';
+	}
+	if ( $rel_val ) {
+		$rel_parts[] = $rel_val;
+	}
+	$rel_attr = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
+
+	return '<a href="' . esc_url( $url ) . '"' . $target_attr . $rel_attr . ' ' . $wrapper_attrs . '>'
+		. $content
+		. '</a>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/section block.
+ *
+ * Outputs a semantic HTML tag (section, header, footer, etc.) with optional
+ * background image, overlay, and inner container.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_section_block( $attrs, $content ) {
+	$tag             = isset( $attrs['tagName'] )        ? sanitize_key( $attrs['tagName'] ) : 'section';
+	$container_width = isset( $attrs['containerWidth'] ) ? sanitize_text_field( $attrs['containerWidth'] ) : '';
+	$bg_url          = isset( $attrs['bgImageUrl'] )     ? esc_url( $attrs['bgImageUrl'] ) : '';
+	$bg_size         = isset( $attrs['bgSize'] )         ? sanitize_text_field( $attrs['bgSize'] ) : 'cover';
+	$bg_position     = isset( $attrs['bgPosition'] )     ? sanitize_text_field( $attrs['bgPosition'] ) : '50% 50%';
+	$bg_fixed        = ! empty( $attrs['bgFixed'] );
+	$overlay_color   = isset( $attrs['overlayColor'] )   ? sanitize_text_field( $attrs['overlayColor'] ) : '';
+	$overlay_opacity = isset( $attrs['overlayOpacity'] )  ? absint( $attrs['overlayOpacity'] ) : 50;
+
+	$allowed_tags = array( 'section', 'div', 'header', 'footer', 'main', 'aside', 'article', 'nav' );
+	if ( ! in_array( $tag, $allowed_tags, true ) ) {
+		$tag = 'section';
+	}
+
+	// Build inline styles for background image.
+	$bg_styles = '';
+	if ( $bg_url ) {
+		$bg_styles .= 'background-image:url(' . esc_url( $bg_url ) . ');';
+		$bg_styles .= 'background-size:' . esc_attr( $bg_size ) . ';';
+		$bg_styles .= 'background-position:' . esc_attr( $bg_position ) . ';';
+		if ( $bg_fixed ) {
+			$bg_styles .= 'background-attachment:fixed;';
+		}
+	}
+
+	$extra = array( 'class' => 'ekwa-section' );
+	if ( $bg_styles ) {
+		$extra['style'] = $bg_styles;
+	}
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	// Overlay.
+	$overlay_html = '';
+	if ( $overlay_color ) {
+		$opacity      = max( 0, min( 100, $overlay_opacity ) ) / 100;
+		$overlay_html = '<div class="ekwa-section__overlay" style="background:'
+			. esc_attr( $overlay_color ) . ';opacity:' . esc_attr( $opacity )
+			. ';" aria-hidden="true"></div>';
+	}
+
+	// Inner container.
+	$open  = '<div class="ekwa-section__inner">';
+	$close = '</div>';
+	if ( $container_width ) {
+		$open  = '<div class="ekwa-section__container" style="max-width:'
+			. esc_attr( $container_width ) . ';">';
+		$close = '</div>';
+	}
+
+	return '<' . $tag . ' ' . $wrapper_attrs . '>'
+		. $overlay_html
+		. $open . $content . $close
+		. '</' . $tag . '>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/container block.
+ *
+ * Outputs a centered <div> with configurable max-width.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_container_block( $attrs, $content ) {
+	$max_width = isset( $attrs['maxWidth'] ) ? sanitize_text_field( $attrs['maxWidth'] ) : '1280px';
+
+	$extra = array(
+		'class' => 'ekwa-container',
+		'style' => 'max-width:' . esc_attr( $max_width ) . ';margin-left:auto;margin-right:auto;',
+	);
+
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	return '<div ' . $wrapper_attrs . '>' . $content . '</div>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/flex block.
+ *
+ * Outputs a flexbox container with configurable direction, alignment, and wrap.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_flex_block( $attrs, $content ) {
+	$tag             = isset( $attrs['tagName'] )        ? sanitize_key( $attrs['tagName'] ) : 'div';
+	$direction       = isset( $attrs['direction'] )      ? sanitize_text_field( $attrs['direction'] ) : 'row';
+	$justify_content = isset( $attrs['justifyContent'] ) ? sanitize_text_field( $attrs['justifyContent'] ) : 'flex-start';
+	$align_items     = isset( $attrs['alignItems'] )     ? sanitize_text_field( $attrs['alignItems'] ) : 'center';
+	$wrap            = isset( $attrs['wrap'] )            ? sanitize_text_field( $attrs['wrap'] ) : 'wrap';
+
+	$allowed_tags = array( 'div', 'nav', 'header', 'footer', 'aside' );
+	if ( ! in_array( $tag, $allowed_tags, true ) ) {
+		$tag = 'div';
+	}
+
+	$style  = 'display:flex;';
+	$style .= 'flex-direction:' . esc_attr( $direction ) . ';';
+	$style .= 'justify-content:' . esc_attr( $justify_content ) . ';';
+	$style .= 'align-items:' . esc_attr( $align_items ) . ';';
+	$style .= 'flex-wrap:' . esc_attr( $wrap ) . ';';
+
+	$extra = array(
+		'class' => 'ekwa-flex',
+		'style' => $style,
+	);
+
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	return '<' . $tag . ' ' . $wrapper_attrs . '>' . $content . '</' . $tag . '>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/grid block.
+ *
+ * Outputs a CSS Grid container with data attributes for responsive breakpoints.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_grid_block( $attrs, $content ) {
+	$columns        = isset( $attrs['columns'] )       ? absint( $attrs['columns'] ) : 3;
+	$column_widths  = isset( $attrs['columnWidths'] )  ? sanitize_text_field( $attrs['columnWidths'] ) : '';
+	$tablet_columns = isset( $attrs['tabletColumns'] ) ? absint( $attrs['tabletColumns'] ) : 2;
+	$mobile_columns = isset( $attrs['mobileColumns'] ) ? absint( $attrs['mobileColumns'] ) : 1;
+
+	$grid_template = $column_widths ? $column_widths : 'repeat(' . $columns . ', 1fr)';
+
+	$style = 'display:grid;grid-template-columns:' . esc_attr( $grid_template ) . ';';
+
+	$extra = array(
+		'class' => 'ekwa-grid',
+		'style' => $style,
+	);
+
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	$data_attrs = ' data-tablet-cols="' . esc_attr( $tablet_columns ) . '"'
+		. ' data-mobile-cols="' . esc_attr( $mobile_columns ) . '"';
+
+	return '<div ' . $wrapper_attrs . $data_attrs . '>' . $content . '</div>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/button block.
+ *
+ * Outputs a single <a> or <button> element with variant and size classes.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_button_block( $attrs ) {
+	$text          = isset( $attrs['text'] )         ? $attrs['text'] : '';
+	$url           = isset( $attrs['url'] )          ? esc_url( $attrs['url'] ) : '';
+	$new_tab       = ! empty( $attrs['newTab'] );
+	$rel_val       = isset( $attrs['rel'] )          ? sanitize_text_field( $attrs['rel'] ) : '';
+	$html_tag      = isset( $attrs['htmlTag'] )      ? sanitize_key( $attrs['htmlTag'] ) : 'a';
+	$variant       = isset( $attrs['variant'] )      ? sanitize_key( $attrs['variant'] ) : 'filled';
+	$size          = isset( $attrs['size'] )         ? sanitize_key( $attrs['size'] ) : 'default';
+	$icon_class    = isset( $attrs['iconClass'] )    ? sanitize_text_field( $attrs['iconClass'] ) : '';
+	$icon_position = isset( $attrs['iconPosition'] ) ? sanitize_key( $attrs['iconPosition'] ) : 'left';
+
+	if ( ! in_array( $html_tag, array( 'a', 'button' ), true ) ) {
+		$html_tag = 'a';
+	}
+
+	$classes = 'ekwa-btn ekwa-btn--' . $variant;
+	if ( 'default' !== $size ) {
+		$classes .= ' ekwa-btn--' . $size;
+	}
+
+	$extra         = array( 'class' => $classes );
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	// Icon element.
+	$icon_html = '';
+	if ( $icon_class ) {
+		$icon_html = '<i class="' . esc_attr( $icon_class ) . '" aria-hidden="true"></i>';
+	}
+
+	$content = '';
+	if ( 'left' === $icon_position && $icon_html ) {
+		$content .= $icon_html;
+	}
+	$content .= esc_html( $text );
+	if ( 'right' === $icon_position && $icon_html ) {
+		$content .= $icon_html;
+	}
+
+	if ( 'a' === $html_tag ) {
+		$target_attr = $new_tab ? ' target="_blank"' : '';
+		$rel_parts   = array();
+		if ( $new_tab ) {
+			$rel_parts[] = 'noopener';
+			$rel_parts[] = 'noreferrer';
+		}
+		if ( $rel_val ) {
+			$rel_parts[] = $rel_val;
+		}
+		$rel_attr = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
+
+		return '<a href="' . ( $url ? esc_url( $url ) : '#' ) . '"' . $target_attr . $rel_attr
+			. ' ' . $wrapper_attrs . '>' . $content . '</a>';
+	}
+
+	return '<button type="button" ' . $wrapper_attrs . '>' . $content . '</button>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/button-group block.
+ *
+ * Outputs a flex wrapper for button children.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_button_group_block( $attrs, $content ) {
+	$justify_content = isset( $attrs['justifyContent'] ) ? sanitize_text_field( $attrs['justifyContent'] ) : 'flex-start';
+	$direction       = isset( $attrs['direction'] )      ? sanitize_text_field( $attrs['direction'] ) : 'row';
+
+	$style  = 'display:flex;flex-wrap:wrap;';
+	$style .= 'justify-content:' . esc_attr( $justify_content ) . ';';
+	$style .= 'flex-direction:' . esc_attr( $direction ) . ';';
+
+	$extra = array(
+		'class' => 'ekwa-button-group',
+		'style' => $style,
+	);
+
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	return '<div ' . $wrapper_attrs . '>' . $content . '</div>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/text block.
+ *
+ * Outputs a single inline element (<span>, <small>, <strong>, etc.).
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_text_block( $attrs ) {
+	$tag  = isset( $attrs['tagName'] ) ? sanitize_key( $attrs['tagName'] ) : 'span';
+	$text = isset( $attrs['text'] )    ? $attrs['text'] : '';
+
+	$allowed_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
+	if ( ! in_array( $tag, $allowed_tags, true ) ) {
+		$tag = 'span';
+	}
+
+	$wrapper_attrs = get_block_wrapper_attributes();
+
+	return '<' . $tag . ' ' . $wrapper_attrs . '>' . esc_html( $text ) . '</' . $tag . '>';
 }

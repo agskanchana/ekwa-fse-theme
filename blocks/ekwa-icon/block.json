@@ -18,7 +18,10 @@
 		"wrapperClass": { "type": "string", "default": "way-icon" },
 		"size":         { "type": "number", "default": 0 },
 		"color":        { "type": "string", "default": "" },
-		"align":        { "type": "string", "default": "" }
+		"align":        { "type": "string", "default": "" },
+		"url":          { "type": "string", "default": "" },
+		"linkTarget":   { "type": "string", "default": "" },
+		"linkRel":      { "type": "string", "default": "" }
 	},
 	"editorScript": "ekwa-icon-editor"
 }

@@ -1,0 +1,130 @@
+/**
+ * Block style variations CSS.
+ *
+ * Styles for registered block style variations (outline, ghost, size-sm,
+ * size-lg, service-card, parallax-bg, has-overlay, card).
+ *
+ * @package ekwa
+ */
+
+/* ==========================================================================
+   core/button -- Outline (WP built-in style, theme-level refinements)
+   ========================================================================== */
+
+.wp-block-button.is-style-outline .wp-block-button__link {
+	background-color: transparent !important;
+	border: 2px solid currentColor;
+	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.wp-block-button.is-style-outline .wp-block-button__link:hover {
+	background-color: currentColor;
+}
+
+/* Invert text colour on hover so it stays readable over the now-solid bg. */
+.wp-block-button.is-style-outline .wp-block-button__link:hover {
+	color: var(--wp--preset--color--white) !important;
+	border-color: transparent;
+}
+
+/* ==========================================================================
+   core/button -- Ghost (transparent + white border, for dark sections)
+   ========================================================================== */
+
+.wp-block-button.is-style-ghost .wp-block-button__link {
+	background: transparent !important;
+	border: 2px solid rgba(255, 255, 255, 0.5);
+	color: #fff !important;
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.wp-block-button.is-style-ghost .wp-block-button__link:hover {
+	background: rgba(255, 255, 255, 0.15) !important;
+	border-color: #fff;
+}
+
+/* ==========================================================================
+   core/button -- Size variants
+   ========================================================================== */
+
+.wp-block-button.is-style-size-sm .wp-block-button__link {
+	padding: 6px 16px !important;
+	font-size: var(--wp--preset--font-size--sm) !important;
+}
+
+.wp-block-button.is-style-size-lg .wp-block-button__link {
+	padding: 16px 48px !important;
+	font-size: var(--wp--preset--font-size--md) !important;
+}
+
+/* ==========================================================================
+   core/group -- Service Card (hover lift + shadow)
+   ========================================================================== */
+
+.wp-block-group.is-style-service-card {
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wp-block-group.is-style-service-card:hover {
+	transform: translateY(-4px);
+	box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
+}
+
+.wp-block-group.is-style-service-card .way-icon i {
+	font-size: 2.5rem;
+	color: var(--wp--preset--color--primary);
+}
+
+/* ==========================================================================
+   core/group -- Parallax Background
+   ========================================================================== */
+
+.wp-block-group.is-style-parallax-bg {
+	background-attachment: fixed;
+	background-size: cover;
+	background-position: center;
+}
+
+/* iOS does not support background-attachment: fixed. */
+@supports (-webkit-overflow-scrolling: touch) {
+	.wp-block-group.is-style-parallax-bg {
+		background-attachment: scroll;
+	}
+}
+
+/* ==========================================================================
+   core/group -- Dark Overlay (::before pseudo-element)
+   ========================================================================== */
+
+.wp-block-group.is-style-has-overlay {
+	position: relative;
+	z-index: 0;
+}
+
+.wp-block-group.is-style-has-overlay::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	z-index: 1;
+	pointer-events: none;
+	border-radius: inherit;
+}
+
+.wp-block-group.is-style-has-overlay > * {
+	position: relative;
+	z-index: 2;
+}
+
+/* ==========================================================================
+   core/column -- Card (hover lift)
+   ========================================================================== */
+
+.wp-block-column.is-style-card {
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wp-block-column.is-style-card:hover {
+	transform: translateY(-4px);
+	box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
+}

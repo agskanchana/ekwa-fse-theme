@@ -1,0 +1,48 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/button",
+	"version": "1.0.0",
+	"title": "Ekwa Button",
+	"category": "design",
+	"icon": "button",
+	"description": "A clean button or link — outputs a single <a> or <button> element.",
+	"textdomain": "ekwa",
+	"keywords": [ "button", "link", "cta", "action" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"gradients": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"shadow": true,
+		"typography": {
+			"fontSize": true,
+			"fontWeight": true
+		}
+	},
+	"attributes": {
+		"text":         { "type": "string",  "default": "" },
+		"url":          { "type": "string",  "default": "" },
+		"newTab":       { "type": "boolean", "default": false },
+		"rel":          { "type": "string",  "default": "" },
+		"htmlTag":      { "type": "string",  "default": "a" },
+		"variant":      { "type": "string",  "default": "filled" },
+		"size":         { "type": "string",  "default": "default" },
+		"iconClass":    { "type": "string",  "default": "" },
+		"iconPosition": { "type": "string",  "default": "left" }
+	},
+	"editorScript": "ekwa-button-editor"
+}

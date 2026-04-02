@@ -234,3 +234,94 @@
 	background: #ccc;
 	cursor: default;
 }
+
+/* ==========================================================================
+   Section block — editor preview
+   ========================================================================== */
+.ekwa-section {
+	position: relative;
+}
+
+/* ==========================================================================
+   Grid block — editor preview
+   ========================================================================== */
+.ekwa-grid {
+	display: grid;
+}
+.ekwa-grid > .block-editor-inner-blocks > .block-editor-block-list__layout {
+	display: grid;
+	grid-template-columns: inherit;
+	gap: inherit;
+}
+
+/* ==========================================================================
+   Button block — editor preview
+   ========================================================================== */
+.ekwa-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	cursor: default;
+}
+.ekwa-btn--outline {
+	background: transparent !important;
+	border: 2px solid currentColor;
+}
+.ekwa-btn--ghost {
+	background: transparent !important;
+	border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.ekwa-btn--sm { padding: 6px 16px; }
+.ekwa-btn--lg { padding: 16px 48px; }
+
+/* ==========================================================================
+   Button Group block — editor preview
+   ========================================================================== */
+.ekwa-button-group > .block-editor-inner-blocks > .block-editor-block-list__layout {
+	display: flex;
+	flex-wrap: wrap;
+	gap: inherit;
+	justify-content: inherit;
+	flex-direction: inherit;
+}
+
+/* ==========================================================================
+   Flex block — editor preview
+   ========================================================================== */
+.ekwa-flex > .block-editor-inner-blocks > .block-editor-block-list__layout {
+	display: flex;
+	flex-wrap: inherit;
+	gap: inherit;
+	justify-content: inherit;
+	align-items: inherit;
+	flex-direction: inherit;
+}
+
+/* ==========================================================================
+   Card Link block — editor indicator
+   ========================================================================== */
+.ekwa-card-link--editor {
+	outline: 2px dashed var(--wp-admin-theme-color, #007cba);
+	outline-offset: -2px;
+	border-radius: 4px;
+}
+
+.ekwa-card-link__indicator {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 8px;
+	margin-bottom: 8px;
+	background: var(--wp-admin-theme-color, #007cba);
+	color: #fff;
+	font-size: 11px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	border-radius: 3px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ekwa-card-link__indicator i {
+	font-size: 12px;
+	flex-shrink: 0;
+}

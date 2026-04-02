@@ -1,0 +1,41 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/flex",
+	"version": "1.0.0",
+	"title": "Ekwa Flex",
+	"category": "design",
+	"icon": "columns",
+	"description": "A flexbox container for horizontal or vertical layouts.",
+	"textdomain": "ekwa",
+	"keywords": [ "flex", "row", "layout", "horizontal", "vertical" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"gradients": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true,
+			"blockGap": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"shadow": true
+	},
+	"attributes": {
+		"tagName":        { "type": "string", "default": "div" },
+		"direction":      { "type": "string", "default": "row" },
+		"justifyContent": { "type": "string", "default": "flex-start" },
+		"alignItems":     { "type": "string", "default": "center" },
+		"wrap":           { "type": "string", "default": "wrap" }
+	},
+	"editorScript": "ekwa-flex-editor"
+}

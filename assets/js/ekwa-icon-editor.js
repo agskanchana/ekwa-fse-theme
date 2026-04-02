@@ -19,6 +19,7 @@
 	var TextControl        = wp.components.TextControl;
 	var RangeControl       = wp.components.RangeControl;
 	var ColorPicker        = wp.components.ColorPicker;
+	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;  // double underscore — the i18n translation function
 
 	/* ------------------------------------------------------------------ */
@@ -182,6 +183,9 @@
 		var size         = attributes.size         !== undefined ? attributes.size         : 0;
 		var color        = attributes.color        !== undefined ? attributes.color        : '';
 		var align        = attributes.align        !== undefined ? attributes.align        : '';
+		var url          = attributes.url          || '';
+		var linkTarget   = attributes.linkTarget   || '';
+		var linkRel      = attributes.linkRel      || '';
 
 		var blockProps = useBlockProps( {
 			style: { textAlign: align || undefined },
@@ -258,6 +262,32 @@
 					onChange:               function ( v ) { setAttributes( { wrapperClass: v.trim() } ); },
 					__next40pxDefaultSize:  true,
 					__nextHasNoMarginBottom: true,
+					} )
+				),
+
+				el( PanelBody, { title: __( 'Link Settings', 'ekwa' ), initialOpen: false },
+					el( TextControl, {
+						label:                  __( 'URL', 'ekwa' ),
+						help:                   __( 'Make the icon a clickable link.', 'ekwa' ),
+						value:                  url,
+						onChange:               function ( v ) { setAttributes( { url: v.trim() } ); },
+						type:                   'url',
+						__next40pxDefaultSize:  true,
+						__nextHasNoMarginBottom: true,
+					} ),
+					url && el( ToggleControl, {
+						label:    __( 'Open in new tab', 'ekwa' ),
+						checked:  linkTarget === '_blank',
+						onChange: function ( v ) { setAttributes( { linkTarget: v ? '_blank' : '' } ); },
+						__nextHasNoMarginBottom: true,
+					} ),
+					url && el( TextControl, {
+						label:                  __( 'Link rel', 'ekwa' ),
+						help:                   __( 'Optional rel attribute (e.g. nofollow)', 'ekwa' ),
+						value:                  linkRel,
+						onChange:               function ( v ) { setAttributes( { linkRel: v.trim() } ); },
+						__next40pxDefaultSize:  true,
+						__nextHasNoMarginBottom: true,
 					} )
 				)
 			),

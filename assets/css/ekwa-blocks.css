@@ -956,3 +956,120 @@ p.ekwa-inner-banner__heading {
 	line-height: 1.3;
 	color: var(--wp--preset--color--foreground, #1a1a2e);
 }
+
+/* ================================================================
+   Section block
+   ================================================================ */
+.ekwa-section {
+	position: relative;
+}
+.ekwa-section__overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+}
+.ekwa-section__container {
+	position: relative;
+	z-index: 1;
+	margin-left: auto;
+	margin-right: auto;
+}
+.ekwa-section__inner {
+	position: relative;
+	z-index: 1;
+}
+/* iOS does not support fixed backgrounds in overflow contexts. */
+@supports (-webkit-touch-callout: none) {
+	.ekwa-section { background-attachment: scroll !important; }
+}
+
+/* ================================================================
+   Grid block — responsive breakpoints
+   ================================================================ */
+.ekwa-grid { display: grid; }
+.ekwa-grid > * { min-width: 0; }
+
+@media (max-width: 1199px) {
+	.ekwa-grid[data-tablet-cols="1"] { grid-template-columns: 1fr !important; }
+	.ekwa-grid[data-tablet-cols="2"] { grid-template-columns: repeat(2, 1fr) !important; }
+	.ekwa-grid[data-tablet-cols="3"] { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 599px) {
+	.ekwa-grid[data-mobile-cols="1"] { grid-template-columns: 1fr !important; }
+	.ekwa-grid[data-mobile-cols="2"] { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ================================================================
+   Button block
+   ================================================================ */
+.ekwa-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	text-decoration: none;
+	cursor: pointer;
+	font-family: inherit;
+	line-height: 1.4;
+	border: none;
+	transition: opacity 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+.ekwa-btn:hover {
+	opacity: 0.88;
+}
+.ekwa-btn:focus-visible {
+	outline: 2px solid var(--wp--preset--color--primary, #1a6ef5);
+	outline-offset: 2px;
+}
+
+/* Variant: outline */
+.ekwa-btn--outline {
+	background: transparent !important;
+	border: 2px solid currentColor;
+}
+
+/* Variant: ghost */
+.ekwa-btn--ghost {
+	background: transparent !important;
+	border: 1px solid rgba(255, 255, 255, 0.35);
+	color: #fff;
+}
+
+/* Size presets (applied when no custom padding from style engine) */
+.ekwa-btn--sm {
+	padding: 6px 16px;
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+}
+.ekwa-btn--lg {
+	padding: 16px 48px;
+	font-size: var(--wp--preset--font-size--md, 1.125rem);
+}
+
+/* Icon spacing */
+.ekwa-btn i {
+	flex-shrink: 0;
+}
+
+/* ================================================================
+   Card Link block (linked card wrapper)
+   ================================================================ */
+.ekwa-card-link {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.ekwa-card-link:hover {
+	transform: translateY(-2px);
+}
+.ekwa-card-link:focus-visible {
+	outline: 2px solid var(--wp--preset--color--primary, #1a6ef5);
+	outline-offset: 2px;
+}
+/* Reset inherited link colours inside the card. */
+.ekwa-card-link h1, .ekwa-card-link h2, .ekwa-card-link h3,
+.ekwa-card-link h4, .ekwa-card-link h5, .ekwa-card-link h6,
+.ekwa-card-link p, .ekwa-card-link span {
+	color: inherit;
+}

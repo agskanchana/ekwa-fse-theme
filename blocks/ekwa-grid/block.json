@@ -1,0 +1,40 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/grid",
+	"version": "1.0.0",
+	"title": "Ekwa Grid",
+	"category": "design",
+	"icon": "grid-view",
+	"description": "A CSS Grid container with responsive column breakpoints.",
+	"textdomain": "ekwa",
+	"keywords": [ "grid", "columns", "layout", "responsive" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"gradients": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true,
+			"blockGap": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"shadow": true
+	},
+	"attributes": {
+		"columns":        { "type": "number", "default": 3 },
+		"columnWidths":   { "type": "string", "default": "" },
+		"tabletColumns":  { "type": "number", "default": 2 },
+		"mobileColumns":  { "type": "number", "default": 1 }
+	},
+	"editorScript": "ekwa-grid-editor"
+}

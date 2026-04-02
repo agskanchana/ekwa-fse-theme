@@ -1,0 +1,42 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/text",
+	"version": "1.0.0",
+	"title": "Ekwa Text",
+	"category": "common",
+	"icon": "editor-textcolor",
+	"description": "An inline text element — outputs a <span>, <small>, <strong>, <em>, or other inline tag.",
+	"textdomain": "ekwa",
+	"keywords": [ "text", "span", "inline", "label", "badge" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"typography": {
+			"fontSize": true,
+			"fontWeight": true,
+			"letterSpacing": true,
+			"textTransform": true,
+			"textDecoration": true
+		}
+	},
+	"attributes": {
+		"tagName": { "type": "string", "default": "span" },
+		"text":    { "type": "string", "default": "" }
+	},
+	"editorScript": "ekwa-text-editor"
+}

@@ -31,6 +31,11 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**
+ * Load block style variations.
+ */
+require_once get_template_directory() . '/inc/ekwa-block-styles.php';
+
+/**
  * Load mobile menu: nav location, icon meta field, custom walker.
  */
 require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';
@@ -60,6 +65,12 @@ function ekwa_enqueue_styles() {
 	wp_enqueue_style(
 		'ekwa-blocks-css',
 		get_template_directory_uri() . '/assets/css/ekwa-blocks.css',
+		array( 'ekwa-style' ),
+		wp_get_theme()->get( 'Version' )
+	);
+	wp_enqueue_style(
+		'ekwa-block-styles',
+		get_template_directory_uri() . '/assets/css/ekwa-block-styles.css',
 		array( 'ekwa-style' ),
 		wp_get_theme()->get( 'Version' )
 	);
@@ -97,6 +108,7 @@ add_action( 'admin_enqueue_scripts', 'ekwa_enqueue_admin_fa' );
 function ekwa_editor_styles() {
 	add_editor_style( 'assets/fontawesome/css/all.min.css' );
 	add_editor_style( 'assets/css/ekwa-editor.css' );
+	add_editor_style( 'assets/css/ekwa-block-styles.css' );
 }
 add_action( 'after_setup_theme', 'ekwa_editor_styles' );
 
