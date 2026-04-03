@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/div",
+	"version": "1.0.0",
+	"title": "Ekwa Div",
+	"category": "common",
+	"icon": "screenoptions",
+	"description": "Clean wrapper element — outputs only your tag, classes, and children. No layout styles.",
+	"textdomain": "ekwa",
+	"keywords": [ "div", "wrapper", "section", "container", "raw" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"tagName": { "type": "string", "default": "div" }
+	},
+	"editorScript": "ekwa-div-editor"
+}

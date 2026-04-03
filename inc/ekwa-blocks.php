@@ -422,6 +422,54 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_text_block',
 		)
 	);
+
+	// Image block (clean <img> — no figure wrapper).
+	wp_register_script(
+		'ekwa-image-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-image-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-image',
+		array(
+			'render_callback' => 'ekwa_render_image_block',
+		)
+	);
+
+	// Div block (clean wrapper — any HTML tag, no layout styles).
+	wp_register_script(
+		'ekwa-div-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-div-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-div',
+		array(
+			'render_callback' => 'ekwa_render_div_block',
+		)
+	);
+
+	// Link block (clean <a> — no button styles).
+	wp_register_script(
+		'ekwa-link-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-link-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-link',
+		array(
+			'render_callback' => 'ekwa_render_link_block',
+		)
+	);
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -2396,4 +2444,113 @@ function ekwa_render_text_block( $attrs ) {
 	$wrapper_attrs = get_block_wrapper_attributes();
 
 	return '<' . $tag . ' ' . $wrapper_attrs . '>' . esc_html( $text ) . '</' . $tag . '>';
+}
+
+
+/**
+ * Server-side render callback for the ekwa/image block.
+ *
+ * Outputs a clean <img> tag with no figure wrapper. Builds attributes
+ * manually (like ekwa/icon) to avoid get_block_wrapper_attributes()
+ * injecting wp-block-* classes.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_image_block( $attrs ) {
+	$src        = isset( $attrs['src'] )       ? esc_url( $attrs['src'] ) : '';
+	$alt        = isset( $attrs['alt'] )       ? esc_attr( $attrs['alt'] ) : '';
+	$width      = isset( $attrs['width'] )     ? esc_attr( $attrs['width'] ) : '';
+	$height     = isset( $attrs['height'] )    ? esc_attr( $attrs['height'] ) : '';
+	$loading    = isset( $attrs['loading'] )   ? esc_attr( $attrs['loading'] ) : 'lazy';
+	$object_fit = isset( $attrs['objectFit'] ) ? esc_attr( $attrs['objectFit'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+
+	if ( ! $src ) {
+		return '';
+	}
+
+	$style = '';
+	if ( $object_fit ) {
+		$style = 'object-fit:' . $object_fit . ';';
+	}
+
+	$html = '<img';
+	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	$html .= ' src="' . $src . '" alt="' . $alt . '"';
+	if ( $width )   { $html .= ' width="' . $width . '"'; }
+	if ( $height )  { $html .= ' height="' . $height . '"'; }
+	if ( $loading ) { $html .= ' loading="' . $loading . '"'; }
+	if ( $style )   { $html .= ' style="' . esc_attr( $style ) . '"'; }
+	if ( $anchor )  { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= '>';
+
+	return $html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/div block.
+ *
+ * Outputs a clean wrapper element with only the user's classes and children.
+ * Supports div, section, header, footer, nav, main, aside, article.
+ * No layout styles, no inner wrappers, no forced classes.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_div_block( $attrs, $content ) {
+	$tag        = isset( $attrs['tagName'] )   ? sanitize_key( $attrs['tagName'] ) : 'div';
+	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
+
+	$allowed = array( 'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article' );
+	if ( ! in_array( $tag, $allowed, true ) ) {
+		$tag = 'div';
+	}
+
+	$html = '<' . $tag;
+	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= '>' . $content . '</' . $tag . '>';
+
+	return $html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/link block.
+ *
+ * Outputs a clean <a> element with only the user's classes.
+ * No ekwa-btn classes, no variant/size logic.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML (if used with inner blocks).
+ * @return string
+ */
+function ekwa_render_link_block( $attrs, $content = '' ) {
+	$url        = isset( $attrs['url'] )       ? esc_url( $attrs['url'] ) : '#';
+	$text       = isset( $attrs['text'] )      ? $attrs['text'] : '';
+	$new_tab    = ! empty( $attrs['newTab'] );
+	$rel_val    = isset( $attrs['rel'] )       ? sanitize_text_field( $attrs['rel'] ) : '';
+	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
+
+	$html = '<a href="' . $url . '"';
+	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $new_tab ) {
+		$rel_parts = 'noopener noreferrer';
+		if ( $rel_val ) {
+			$rel_parts .= ' ' . esc_attr( $rel_val );
+		}
+		$html .= ' target="_blank" rel="' . $rel_parts . '"';
+	} elseif ( $rel_val ) {
+		$html .= ' rel="' . esc_attr( $rel_val ) . '"';
+	}
+	$html .= '>' . ( $content ? $content : esc_html( $text ) ) . '</a>';
+
+	return $html;
 }

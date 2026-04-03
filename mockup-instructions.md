@@ -1,6 +1,125 @@
 # HTML Mockup Generation Instructions
 
-This document defines the exact HTML patterns to use when generating HTML mockups for this WordPress theme. Every HTML element in the mockup maps 1:1 to a WordPress block, enabling pixel-perfect conversion.
+This document defines two mockup workflows for this WordPress theme:
+
+1. **Free-Form Mode** (recommended) — write any HTML you want, convert automatically with the CLI converter tool
+2. **Strict Mode** — follow exact `ekwa-*` class patterns for 1:1 block mapping (original workflow, documented below)
+
+---
+
+## Free-Form Mockup Mode
+
+Write standard HTML without restrictions. A CLI converter tool (`tools/mockup-converter.php`) automatically converts your HTML to WordPress block markup. CSS copies unchanged from mockup to child theme.
+
+### Minimal Rules
+
+1. Use semantic HTML tags: `<section>` for page sections, `<h1>`–`<h6>` for headings, `<p>` for paragraphs, `<img>` for images
+2. Use `display:flex` / `display:grid` inline styles on `<div>` elements for layouts (converter auto-detects these)
+3. Use `max-width` + `margin:auto` on `<div>` for centered containers (converter detects as `ekwa/container`)
+4. Use any CSS class names you want — they transfer to WordPress via the `className` block attribute
+5. Use `<a>` for all links/buttons with your own classes — no need for `ekwa-btn` patterns
+6. Write all visual CSS targeting your custom classes — this CSS copies to the child theme unchanged
+7. Mixed content (text + inline elements in the same parent) is preserved exactly via `core/html` blocks
+
+### How It Works
+
+| Your Mockup HTML | Becomes WordPress Block |
+|---|---|
+| `<section>`, `<header>`, `<footer>`, `<nav>`, `<main>`, `<aside>`, `<article>` | `ekwa/div` with matching `tagName` |
+| `<div>` | `ekwa/div` |
+| `<div style="display:flex">` | `ekwa/flex` |
+| `<div style="display:grid">` | `ekwa/grid` |
+| `<div style="max-width:900px;margin:0 auto">` | `ekwa/container` |
+| `<h1>`–`<h6>` | `core/heading` |
+| `<p>` | `core/paragraph` |
+| `<img>` | `ekwa/image` (clean `<img>` — no figure wrapper) |
+| `<a>` | `ekwa/link` (clean `<a>` — no button styles) |
+| `<i class="fa-solid fa-...">` | `ekwa/icon` |
+| `<span>`, `<small>`, `<strong>`, `<em>` (text-only) | `ekwa/text` |
+| `<ul>`, `<ol>` | `core/list` |
+| `<hr>` | `core/separator` |
+
+### Converter CLI
+
+```bash
+# Convert HTML to WordPress block markup
+php tools/mockup-converter.php mockup.html
+
+# Auto-resolves images via media manifest at wp-content/uploads/ekwa-media-manifest.json
+# Override manifest path:
+php tools/mockup-converter.php mockup.html --manifest=/path/to/manifest.json
+
+# Write to file:
+php tools/mockup-converter.php mockup.html --output=output.html
+
+# Extract only custom CSS (strips boilerplate vars/resets):
+php tools/mockup-converter.php mockup.html --extract-css > custom.css
+```
+
+### Example
+
+**Mockup HTML:**
+```html
+<section class="hero">
+    <div class="hero-image-panel">
+        <img src="assets/images/hero.jpg" alt="Hero">
+    </div>
+    <div class="hero-content">
+        <h1>Your Smile Deserves Expert Care</h1>
+        <p class="hero-desc">Comprehensive dental care.</p>
+        <div class="hero-actions">
+            <a href="/book/" class="btn btn-gold">Book Now</a>
+            <a href="/services/" class="btn btn-outline">Services</a>
+        </div>
+    </div>
+</section>
+```
+
+**Converter output:**
+```html
+<!-- wp:ekwa/div {"tagName":"section","className":"hero"} -->
+  <!-- wp:ekwa/div {"className":"hero-image-panel"} -->
+    <!-- wp:ekwa/image {"src":"http://site.test/wp-content/uploads/.../hero.jpg","mediaId":42,"alt":"Hero"} /-->
+  <!-- /wp:ekwa/div -->
+  <!-- wp:ekwa/div {"className":"hero-content"} -->
+    <!-- wp:heading {"level":1} -->
+    <h1 class="wp-block-heading">Your Smile Deserves Expert Care</h1>
+    <!-- /wp:heading -->
+    <!-- wp:paragraph {"className":"hero-desc"} -->
+    <p class="hero-desc">Comprehensive dental care.</p>
+    <!-- /wp:paragraph -->
+    <!-- wp:ekwa/div {"className":"hero-actions"} -->
+      <!-- wp:ekwa/link {"url":"/book/","text":"Book Now","className":"btn btn-gold"} /-->
+      <!-- wp:ekwa/link {"url":"/services/","text":"Services","className":"btn btn-outline"} /-->
+    <!-- /wp:ekwa/div -->
+  <!-- /wp:ekwa/div -->
+<!-- /wp:ekwa/div -->
+```
+
+**WordPress renders as:**
+```html
+<section class="hero">
+  <div class="hero-image-panel">
+    <img src="http://site.test/wp-content/uploads/.../hero.jpg" alt="Hero" loading="lazy">
+  </div>
+  <div class="hero-content">
+    <h1 class="wp-block-heading">Your Smile Deserves Expert Care</h1>
+    <p class="hero-desc">Comprehensive dental care.</p>
+    <div class="hero-actions">
+      <a href="/book/" class="btn btn-gold">Book Now</a>
+      <a href="/services/" class="btn btn-outline">Services</a>
+    </div>
+  </div>
+</section>
+```
+
+CSS targeting `.hero`, `.hero-image-panel`, `.btn-gold`, etc. copies unchanged.
+
+---
+
+## Strict Mockup Mode (Original)
+
+This is the original workflow with exact `ekwa-*` class patterns. Use this when you want blocks to leverage WordPress editor features (color picker, spacing controls).
 
 **Rules:**
 1. Use ONLY the HTML patterns documented here — do not invent custom wrappers or extra `<div>` elements

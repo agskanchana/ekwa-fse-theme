@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/link",
+	"version": "1.0.0",
+	"title": "Ekwa Link",
+	"category": "common",
+	"icon": "admin-links",
+	"description": "Clean anchor element — outputs only your classes, no button styles.",
+	"textdomain": "ekwa",
+	"keywords": [ "link", "anchor", "url", "a" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"url":    { "type": "string",  "default": "" },
+		"text":   { "type": "string",  "default": "" },
+		"newTab": { "type": "boolean", "default": false },
+		"rel":    { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-link-editor"
+}

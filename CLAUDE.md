@@ -27,11 +27,21 @@ Editor scripts use `wp.element.createElement` — no JSX, no build tooling.
 
 ---
 
-## Custom Blocks (25)
+## Custom Blocks (28)
 
-### Layout Blocks (7) — Pixel-Perfect Mockup Conversion
+### Raw Blocks (3) — Free-Form Mockup Conversion
 
-These blocks output clean HTML that maps 1:1 to mockup markup. Use these instead of `core/group`, `core/columns`, `core/cover`, `core/buttons` for new content.
+These blocks output **exactly** the HTML you specify — no WordPress wrapper classes, no layout styles, no inner wrappers. Use with the `tools/mockup-converter.php` CLI tool for free-form mockup workflows where CSS copies 1:1 from mockup to child theme.
+
+| Block | Output | Purpose |
+|-------|--------|---------|
+| `ekwa/div` | `<tagName class="your-classes">children</tagName>` | Clean wrapper element. Supports `div`, `section`, `header`, `footer`, `nav`, `main`, `aside`, `article` via `tagName` attribute. No forced classes, no inner wrappers. |
+| `ekwa/image` | `<img class="your-classes" src="..." alt="...">` | Clean image element. No `<figure>` wrapper, no `wp-block-image` class. |
+| `ekwa/link` | `<a href="..." class="your-classes">text</a>` | Clean anchor element. No `ekwa-btn` classes, no variant/size logic. |
+
+### Layout Blocks (7) — Structured Mockup Conversion
+
+These blocks output clean HTML that maps 1:1 to mockup markup. Use these instead of `core/group`, `core/columns`, `core/cover`, `core/buttons` for new content. Note: these blocks add `ekwa-*` classes and WordPress wrapper attributes via `get_block_wrapper_attributes()`.
 
 | Block | Output Tag | Purpose |
 |-------|-----------|---------|
@@ -170,7 +180,27 @@ Common sizes used in mockups: 700px, 900px, 1000px, 1100px, 1280px.
 
 ## Conversion Rules (Mockup HTML to WordPress Blocks)
 
-### HTML Element → Block Mapping
+### Free-Form Mode (recommended for new sites)
+
+Use `tools/mockup-converter.php` to convert any HTML mockup automatically. See `mockup-instructions.md` for full details.
+
+| Mockup HTML | WordPress Block | Output |
+|---|---|---|
+| `<section>`, `<header>`, `<footer>`, `<nav>`, `<main>`, `<aside>`, `<article>` | `ekwa/div` with `tagName` | `<tagName class="your-classes">children</tagName>` |
+| `<div>` | `ekwa/div` | `<div class="your-classes">children</div>` |
+| `<div style="display:flex">` | `ekwa/flex` | Flex container with layout attributes |
+| `<div style="display:grid">` | `ekwa/grid` | Grid container with column attributes |
+| `<div style="max-width:...;margin:auto">` | `ekwa/container` | Centered container |
+| `<img>` | `ekwa/image` | `<img class="..." src="..." alt="...">` (no figure) |
+| `<a>` | `ekwa/link` | `<a href="..." class="...">text</a>` (no btn styles) |
+| `<h1>` – `<h6>` | `core/heading` | Standard heading |
+| `<p>` | `core/paragraph` | Standard paragraph |
+| `<i class="fa-…">` | `ekwa/icon` | Font Awesome icon |
+| `<span>`, `<small>`, etc. (text-only) | `ekwa/text` | Inline text element |
+| `<ul>`, `<ol>` | `core/list` | Standard list |
+| Mixed content (text + elements) | `core/html` | Raw HTML preserved |
+
+### Structured Mode (original — uses ekwa-* class conventions)
 
 | Mockup HTML | WordPress Block |
 |-------------|----------------|
@@ -388,3 +418,5 @@ Use: `"shadow":"var:preset|shadow|md"`.
 | Editor scripts | `assets/js/{block-name}-editor.js` |
 | Frontend JS | `assets/js/ekwa-blocks.js` |
 | Theme settings admin | `inc/ekwa-settings.php` |
+| HTML-to-block converter | `tools/mockup-converter.php` |
+| Mockup instructions | `mockup-instructions.md` |

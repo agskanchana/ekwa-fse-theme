@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/image",
+	"version": "1.0.0",
+	"title": "Ekwa Image",
+	"category": "common",
+	"icon": "format-image",
+	"description": "Clean image element — no figure wrapper, no wp-block-image class.",
+	"textdomain": "ekwa",
+	"keywords": [ "image", "photo", "img", "picture" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"src":       { "type": "string",  "default": "" },
+		"mediaId":   { "type": "number",  "default": 0 },
+		"alt":       { "type": "string",  "default": "" },
+		"width":     { "type": "string",  "default": "" },
+		"height":    { "type": "string",  "default": "" },
+		"loading":   { "type": "string",  "default": "lazy" },
+		"objectFit": { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-image-editor"
+}

@@ -36,6 +36,11 @@ require_once get_template_directory() . '/inc/ekwa-blocks.php';
 require_once get_template_directory() . '/inc/ekwa-block-styles.php';
 
 /**
+ * Load mockup converter REST API.
+ */
+require_once get_template_directory() . '/inc/ekwa-converter-api.php';
+
+/**
  * Load mobile menu: nav location, icon meta field, custom walker.
  */
 require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';
@@ -133,6 +138,30 @@ function ekwa_enqueue_button_phone_editor_script() {
 	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_button_phone_editor_script' );
+
+/**
+ * Enqueue the mockup converter editor plugin.
+ */
+function ekwa_enqueue_converter_editor_script() {
+	wp_enqueue_script(
+		'ekwa-converter-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-converter-editor.js',
+		array(
+			'wp-plugins',
+			'wp-edit-post',
+			'wp-blocks',
+			'wp-block-editor',
+			'wp-components',
+			'wp-element',
+			'wp-data',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );
 
 /**
  * Register theme support.
