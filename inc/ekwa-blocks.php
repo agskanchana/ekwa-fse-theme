@@ -455,6 +455,22 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Video block (clean <video> — no figure wrapper).
+	wp_register_script(
+		'ekwa-video-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-video-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-video',
+		array(
+			'render_callback' => 'ekwa_render_video_block',
+		)
+	);
+
 	// Link block (clean <a> — no button styles).
 	wp_register_script(
 		'ekwa-link-editor',
@@ -702,7 +718,7 @@ function ekwa_render_map_block( $attrs ) {
  */
 function ekwa_render_icon_block( $attrs ) {
 	$icon_class    = sanitize_text_field( isset( $attrs['iconClass'] )    ? $attrs['iconClass']    : 'fa-solid fa-star' );
-	$wrapper_class = sanitize_text_field( isset( $attrs['wrapperClass'] ) ? $attrs['wrapperClass'] : 'way-icon' );
+	$wrapper_class = isset( $attrs['wrapperClass'] ) ? sanitize_text_field( $attrs['wrapperClass'] ) : 'way-icon';
 	$size          = isset( $attrs['size'] ) ? absint( $attrs['size'] ) : 0;
 	$color         = sanitize_text_field( isset( $attrs['color'] ) ? $attrs['color'] : '' );
 	$align_raw     = isset( $attrs['align'] ) ? $attrs['align'] : '';
@@ -716,10 +732,6 @@ function ekwa_render_icon_block( $attrs ) {
 	$icon_style = '';
 	if ( $size )  { $icon_style .= 'font-size:' . $size . 'px;'; }
 	if ( $color ) { $icon_style .= 'color:' . esc_attr( $color ) . ';'; }
-
-	$wrapper_attrs  = ' class="' . esc_attr( $wrapper_class ) . '"';
-	if ( $anchor )  { $wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"'; }
-	if ( $align )   { $wrapper_attrs .= ' style="text-align:' . esc_attr( $align ) . ';"'; }
 
 	$icon_attrs  = ' class="' . esc_attr( $icon_class ) . '" aria-hidden="true"';
 	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
@@ -739,6 +751,15 @@ function ekwa_render_icon_block( $attrs ) {
 		$rel_attr  = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
 		$icon_html = '<a href="' . esc_url( $url ) . '"' . $target_attr . $rel_attr . '>' . $icon_html . '</a>';
 	}
+
+	// No wrapper div when wrapperClass is empty — output bare <i> element.
+	if ( $wrapper_class === '' ) {
+		return $icon_html;
+	}
+
+	$wrapper_attrs  = ' class="' . esc_attr( $wrapper_class ) . '"';
+	if ( $anchor )  { $wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $align )   { $wrapper_attrs .= ' style="text-align:' . esc_attr( $align ) . ';"'; }
 
 	return '<div' . $wrapper_attrs . '>' . $icon_html . '</div>';
 }
@@ -2433,17 +2454,22 @@ function ekwa_render_button_group_block( $attrs, $content ) {
  * @return string
  */
 function ekwa_render_text_block( $attrs ) {
-	$tag  = isset( $attrs['tagName'] ) ? sanitize_key( $attrs['tagName'] ) : 'span';
-	$text = isset( $attrs['text'] )    ? $attrs['text'] : '';
+	$tag        = isset( $attrs['tagName'] )   ? sanitize_key( $attrs['tagName'] ) : 'span';
+	$text       = isset( $attrs['text'] )      ? $attrs['text'] : '';
+	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
 
 	$allowed_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
 	if ( ! in_array( $tag, $allowed_tags, true ) ) {
 		$tag = 'span';
 	}
 
-	$wrapper_attrs = get_block_wrapper_attributes();
+	$html = '<' . $tag;
+	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= '>' . esc_html( $text ) . '</' . $tag . '>';
 
-	return '<' . $tag . ' ' . $wrapper_attrs . '>' . esc_html( $text ) . '</' . $tag . '>';
+	return $html;
 }
 
 
@@ -2502,19 +2528,81 @@ function ekwa_render_image_block( $attrs ) {
  * @return string
  */
 function ekwa_render_div_block( $attrs, $content ) {
-	$tag        = isset( $attrs['tagName'] )   ? sanitize_key( $attrs['tagName'] ) : 'div';
-	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
-	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$tag          = isset( $attrs['tagName'] )         ? sanitize_key( $attrs['tagName'] ) : 'div';
+	$class_name   = isset( $attrs['className'] )       ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor       = isset( $attrs['anchor'] )          ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$bg_image     = isset( $attrs['backgroundImage'] ) ? esc_url( $attrs['backgroundImage'] ) : '';
+	$inline_style = isset( $attrs['inlineStyle'] )     ? $attrs['inlineStyle'] : '';
+	$href         = isset( $attrs['href'] )            ? esc_url( $attrs['href'] ) : '';
+	$target       = isset( $attrs['target'] )          ? sanitize_text_field( $attrs['target'] ) : '';
+	$rel          = isset( $attrs['rel'] )             ? sanitize_text_field( $attrs['rel'] ) : '';
 
-	$allowed = array( 'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article' );
+	$allowed = array( 'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a' );
 	if ( ! in_array( $tag, $allowed, true ) ) {
 		$tag = 'div';
 	}
 
+	// Build style string from background image + any extra inline styles.
+	$style_parts = array();
+	if ( $bg_image ) {
+		$style_parts[] = "background-image:url('" . $bg_image . "')";
+	}
+	if ( $inline_style ) {
+		$style_parts[] = rtrim( $inline_style, '; ' );
+	}
+	$style = implode( ';', $style_parts );
+
 	$html = '<' . $tag;
 	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $style )      { $html .= ' style="' . esc_attr( $style ) . '"'; }
+	if ( $tag === 'a' ) {
+		$html .= ' href="' . ( $href ? $href : '#' ) . '"';
+		if ( $target ) { $html .= ' target="' . esc_attr( $target ) . '"'; }
+		if ( $rel )    { $html .= ' rel="' . esc_attr( $rel ) . '"'; }
+	}
 	$html .= '>' . $content . '</' . $tag . '>';
+
+	return $html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/video block.
+ *
+ * Outputs a clean <video> element with <source> child.
+ * No figure wrapper, no wp-block-video class.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_video_block( $attrs ) {
+	$src         = isset( $attrs['src'] )       ? esc_url( $attrs['src'] ) : '';
+	$poster      = isset( $attrs['poster'] )    ? esc_url( $attrs['poster'] ) : '';
+	$class_name  = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor      = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$autoplay    = ! empty( $attrs['autoplay'] );
+	$loop        = ! empty( $attrs['loop'] );
+	$muted       = ! empty( $attrs['muted'] );
+	$playsinline = ! empty( $attrs['playsinline'] );
+	$controls    = ! empty( $attrs['controls'] );
+
+	if ( ! $src ) {
+		return '';
+	}
+
+	$html = '<video';
+	if ( $class_name )  { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $anchor )      { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $autoplay )    { $html .= ' autoplay'; }
+	if ( $loop )        { $html .= ' loop'; }
+	if ( $muted )       { $html .= ' muted'; }
+	if ( $playsinline ) { $html .= ' playsinline'; }
+	if ( $controls )    { $html .= ' controls'; }
+	if ( $poster )      { $html .= ' poster="' . $poster . '"'; }
+	$html .= '>';
+	$html .= '<source src="' . $src . '" type="video/mp4">';
+	$html .= '</video>';
 
 	return $html;
 }

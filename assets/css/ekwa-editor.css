@@ -380,3 +380,23 @@
 .ekwa-converter-warnings-list li {
 	margin-bottom: 2px;
 }
+
+/* Floating button fallback for site editor on WP < 6.6 */
+.ekwa-converter-fab.components-button {
+	position: fixed;
+	bottom: 16px;
+	left: 16px;
+	z-index: 99999;
+	background: #1e1e1e;
+	color: #fff;
+	border-radius: 4px;
+	padding: 8px 14px;
+	font-size: 12px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+	gap: 6px;
+}
+.ekwa-converter-fab.components-button:hover,
+.ekwa-converter-fab.components-button:focus {
+	background: #007cba;
+	color: #fff;
+}

@@ -148,7 +148,7 @@ function ekwa_enqueue_converter_editor_script() {
 		get_template_directory_uri() . '/assets/js/ekwa-converter-editor.js',
 		array(
 			'wp-plugins',
-			'wp-edit-post',
+			'wp-editor',
 			'wp-blocks',
 			'wp-block-editor',
 			'wp-components',

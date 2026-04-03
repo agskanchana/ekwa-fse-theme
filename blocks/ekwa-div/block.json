@@ -15,7 +15,13 @@
 		"className": true
 	},
 	"attributes": {
-		"tagName": { "type": "string", "default": "div" }
+		"tagName":           { "type": "string",  "default": "div" },
+		"href":              { "type": "string",  "default": "" },
+		"target":            { "type": "string",  "default": "" },
+		"rel":               { "type": "string",  "default": "" },
+		"backgroundImage":   { "type": "string",  "default": "" },
+		"backgroundImageId": { "type": "number",  "default": 0 },
+		"inlineStyle":       { "type": "string",  "default": "" }
 	},
 	"editorScript": "ekwa-div-editor"
 }

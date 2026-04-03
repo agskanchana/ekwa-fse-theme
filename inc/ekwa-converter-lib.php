@@ -182,13 +182,20 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		       $indent . "<!-- /wp:separator -->\n";
 	}
 
-	// Anchor → ekwa/link.
+	// Anchor — if it has element children, treat as wrapper (ekwa/div with tagName=a).
+	// Otherwise, treat as text link (ekwa/link).
 	if ( $tag === 'a' ) {
+		if ( ekwa_mc_has_element_children( $node ) ) {
+			return ekwa_mc_convert_anchor_wrapper( $node, $depth );
+		}
 		return ekwa_mc_convert_link( $node, $depth );
 	}
 
-	// Button → ekwa/link.
+	// Button — same logic as anchor.
 	if ( $tag === 'button' ) {
+		if ( ekwa_mc_has_element_children( $node ) ) {
+			return ekwa_mc_convert_anchor_wrapper( $node, $depth );
+		}
 		return ekwa_mc_convert_link( $node, $depth );
 	}
 
@@ -234,9 +241,9 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_div_block( $node, $depth, 'div' );
 	}
 
-	// Video element.
+	// Video element → ekwa/video.
 	if ( $tag === 'video' ) {
-		return ekwa_mc_convert_raw_html( $node, $depth );
+		return ekwa_mc_convert_video( $node, $depth );
 	}
 
 	// Any other element — render as core/html.
@@ -251,9 +258,10 @@ function ekwa_mc_convert_node( $node, $depth ) {
  * Convert to ekwa/div block.
  */
 function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
-	$indent    = str_repeat( '  ', $depth );
-	$class     = $node->getAttribute( 'class' );
-	$attrs     = array();
+	$indent       = str_repeat( '  ', $depth );
+	$class        = $node->getAttribute( 'class' );
+	$inline_style = $node->getAttribute( 'style' );
+	$attrs        = array();
 
 	if ( $tag_name !== 'div' ) {
 		$attrs['tagName'] = $tag_name;
@@ -261,10 +269,26 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 	if ( $class ) {
 		$attrs['className'] = $class;
 	}
+	if ( $inline_style ) {
+		// Extract background-image into a dedicated attribute.
+		$bg_result = ekwa_mc_extract_background_image( $inline_style );
+		if ( $bg_result['url'] ) {
+			$attrs['backgroundImage'] = $bg_result['url'];
+			if ( $bg_result['mediaId'] ) {
+				$attrs['backgroundImageId'] = $bg_result['mediaId'];
+			}
+		}
+		// Any remaining styles go into inlineStyle.
+		$remaining = $bg_result['remaining'];
+		if ( $remaining ) {
+			$attrs['inlineStyle'] = $remaining;
+		}
+	}
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
-	if ( ekwa_mc_has_mixed_content( $node ) ) {
+	// Mixed content (text + elements) or text-only → wrap inner as core/html.
+	if ( ekwa_mc_has_mixed_content( $node ) || ekwa_mc_has_text_only( $node ) ) {
 		$inner_html = ekwa_mc_get_inner_html( $node );
 		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
 		       $indent . '  <!-- wp:html -->' . "\n" .
@@ -498,7 +522,7 @@ function ekwa_mc_convert_link( $node, $depth ) {
 function ekwa_mc_convert_icon( $node, $depth ) {
 	$indent = str_repeat( '  ', $depth );
 	$class  = $node->getAttribute( 'class' );
-	$attrs  = array( 'iconClass' => $class );
+	$attrs  = array( 'iconClass' => $class, 'wrapperClass' => '' );
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -554,6 +578,109 @@ function ekwa_mc_convert_raw_html( $node, $depth ) {
 	return $indent . '<!-- wp:html -->' . "\n" .
 	       $indent . trim( $html ) . "\n" .
 	       $indent . '<!-- /wp:html -->' . "\n";
+}
+
+/**
+ * Convert <video> to ekwa/video block.
+ * Extracts src from <source> child, poster, and boolean attributes.
+ */
+function ekwa_mc_convert_video( $node, $depth ) {
+	$ctx           = ekwa_mc_context();
+	$media_by_name = $ctx['media_by_name'];
+	$manifest      = $ctx['manifest'];
+
+	$indent = str_repeat( '  ', $depth );
+	$class  = $node->getAttribute( 'class' );
+	$poster = $node->getAttribute( 'poster' );
+	$attrs  = array();
+
+	// Get video src from <source> child or src attribute.
+	$src = $node->getAttribute( 'src' );
+	if ( ! $src ) {
+		$sources = $node->getElementsByTagName( 'source' );
+		if ( $sources->length > 0 ) {
+			$src = $sources->item( 0 )->getAttribute( 'src' );
+		}
+	}
+
+	// Resolve video src via manifest.
+	if ( $src ) {
+		$filename = strtolower( basename( $src ) );
+		if ( ! empty( $media_by_name[ $filename ] ) ) {
+			$media_item = $media_by_name[ $filename ];
+			$attrs['src']     = $media_item['url'];
+			$attrs['mediaId'] = $media_item['id'];
+		} else {
+			$upload_url = $manifest['upload_url'] ?? '';
+			if ( $upload_url ) {
+				$attrs['src'] = rtrim( $upload_url, '/' ) . '/placeholder.svg';
+			} else {
+				$attrs['src'] = $src;
+			}
+			ekwa_mc_warn( "No manifest match for '$filename' (src: $src)" );
+		}
+	}
+
+	// Resolve poster via manifest.
+	if ( $poster ) {
+		$poster_filename = strtolower( basename( $poster ) );
+		if ( ! empty( $media_by_name[ $poster_filename ] ) ) {
+			$poster_item = $media_by_name[ $poster_filename ];
+			$attrs['poster']   = $poster_item['url'];
+			$attrs['posterId'] = $poster_item['id'];
+		} else {
+			$attrs['poster'] = $poster;
+			ekwa_mc_warn( "No manifest match for poster '$poster_filename' (src: $poster)" );
+		}
+	}
+
+	// Boolean attributes.
+	if ( $node->hasAttribute( 'autoplay' ) )    { $attrs['autoplay']    = true; }
+	if ( $node->hasAttribute( 'loop' ) )        { $attrs['loop']        = true; }
+	if ( $node->hasAttribute( 'muted' ) )       { $attrs['muted']       = true; }
+	if ( $node->hasAttribute( 'playsinline' ) ) { $attrs['playsinline'] = true; }
+	if ( $node->hasAttribute( 'controls' ) )    { $attrs['controls']    = true; }
+	if ( $class )                               { $attrs['className']   = $class; }
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	return $indent . '<!-- wp:ekwa/video' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Convert <a> (or <button>) with element children to ekwa/div with tagName="a".
+ * Preserves inner blocks (img, div, h3, span, icon, etc.).
+ */
+function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$tag    = strtolower( $node->nodeName );
+	$url    = $node->getAttribute( 'href' ) ?: '';
+	$class  = $node->getAttribute( 'class' );
+	$target = $node->getAttribute( 'target' );
+	$rel    = $node->getAttribute( 'rel' );
+	$attrs  = array( 'tagName' => 'a' );
+
+	if ( $url )                     { $attrs['href']      = $url; }
+	if ( $class )                   { $attrs['className'] = $class; }
+	if ( $target === '_blank' )     { $attrs['target']    = '_blank'; }
+	if ( $rel )                     { $attrs['rel']       = $rel; }
+
+	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	if ( ekwa_mc_has_mixed_content( $node ) ) {
+		$inner_html = ekwa_mc_get_inner_html( $node );
+		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
+		       $indent . '  <!-- wp:html -->' . "\n" .
+		       $indent . '  ' . trim( $inner_html ) . "\n" .
+		       $indent . '  <!-- /wp:html -->' . "\n" .
+		       $indent . '<!-- /wp:ekwa/div -->' . "\n";
+	}
+
+	$children = ekwa_mc_convert_children( $node, $depth + 1 );
+
+	return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
+	       $children .
+	       $indent . '<!-- /wp:ekwa/div -->' . "\n";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -619,6 +746,22 @@ function ekwa_mc_has_mixed_content( $node ) {
 }
 
 /**
+ * Check if a node has ONLY text content (no element children, but has significant text).
+ */
+function ekwa_mc_has_text_only( $node ) {
+	$has_text = false;
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType === XML_ELEMENT_NODE ) {
+			return false; // Has element children — not text-only.
+		}
+		if ( $child->nodeType === XML_TEXT_NODE && trim( $child->textContent ) !== '' ) {
+			$has_text = true;
+		}
+	}
+	return $has_text;
+}
+
+/**
  * Get inner HTML of a node.
  */
 function ekwa_mc_get_inner_html( $node ) {
@@ -641,6 +784,84 @@ function ekwa_mc_get_outer_html( $node ) {
  */
 function ekwa_mc_json_encode_block_attrs( $attrs ) {
 	return json_encode( $attrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+}
+
+/**
+ * Resolve url() references in an inline style string via the media manifest.
+ *
+ * Replaces background-image:url('assets/team.jpg') with the manifest URL.
+ *
+ * @param string $style_string Raw inline style.
+ * @return string Style string with resolved URLs.
+ */
+function ekwa_mc_resolve_style_urls( $style_string ) {
+	$ctx           = ekwa_mc_context();
+	$media_by_name = $ctx['media_by_name'];
+	$manifest      = $ctx['manifest'];
+
+	return preg_replace_callback(
+		'/url\(\s*[\'"]?([^\'")]+)[\'"]?\s*\)/',
+		function ( $matches ) use ( $media_by_name, $manifest ) {
+			$original = $matches[1];
+			$filename = strtolower( basename( $original ) );
+
+			if ( ! empty( $media_by_name[ $filename ] ) ) {
+				return 'url(' . $media_by_name[ $filename ]['url'] . ')';
+			}
+
+			// No match — try upload_url prefix.
+			$upload_url = $manifest['upload_url'] ?? '';
+			if ( $upload_url ) {
+				ekwa_mc_warn( "No manifest match for style url '$filename' (src: $original)" );
+			}
+			return $matches[0]; // Keep original.
+		},
+		$style_string
+	);
+}
+
+/**
+ * Extract background-image from an inline style string.
+ *
+ * Pulls out the background-image:url(...) declaration, resolves the URL via
+ * the media manifest, and returns the resolved URL + any remaining CSS.
+ *
+ * @param string $style_string Raw inline style.
+ * @return array { url: string, mediaId: int, remaining: string }
+ */
+function ekwa_mc_extract_background_image( $style_string ) {
+	$ctx           = ekwa_mc_context();
+	$media_by_name = $ctx['media_by_name'];
+	$manifest      = $ctx['manifest'];
+
+	$result = array( 'url' => '', 'mediaId' => 0, 'remaining' => '' );
+
+	// Match background-image:url(...) or background:...url(...)
+	if ( preg_match( '/url\(\s*[\'"]?([^\'")]+)[\'"]?\s*\)/', $style_string, $m ) ) {
+		$original = $m[1];
+		$filename = strtolower( basename( $original ) );
+
+		if ( ! empty( $media_by_name[ $filename ] ) ) {
+			$result['url']     = $media_by_name[ $filename ]['url'];
+			$result['mediaId'] = $media_by_name[ $filename ]['id'];
+		} else {
+			// No match — keep the original URL.
+			$result['url'] = $original;
+			$upload_url = $manifest['upload_url'] ?? '';
+			if ( $upload_url ) {
+				ekwa_mc_warn( "No manifest match for background '$filename' (src: $original)" );
+			}
+		}
+
+		// Remove the background-image (or background) property from the style.
+		$remaining = preg_replace( '/background(-image)?\s*:\s*[^;]*url\([^)]*\)[^;]*;?\s*/i', '', $style_string );
+		$remaining = trim( $remaining, " ;\t\n\r" );
+		$result['remaining'] = $remaining;
+	} else {
+		$result['remaining'] = $style_string;
+	}
+
+	return $result;
 }
 
 /**

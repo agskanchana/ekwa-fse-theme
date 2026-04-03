@@ -1,9 +1,10 @@
 /**
  * Ekwa Mockup Converter — Gutenberg Editor Plugin.
  *
- * Adds a "Mockup Converter" menu item to the editor's Options (three-dot) menu.
- * Opens a modal where users can paste HTML, convert to block markup, and insert
- * the resulting blocks into the editor.
+ * Adds a "Mockup Converter" trigger to the editor:
+ *  - WP 6.6+: menu item in the Options (three-dot) menu (both editors).
+ *  - WP < 6.6 post editor: menu item via wp.editPost.PluginMoreMenuItem.
+ *  - WP < 6.6 site editor: floating button (bottom-left).
  *
  * @package ekwa
  */
@@ -15,7 +16,6 @@
 	var useState           = wp.element.useState;
 	var useRef             = wp.element.useRef;
 	var registerPlugin     = wp.plugins.registerPlugin;
-	var PluginMoreMenuItem = wp.editPost ? wp.editPost.PluginMoreMenuItem : null;
 	var Modal              = wp.components.Modal;
 	var Button             = wp.components.Button;
 	var TextareaControl    = wp.components.TextareaControl;
@@ -25,6 +25,13 @@
 	var parse              = wp.blocks.parse;
 	var dispatch           = wp.data.dispatch;
 	var __                 = wp.i18n.__;
+
+	// Resolve PluginMoreMenuItem from whichever package has it.
+	var PluginMoreMenuItem = ( wp.editor && wp.editor.PluginMoreMenuItem )
+		? wp.editor.PluginMoreMenuItem
+		: ( wp.editPost && wp.editPost.PluginMoreMenuItem
+			? wp.editPost.PluginMoreMenuItem
+			: null );
 
 	// ─── Converter Modal Component ──────────────────────────────────────────
 
@@ -321,20 +328,30 @@
 	// ─── Plugin Registration ────────────────────────────────────────────────
 
 	function ConverterPlugin() {
-		// PluginMoreMenuItem is only available in the post/page editor.
-		if ( ! PluginMoreMenuItem ) {
-			return null;
-		}
-
 		var modalState = useState( false );
 		var isOpen     = modalState[0];
 		var setIsOpen  = modalState[1];
 
-		return el( Fragment, null,
-			el( PluginMoreMenuItem, {
+		var trigger;
+
+		if ( PluginMoreMenuItem ) {
+			// WP 6.6+ (both editors) or post editor on older WP.
+			trigger = el( PluginMoreMenuItem, {
 				icon: 'editor-code',
 				onClick: function () { setIsOpen( true ); },
-			}, __( 'Mockup Converter', 'ekwa' ) ),
+			}, __( 'Mockup Converter', 'ekwa' ) );
+		} else {
+			// Fallback: floating button (site editor on WP < 6.6).
+			trigger = el( Button, {
+				icon: 'editor-code',
+				label: __( 'Mockup Converter', 'ekwa' ),
+				onClick: function () { setIsOpen( true ); },
+				className: 'ekwa-converter-fab',
+			}, __( 'Converter', 'ekwa' ) );
+		}
+
+		return el( Fragment, null,
+			trigger,
 			isOpen
 				? el( ConverterModal, {
 					onClose: function () { setIsOpen( false ); },
