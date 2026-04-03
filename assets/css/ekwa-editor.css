@@ -326,77 +326,279 @@
 	flex-shrink: 0;
 }
 
-/* ─── Mockup Converter Modal ────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOCKUP CONVERTER MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Modal shell ─────────────────────────────────────────────── */
 .ekwa-converter-modal {
-	min-width: 680px;
-	max-width: 900px;
+	min-width: 740px;
+	max-width: 960px;
 }
-.ekwa-converter-modal .ekwa-converter-textarea textarea {
+.ekwa-converter-modal .components-modal__header {
+	border-bottom: 1px solid #e0e0e0;
+}
+.ekwa-converter-modal .components-modal__header-heading {
+	font-size: 15px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+.ekwa-converter-modal .components-modal__content {
+	padding: 24px 28px 28px;
+}
+
+/* ── Input step ──────────────────────────────────────────────── */
+.ekwa-mc-desc {
+	color: #616161;
+	font-size: 13px;
+	margin: 0 0 20px;
+	line-height: 1.5;
+}
+
+/* Textareas */
+.ekwa-converter-modal .ekwa-mc-textarea textarea {
 	font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
 	font-size: 12px;
-	line-height: 1.5;
+	line-height: 1.6;
 	tab-size: 2;
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
+	padding: 12px 14px;
+	transition: border-color 0.15s, box-shadow 0.15s;
 }
-.ekwa-converter-manifest-section {
-	margin-bottom: 16px;
-	padding: 12px 16px;
-	background: #f0f0f0;
-	border-radius: 4px;
+.ekwa-converter-modal .ekwa-mc-textarea textarea:focus {
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+	outline: none;
 }
-.ekwa-converter-upload-row {
+.ekwa-converter-modal .ekwa-mc-textarea textarea::placeholder {
+	color: #b0b8c4;
+}
+
+/* Manifest settings card */
+.ekwa-mc-manifest {
+	margin: 20px 0;
+	padding: 14px 18px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+}
+.ekwa-mc-manifest .components-toggle-control {
+	margin-bottom: 0;
+}
+.ekwa-mc-manifest-upload {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin-top: 8px;
+	gap: 10px;
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid #e5e7eb;
 }
-.ekwa-converter-file-input {
+.ekwa-mc-manifest-name {
+	font-size: 12px;
+	color: #374151;
+	font-weight: 500;
+	background: #e5e7eb;
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+/* Convert button */
+.ekwa-mc-actions {
+	display: flex;
+	margin-top: 4px;
+}
+.ekwa-mc-convert-btn.components-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 11px 28px;
+	font-size: 13px;
+	font-weight: 600;
+	border-radius: 6px;
+	letter-spacing: 0.01em;
+}
+
+/* ── Result step ─────────────────────────────────────────────── */
+.ekwa-mc-result-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 20px;
+	padding-bottom: 14px;
+	border-bottom: 1px solid #e5e7eb;
+}
+.ekwa-mc-result-header .components-button {
+	font-size: 12px;
+}
+
+/* ── Missing media section ───────────────────────────────────── */
+.ekwa-mc-media-section {
+	margin-bottom: 24px;
+	padding: 18px 20px;
+	background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+	border: 1px solid #fcd34d;
+	border-radius: 8px;
+}
+.ekwa-mc-media-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+.ekwa-mc-media-header h3 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #92400e;
+}
+.ekwa-mc-media-count {
+	font-size: 11px;
+	color: #92400e;
+	background: rgba(255,255,255,0.7);
+	padding: 3px 10px;
+	border-radius: 12px;
+	font-weight: 600;
+}
+.ekwa-mc-media-help {
+	color: #a16207;
+	font-size: 12px;
+	margin: 0 0 14px;
+	line-height: 1.5;
+}
+.ekwa-mc-media-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: 220px;
+	overflow-y: auto;
+	padding: 2px;
+}
+.ekwa-mc-media-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	font-size: 12px;
+	transition: border-color 0.15s, background 0.15s;
+}
+.ekwa-mc-media-row--mapped {
+	border-color: #34d399;
+	background: #ecfdf5;
+}
+.ekwa-mc-media-thumb {
+	width: 40px;
+	height: 40px;
+	object-fit: cover;
+	border-radius: 5px;
+	flex-shrink: 0;
+	border: 1px solid #e5e7eb;
+}
+.ekwa-mc-media-icon {
+	font-size: 28px;
+	color: #6b7280;
+	flex-shrink: 0;
+	width: 40px;
+	text-align: center;
+}
+.ekwa-mc-media-warn-icon {
+	font-size: 16px;
+	color: #f59e0b;
+	flex-shrink: 0;
+}
+.ekwa-mc-media-filename {
+	flex: 1;
+	font-size: 12px;
+	word-break: break-all;
+	font-family: Menlo, Consolas, monospace;
+	color: #374151;
+}
+.ekwa-mc-media-info {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.ekwa-mc-media-info code {
+	font-size: 12px;
+	color: #374151;
+}
+.ekwa-mc-media-mapped-url {
+	font-size: 11px;
+	color: #059669;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ekwa-mc-media-actions {
+	margin-top: 14px;
+	display: flex;
+	gap: 8px;
+}
+
+/* ── Result markup ───────────────────────────────────────────── */
+.ekwa-mc-result {
+	margin-top: 20px;
+	padding-top: 20px;
+	border-top: 1px solid #e5e7eb;
+}
+.ekwa-mc-result-label {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+.ekwa-mc-result-label strong {
 	font-size: 13px;
 }
-.ekwa-converter-manifest-name {
-	font-size: 12px;
-	color: #1e1e1e;
+.ekwa-mc-result-note {
+	font-size: 11px;
+	color: #d97706;
+	font-style: italic;
+}
+.ekwa-mc-result-actions {
+	display: flex;
+	gap: 10px;
+	margin-top: 12px;
+}
+.ekwa-mc-result-actions .components-button {
+	border-radius: 6px;
+	padding: 8px 18px;
+	font-size: 13px;
 	font-weight: 500;
 }
-.ekwa-converter-actions {
-	display: flex;
-	gap: 8px;
-	margin-bottom: 16px;
-}
-.ekwa-converter-result {
-	margin-top: 16px;
-	padding-top: 16px;
-	border-top: 1px solid #ddd;
-}
-.ekwa-converter-result-actions {
-	display: flex;
-	gap: 8px;
-	margin-top: 8px;
-}
-.ekwa-converter-warnings-list {
+
+/* Warnings list (non-media) */
+.ekwa-mc-warnings-list {
 	margin: 4px 0 0 16px;
 	font-size: 12px;
 }
-.ekwa-converter-warnings-list li {
+.ekwa-mc-warnings-list li {
 	margin-bottom: 2px;
 }
 
-/* Floating button fallback for site editor on WP < 6.6 */
+/* ── Floating button fallback (site editor WP < 6.6) ───────── */
 .ekwa-converter-fab.components-button {
 	position: fixed;
-	bottom: 16px;
-	left: 16px;
+	bottom: 20px;
+	left: 20px;
 	z-index: 99999;
 	background: #1e1e1e;
 	color: #fff;
-	border-radius: 4px;
-	padding: 8px 14px;
+	border-radius: 6px;
+	padding: 10px 16px;
 	font-size: 12px;
-	box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+	font-weight: 500;
+	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 	gap: 6px;
+	transition: background 0.15s;
 }
 .ekwa-converter-fab.components-button:hover,
 .ekwa-converter-fab.components-button:focus {
-	background: #007cba;
+	background: #3b82f6;
 	color: #fff;
 }

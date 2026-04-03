@@ -192,7 +192,7 @@
 			}
 
 			panels.push(
-				el( PanelBody, { key: 'background', title: __( 'Background Image' ), initialOpen: false },
+				el( PanelBody, { key: 'background', title: __( 'Background Image' ), initialOpen: !! bgImage },
 					bgChildren
 				)
 			);

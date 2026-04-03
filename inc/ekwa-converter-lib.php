@@ -182,8 +182,10 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		       $indent . "<!-- /wp:separator -->\n";
 	}
 
-	// Anchor — if it has element children, treat as wrapper (ekwa/div with tagName=a).
-	// Otherwise, treat as text link (ekwa/link).
+	// Anchor — if only FA icons as element children (text + decorative icon),
+	// use ekwa/div tagName=a to preserve the full inner HTML structure.
+	// If it has real element children (img, div, etc.), use anchor wrapper.
+	// If text-only, use ekwa/link.
 	if ( $tag === 'a' ) {
 		if ( ekwa_mc_has_element_children( $node ) ) {
 			return ekwa_mc_convert_anchor_wrapper( $node, $depth );
@@ -743,6 +745,41 @@ function ekwa_mc_has_mixed_content( $node ) {
 	}
 
 	return $has_elements && $has_text;
+}
+
+/**
+ * Check if all element children of a node are FA icons (<i class="fa-*">).
+ * Returns true if there is at least one element child AND every element child is an FA icon.
+ */
+function ekwa_mc_has_only_fa_children( $node ) {
+	$has_elements = false;
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType === XML_ELEMENT_NODE ) {
+			$has_elements = true;
+			$child_tag = strtolower( $child->nodeName );
+			if ( $child_tag !== 'i' || ! ekwa_mc_has_fa_class( $child ) ) {
+				// Also allow <span> wrapping a single FA icon.
+				if ( $child_tag === 'span' && ekwa_mc_has_only_fa_children( $child ) ) {
+					continue;
+				}
+				return false;
+			}
+		}
+	}
+	return $has_elements;
+}
+
+/**
+ * Get direct text content of a node (not including descendant text).
+ */
+function ekwa_mc_get_text_content_direct( $node ) {
+	$text = '';
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType === XML_TEXT_NODE ) {
+			$text .= $child->textContent;
+		}
+	}
+	return $text;
 }
 
 /**

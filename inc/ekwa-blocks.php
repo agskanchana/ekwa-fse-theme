@@ -444,7 +444,7 @@ function ekwa_register_blocks() {
 		'ekwa-div-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-div-editor.js',
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-div-editor.js' ),
 		true
 	);
 

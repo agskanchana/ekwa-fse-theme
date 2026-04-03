@@ -157,7 +157,7 @@ function ekwa_enqueue_converter_editor_script() {
 			'wp-i18n',
 			'wp-api-fetch',
 		),
-		wp_get_theme()->get( 'Version' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-converter-editor.js' ),
 		true
 	);
 }
