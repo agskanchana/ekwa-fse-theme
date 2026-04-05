@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/related-articles",
+	"version": "1.0.0",
+	"title": "Ekwa Related Articles",
+	"category": "common",
+	"icon": "grid-view",
+	"description": "Carousel of related posts from the same category.",
+	"textdomain": "ekwa",
+	"keywords": [ "related", "articles", "posts", "carousel" ],
+	"supports": { "html": false },
+	"attributes": {
+		"count":        { "type": "number",  "default": 6 },
+		"desktopItems": { "type": "number",  "default": 3 },
+		"tabletItems":  { "type": "number",  "default": 2 },
+		"mobileItems":  { "type": "number",  "default": 1 },
+		"showArrows":   { "type": "boolean", "default": true },
+		"showDots":     { "type": "boolean", "default": true },
+		"title":        { "type": "string",  "default": "Related Articles" }
+	},
+	"editorScript": "ekwa-related-articles-editor"
+}

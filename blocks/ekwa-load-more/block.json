@@ -1,0 +1,19 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/load-more",
+	"version": "1.0.0",
+	"title": "Ekwa Load More",
+	"category": "common",
+	"icon": "update",
+	"description": "AJAX load-more button for query loops.",
+	"textdomain": "ekwa",
+	"keywords": [ "load", "more", "pagination", "ajax" ],
+	"supports": { "html": false },
+	"attributes": {
+		"buttonText":  { "type": "string", "default": "Load More" },
+		"loadingText": { "type": "string", "default": "Loading..." },
+		"noMoreText":  { "type": "string", "default": "No more posts" }
+	},
+	"editorScript": "ekwa-load-more-editor"
+}

@@ -33,6 +33,7 @@ if ( empty( $args['input'] ) ) {
 	fwrite( STDERR, "  --manifest=<file>    Path to media manifest JSON\n" );
 	fwrite( STDERR, "  --extract-body       Only convert content inside <body>\n" );
 	fwrite( STDERR, "  --extract-css        Extract custom CSS from <style> tags\n" );
+	fwrite( STDERR, "  --no-detect-dynamic  Skip dynamic data detection (phone, hours, social)\n" );
 	exit( 1 );
 }
 
@@ -67,7 +68,11 @@ if ( ! empty( $args['extract-css'] ) ) {
 
 // ─── Convert ────────────────────────────────────────────────────────────────
 
-$result = ekwa_mc_convert_html( $html, $manifest_data );
+$options = array(
+	'detect_dynamic' => empty( $args['no-detect-dynamic'] ),
+);
+
+$result = ekwa_mc_convert_html( $html, $manifest_data, $options );
 
 // Print warnings to stderr.
 foreach ( $result['warnings'] as $warning ) {

@@ -486,6 +486,34 @@ function ekwa_register_blocks() {
 			'render_callback' => 'ekwa_render_link_block',
 		)
 	);
+
+	// ── Blog Blocks ─────────────────────────────────────────────────────────
+
+	$blog_blocks = array(
+		'back-to-category' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-server-side-render' ) ),
+		'read-time'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'share-button'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
+		'toc'              => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
+		'related-articles' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'load-more'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
+	);
+
+	foreach ( $blog_blocks as $slug => $config ) {
+		$handle = 'ekwa-' . $slug . '-editor';
+		wp_register_script(
+			$handle,
+			get_template_directory_uri() . '/assets/js/' . $handle . '.js',
+			$config['deps'],
+			filemtime( get_template_directory() . '/assets/js/' . $handle . '.js' ),
+			true
+		);
+		register_block_type(
+			get_template_directory() . '/blocks/ekwa-' . $slug,
+			array(
+				'render_callback' => 'ekwa_render_' . str_replace( '-', '_', $slug ) . '_block',
+			)
+		);
+	}
 }
 add_action( 'init', 'ekwa_register_blocks' );
 
@@ -2641,4 +2669,358 @@ function ekwa_render_link_block( $attrs, $content = '' ) {
 	$html .= '>' . ( $content ? $content : esc_html( $text ) ) . '</a>';
 
 	return $html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BLOG BLOCK RENDER CALLBACKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render: ekwa/back-to-category.
+ */
+function ekwa_render_back_to_category_block() {
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-back-to-category"><a href="#">← Back to [Category] Page</a></div>';
+	}
+
+	if ( ! get_the_ID() || get_post_type() !== 'post' ) {
+		return '';
+	}
+
+	$categories = get_the_category();
+	if ( empty( $categories ) ) {
+		return '';
+	}
+
+	$excluded = array( 'uncategorized', 'featured', 'featured-articles' );
+	$filtered = array_filter( $categories, function ( $cat ) use ( $excluded ) {
+		return ! in_array( strtolower( $cat->slug ), $excluded, true );
+	} );
+
+	if ( empty( $filtered ) ) {
+		return '';
+	}
+
+	$primary  = reset( $filtered );
+	$page_url = home_url( '/' . $primary->slug . '/' );
+
+	return '<div class="ekwa-back-to-category">'
+		. '<a href="' . esc_url( $page_url ) . '" class="ekwa-back-link">'
+		. '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i> '
+		. esc_html( sprintf( __( 'Back to %s', 'ekwa' ), $primary->name ) )
+		. '</a>'
+		. '</div>';
+}
+
+/**
+ * Render: ekwa/read-time.
+ */
+function ekwa_render_read_time_block( $attrs ) {
+	$wpm     = absint( $attrs['wordsPerMinute'] ?? 200 );
+	$post_id = get_the_ID();
+
+	if ( ! $post_id ) {
+		return '';
+	}
+
+	$content    = get_post_field( 'post_content', $post_id );
+	$word_count = str_word_count( wp_strip_all_tags( $content ) );
+	$minutes    = max( 1, (int) ceil( $word_count / $wpm ) );
+
+	return '<span class="ekwa-read-time">'
+		. '<i class="fa-regular fa-clock" aria-hidden="true"></i> '
+		. esc_html( sprintf( _n( '%d min read', '%d min read', $minutes, 'ekwa' ), $minutes ) )
+		. '</span>';
+}
+
+/**
+ * Render: ekwa/share-button.
+ */
+function ekwa_render_share_button_block() {
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-share-button"><i class="fa-solid fa-share-nodes"></i> Share</div>';
+	}
+
+	// Enqueue the external share script.
+	wp_enqueue_script(
+		'ekwa-share-embed',
+		'https://www.doneformesocial.com/sm-share-buttons/embed.js',
+		array(),
+		null,
+		true
+	);
+
+	return '<div class="ekwa-share-button"></div>';
+}
+
+/**
+ * Render: ekwa/toc.
+ */
+function ekwa_render_toc_block( $attrs ) {
+	$title = $attrs['title'] ?? __( 'Table of Contents', 'ekwa' );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<nav class="ekwa-toc"><p class="ekwa-toc__title"><i class="fa-solid fa-bookmark"></i> ' . esc_html( $title ) . '</p><p style="color:#9ca3af;font-size:12px;">Auto-generated from headings.</p></nav>';
+	}
+
+	$post_id = get_the_ID();
+
+	// No post context — nothing to render.
+	if ( ! $post_id ) {
+		return '';
+	}
+
+	// Parse rendered content to find headings.
+	$raw_content = get_post_field( 'post_content', $post_id );
+	$content     = ekwa_toc_add_heading_ids( do_blocks( $raw_content ), true );
+
+	// Match all H2/H3 headings (with or without existing IDs).
+	$headings = array();
+	$used_ids = array();
+	if ( preg_match_all( '/<h([23])([^>]*)>(.*?)<\/h[23]>/si', $content, $matches, PREG_SET_ORDER ) ) {
+		foreach ( $matches as $m ) {
+			$level = (int) $m[1];
+			$attrs_str = $m[2];
+			$text  = wp_strip_all_tags( $m[3] );
+
+			// Extract id if present.
+			$id = '';
+			if ( preg_match( '/\bid=["\']([^"\']+)["\']/', $attrs_str, $id_match ) ) {
+				$id = $id_match[1];
+			}
+			// Generate id if missing.
+			if ( empty( $id ) ) {
+				$id = sanitize_title( $text );
+				if ( empty( $id ) ) {
+					$id = 'heading-' . count( $headings );
+				}
+				$base = $id;
+				$n = 2;
+				while ( in_array( $id, $used_ids, true ) ) {
+					$id = $base . '-' . $n++;
+				}
+			}
+			$used_ids[] = $id;
+
+			$headings[] = array(
+				'level' => $level,
+				'id'    => $id,
+				'text'  => $text,
+			);
+		}
+	}
+
+	$has_toc = count( $headings ) >= 2;
+
+	$html = '';
+
+	// Render TOC only if enough headings.
+	if ( $has_toc ) {
+		wp_enqueue_script(
+			'ekwa-toc',
+			get_template_directory_uri() . '/assets/js/ekwa-toc.js',
+			array(),
+			filemtime( get_template_directory() . '/assets/js/ekwa-toc.js' ),
+			true
+		);
+
+		$html .= '<nav class="ekwa-toc">';
+		$html .= '<p class="ekwa-toc__title"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> ' . esc_html( $title ) . '</p>';
+		$html .= '<ul class="ekwa-toc__list">';
+
+		$in_sub = false;
+		foreach ( $headings as $h ) {
+			if ( $h['level'] === 3 ) {
+				if ( ! $in_sub ) {
+					$html .= '<ul class="ekwa-toc__sublist">';
+					$in_sub = true;
+				}
+				$html .= '<li><a href="#' . esc_attr( $h['id'] ) . '" class="ekwa-toc__link">' . esc_html( $h['text'] ) . '</a></li>';
+			} else {
+				if ( $in_sub ) {
+					$html .= '</ul>';
+					$in_sub = false;
+				}
+				$html .= '<li><a href="#' . esc_attr( $h['id'] ) . '" class="ekwa-toc__link">' . esc_html( $h['text'] ) . '</a></li>';
+			}
+		}
+		if ( $in_sub ) {
+			$html .= '</ul>';
+		}
+
+		$html .= '</ul></nav>';
+	}
+
+	// ── Recent Posts widget ──────────────────────────────────────
+	$recent = get_posts( array(
+		'posts_per_page' => 5,
+		'post__not_in'   => array( get_the_ID() ),
+		'post_status'    => 'publish',
+	) );
+
+	if ( $recent ) {
+		$html .= '<div class="ekwa-sidebar-widget">';
+		$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html__( 'Recent Posts', 'ekwa' ) . '</h4>';
+		$html .= '<ul class="ekwa-recent-posts">';
+		foreach ( $recent as $rp ) {
+			$thumb = get_the_post_thumbnail( $rp->ID, 'thumbnail', array(
+				'class'   => 'ekwa-recent-posts__thumb',
+				'loading' => 'lazy',
+			) );
+			$html .= '<li class="ekwa-recent-posts__item">';
+			$html .= '<a href="' . esc_url( get_permalink( $rp->ID ) ) . '" class="ekwa-recent-posts__link">';
+			$html .= $thumb;
+			$html .= '<span class="ekwa-recent-posts__info">';
+			$html .= '<span class="ekwa-recent-posts__name">' . esc_html( get_the_title( $rp->ID ) ) . '</span>';
+			$html .= '<span class="ekwa-recent-posts__date">' . esc_html( get_the_date( 'M j, Y', $rp->ID ) ) . '</span>';
+			$html .= '</span>';
+			$html .= '</a>';
+			$html .= '</li>';
+		}
+		$html .= '</ul></div>';
+	}
+
+	// ── Categories widget ────────────────────────────────────────
+	$excluded_slugs = array( 'uncategorized', 'featured', 'featured-articles' );
+	$cats = get_categories( array(
+		'hide_empty' => true,
+		'orderby'    => 'name',
+		'order'      => 'ASC',
+	) );
+	$cats = array_filter( $cats, function ( $c ) use ( $excluded_slugs ) {
+		return ! in_array( strtolower( $c->slug ), $excluded_slugs, true );
+	} );
+
+	if ( $cats ) {
+		$html .= '<div class="ekwa-sidebar-widget">';
+		$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html__( 'Categories', 'ekwa' ) . '</h4>';
+		$html .= '<ul class="ekwa-categories">';
+		foreach ( $cats as $cat ) {
+			$html .= '<li class="ekwa-categories__item">';
+			$html .= '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '">' . esc_html( $cat->name ) . '</a>';
+			$html .= '<span class="ekwa-categories__count">(' . $cat->count . ')</span>';
+			$html .= '</li>';
+		}
+		$html .= '</ul></div>';
+	}
+
+	return $html;
+}
+
+/**
+ * Render: ekwa/related-articles.
+ */
+function ekwa_render_related_articles_block( $attrs ) {
+	$count        = absint( $attrs['count'] ?? 6 );
+	$desktop      = absint( $attrs['desktopItems'] ?? 3 );
+	$tablet       = absint( $attrs['tabletItems'] ?? 2 );
+	$mobile       = absint( $attrs['mobileItems'] ?? 1 );
+	$show_arrows  = ! empty( $attrs['showArrows'] );
+	$show_dots    = ! empty( $attrs['showDots'] );
+	$title        = $attrs['title'] ?? __( 'Related Articles', 'ekwa' );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-related"><h2>' . esc_html( $title ) . '</h2><p style="color:#9ca3af;">Related articles carousel (rendered on front-end).</p></div>';
+	}
+
+	if ( ! get_the_ID() || get_post_type() !== 'post' ) {
+		return '';
+	}
+
+	// Get primary category.
+	$categories = get_the_category();
+	$excluded   = array( 'uncategorized', 'featured', 'featured-articles' );
+	$filtered   = array_filter( $categories, function ( $cat ) use ( $excluded ) {
+		return ! in_array( strtolower( $cat->slug ), $excluded, true );
+	} );
+
+	if ( empty( $filtered ) ) {
+		return '';
+	}
+
+	$cat_id = reset( $filtered )->term_id;
+
+	$posts = get_posts( array(
+		'post_type'      => 'post',
+		'posts_per_page' => $count,
+		'cat'            => $cat_id,
+		'post__not_in'   => array( get_the_ID() ),
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+
+	if ( empty( $posts ) ) {
+		return '';
+	}
+
+	// Enqueue carousel JS.
+	wp_enqueue_script(
+		'ekwa-carousel',
+		get_template_directory_uri() . '/assets/js/ekwa-carousel.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/js/ekwa-carousel.js' ),
+		true
+	);
+
+	$data_attrs = ' data-desktop-items="' . $desktop . '"'
+	            . ' data-tablet-items="' . $tablet . '"'
+	            . ' data-mobile-items="' . $mobile . '"'
+	            . ' data-show-arrows="' . ( $show_arrows ? 'true' : 'false' ) . '"'
+	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"';
+
+	$html  = '<div class="ekwa-related">';
+	$html .= '<h2 class="ekwa-related__title">' . esc_html( $title ) . '</h2>';
+	$html .= '<div class="ekwa-carousel"' . $data_attrs . '>';
+	$html .= '<div class="ekwa-carousel__track">';
+
+	foreach ( $posts as $p ) {
+		$html .= '<div class="ekwa-carousel__item">';
+		$html .= ekwa_render_post_card( $p->ID );
+		$html .= '</div>';
+	}
+
+	$html .= '</div>'; // track
+
+	if ( $show_arrows ) {
+		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left"></i></button>';
+		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right"></i></button>';
+	}
+
+	if ( $show_dots ) {
+		$html .= '<div class="ekwa-carousel__dots"></div>';
+	}
+
+	$html .= '</div>'; // carousel
+	$html .= '</div>'; // related
+
+	return $html;
+}
+
+/**
+ * Render: ekwa/load-more.
+ */
+function ekwa_render_load_more_block( $attrs ) {
+	$button_text  = $attrs['buttonText'] ?? __( 'Load More', 'ekwa' );
+	$loading_text = $attrs['loadingText'] ?? __( 'Loading...', 'ekwa' );
+	$no_more_text = $attrs['noMoreText'] ?? __( 'No more posts', 'ekwa' );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-load-more" style="text-align:center;padding:16px;"><button class="ekwa-load-more__btn" disabled>' . esc_html( $button_text ) . '</button></div>';
+	}
+
+	wp_enqueue_script(
+		'ekwa-load-more',
+		get_template_directory_uri() . '/assets/js/ekwa-load-more.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/js/ekwa-load-more.js' ),
+		true
+	);
+
+	wp_localize_script( 'ekwa-load-more', 'ekwaLoadMore', array(
+		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+	) );
+
+	return '<div class="ekwa-load-more" data-loading-text="' . esc_attr( $loading_text ) . '" data-no-more-text="' . esc_attr( $no_more_text ) . '">'
+		. '<button class="ekwa-load-more__btn">' . esc_html( $button_text ) . '</button>'
+		. '</div>';
 }

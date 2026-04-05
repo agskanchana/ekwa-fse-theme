@@ -41,6 +41,16 @@ require_once get_template_directory() . '/inc/ekwa-block-styles.php';
 require_once get_template_directory() . '/inc/ekwa-converter-api.php';
 
 /**
+ * Load AI refinement for mockup converter (Gemini API).
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-refine.php';
+
+/**
+ * Load blog features (TOC, author link, load more, post cards).
+ */
+require_once get_template_directory() . '/inc/ekwa-blog.php';
+
+/**
  * Load mobile menu: nav location, icon meta field, custom walker.
  */
 require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';

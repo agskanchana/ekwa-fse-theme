@@ -1,0 +1,18 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/read-time",
+	"version": "1.0.0",
+	"title": "Ekwa Read Time",
+	"category": "common",
+	"icon": "clock",
+	"description": "Displays estimated read time for the current post.",
+	"textdomain": "ekwa",
+	"keywords": [ "read", "time", "minutes" ],
+	"supports": { "html": false },
+	"attributes": {
+		"wordsPerMinute": { "type": "number", "default": 200 }
+	},
+	"editorScript": "ekwa-read-time-editor",
+	"usesContext": [ "postId" ]
+}

@@ -42,6 +42,11 @@ function ekwa_register_converter_routes() {
 				'type'     => 'boolean',
 				'default'  => true,
 			),
+			'detect_dynamic' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => true,
+			),
 		),
 	) );
 }
@@ -85,7 +90,11 @@ function ekwa_rest_convert_markup( $request ) {
 		}
 	}
 
-	$result = ekwa_mc_convert_html( $html, $manifest_data );
+	$options = array(
+		'detect_dynamic' => $request->get_param( 'detect_dynamic' ),
+	);
+
+	$result = ekwa_mc_convert_html( $html, $manifest_data, $options );
 
 	return rest_ensure_response( array(
 		'markup'   => $result['markup'],

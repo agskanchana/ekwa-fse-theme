@@ -1,0 +1,18 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/toc",
+	"version": "1.0.0",
+	"title": "Ekwa Table of Contents",
+	"category": "common",
+	"icon": "list-view",
+	"description": "Auto-generated table of contents from post headings (H2/H3).",
+	"textdomain": "ekwa",
+	"keywords": [ "toc", "table", "contents", "headings" ],
+	"supports": { "html": false },
+	"attributes": {
+		"title": { "type": "string", "default": "Table of Contents" }
+	},
+	"editorScript": "ekwa-toc-editor",
+	"usesContext": [ "postId" ]
+}

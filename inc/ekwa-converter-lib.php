@@ -12,6 +12,9 @@ if ( ! defined( 'ABSPATH' ) && PHP_SAPI !== 'cli' ) {
 	exit;
 }
 
+// Load dynamic data detection functions.
+require_once __DIR__ . '/ekwa-converter-detect.php';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONTEXT (replaces globals)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -27,9 +30,10 @@ function ekwa_mc_context( $ctx = null ) {
 	static $context = null;
 	if ( $context === null ) {
 		$context = array(
-			'media_by_name' => array(),
-			'manifest'      => null,
-			'warnings'      => array(),
+			'media_by_name'  => array(),
+			'manifest'       => null,
+			'warnings'       => array(),
+			'detect_dynamic' => true,
 		);
 	}
 	if ( $ctx !== null ) {
@@ -63,9 +67,11 @@ function ekwa_mc_warn( $message ) {
  *     @type string[] $warnings Any warnings generated during conversion.
  * }
  */
-function ekwa_mc_convert_html( $html, $manifest_data = null ) {
+function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() ) {
 	// Reset context.
-	$media_by_name = array();
+	$media_by_name  = array();
+	$detect_dynamic = isset( $options['detect_dynamic'] ) ? (bool) $options['detect_dynamic'] : true;
+
 	if ( $manifest_data && ! empty( $manifest_data['media'] ) ) {
 		foreach ( $manifest_data['media'] as $item ) {
 			$fname = strtolower( $item['filename'] );
@@ -74,9 +80,10 @@ function ekwa_mc_convert_html( $html, $manifest_data = null ) {
 	}
 
 	ekwa_mc_context( array(
-		'media_by_name' => $media_by_name,
-		'manifest'      => $manifest_data,
-		'warnings'      => array(),
+		'media_by_name'  => $media_by_name,
+		'manifest'       => $manifest_data,
+		'warnings'       => array(),
+		'detect_dynamic' => $detect_dynamic,
 	) );
 
 	// Parse HTML.
@@ -148,6 +155,15 @@ function ekwa_mc_convert_node( $node, $depth ) {
 
 	$tag    = strtolower( $node->nodeName );
 	$indent = str_repeat( '  ', $depth );
+
+	// Dynamic data detection (phone, email, maps, social, hours, copyright).
+	$ctx = ekwa_mc_context();
+	if ( ! empty( $ctx['detect_dynamic'] ) ) {
+		$detected = ekwa_mc_detect_dynamic( $node, $depth );
+		if ( $detected !== null ) {
+			return $detected;
+		}
+	}
 
 	// Semantic wrapper tags → ekwa/div with tagName.
 	$semantic_tags = array( 'section', 'header', 'footer', 'main', 'aside', 'article', 'nav' );

@@ -1,0 +1,15 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/back-to-category",
+	"version": "1.0.0",
+	"title": "Ekwa Back to Category",
+	"category": "common",
+	"icon": "arrow-left-alt",
+	"description": "Back-to-category link for single posts with smart category filtering.",
+	"textdomain": "ekwa",
+	"keywords": [ "back", "category", "navigation" ],
+	"supports": { "html": false },
+	"attributes": {},
+	"editorScript": "ekwa-back-to-category-editor"
+}

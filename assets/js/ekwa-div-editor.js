@@ -2,7 +2,7 @@
  * Ekwa Div Block — Block Editor UI.
  *
  * Clean wrapper element that outputs only your tag, classes, and children.
- * Supports <a> tag with href/target/rel, background image, and inline styles.
+ * Renders the actual tag in the editor so mockup CSS applies correctly.
  */
 ( function ( wp ) {
 	'use strict';
@@ -34,27 +34,46 @@
 		{ label: 'a',       value: 'a' },
 	];
 
+	/**
+	 * Parse an inlineStyle string into a React style object.
+	 * "background-image:url(...); color: white" → { backgroundImage: 'url(...)', color: 'white' }
+	 */
+	function parseStyleString( str ) {
+		if ( ! str ) return {};
+		var style = {};
+		str.split( ';' ).forEach( function ( part ) {
+			part = part.trim();
+			if ( ! part ) return;
+			var colon = part.indexOf( ':' );
+			if ( colon < 1 ) return;
+			var key = part.substring( 0, colon ).trim();
+			var val = part.substring( colon + 1 ).trim();
+			// Convert CSS key to camelCase.
+			key = key.replace( /-([a-z])/g, function ( m, c ) { return c.toUpperCase(); } );
+			style[ key ] = val;
+		} );
+		return style;
+	}
+
 	registerBlockType( 'ekwa/div', {
 		edit: function ( props ) {
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 			var tagName       = attributes.tagName || 'div';
 			var bgImage       = attributes.backgroundImage || '';
+			var isSelected    = props.isSelected;
 
-			// Build editor preview style.
-			var wrapperStyle = {
-				border: '1px dashed #ccc',
-				padding: '4px',
-				minHeight: '32px',
-				position: 'relative',
-			};
+			// Build editor wrapper style from inlineStyle + backgroundImage.
+			var editorStyle = parseStyleString( attributes.inlineStyle || '' );
 			if ( bgImage ) {
-				wrapperStyle.backgroundImage = 'url(' + bgImage + ')';
-				wrapperStyle.backgroundSize = 'cover';
-				wrapperStyle.backgroundPosition = 'center';
+				editorStyle.backgroundImage = "url('" + bgImage + "')";
+				if ( ! editorStyle.backgroundSize )     { editorStyle.backgroundSize = 'cover'; }
+				if ( ! editorStyle.backgroundPosition ) { editorStyle.backgroundPosition = 'center'; }
 			}
 
-			var blockProps = useBlockProps( { style: wrapperStyle } );
+			// The editor renders <div> for all tags (WP requirement for useBlockProps),
+			// but passes through all the user's CSS classes via className support.
+			var blockProps = useBlockProps( { style: editorStyle } );
 
 			var panels = [];
 
@@ -70,7 +89,6 @@
 				} )
 			);
 
-			// Link attributes (only when tag is <a>).
 			if ( tagName === 'a' ) {
 				settingsChildren.push(
 					el( TextControl, {
@@ -102,7 +120,6 @@
 				);
 			}
 
-			// Inline style (for anything not covered by dedicated attributes).
 			settingsChildren.push(
 				el( TextareaControl, {
 					key: 'style',
@@ -127,15 +144,10 @@
 				bgChildren.push(
 					el( 'div', {
 						key: 'bg-preview',
-						style: {
-							marginBottom: '8px',
-							borderRadius: '4px',
-							overflow: 'hidden',
-						},
+						style: { marginBottom: '8px', borderRadius: '4px', overflow: 'hidden' },
 					},
 						el( 'img', {
-							src: bgImage,
-							alt: '',
+							src: bgImage, alt: '',
 							style: { width: '100%', height: 'auto', display: 'block' },
 						} )
 					)
@@ -146,17 +158,13 @@
 				el( MediaUploadCheck, { key: 'bg-upload-check' },
 					el( MediaUpload, {
 						onSelect: function ( media ) {
-							setAttributes( {
-								backgroundImage: media.url,
-								backgroundImageId: media.id,
-							} );
+							setAttributes( { backgroundImage: media.url, backgroundImageId: media.id } );
 						},
 						allowedTypes: [ 'image' ],
 						value: attributes.backgroundImageId,
 						render: function ( obj ) {
 							return el( Button, {
-								onClick: obj.open,
-								isSecondary: true,
+								onClick: obj.open, isSecondary: true,
 								style: { marginRight: '8px' },
 							}, bgImage ? __( 'Replace Image' ) : __( 'Select Image' ) );
 						},
@@ -167,9 +175,7 @@
 			if ( bgImage ) {
 				bgChildren.push(
 					el( Button, {
-						key: 'bg-clear',
-						isDestructive: true,
-						isSmall: true,
+						key: 'bg-clear', isDestructive: true, isSmall: true,
 						onClick: function () {
 							setAttributes( { backgroundImage: '', backgroundImageId: 0 } );
 						},
@@ -197,24 +203,33 @@
 				)
 			);
 
+			// ── Editor render ────────────────────────────────────────
+			var tagLabel = tagName !== 'div' || tagName === 'a'
+				? el( 'span', {
+					className: 'ekwa-div-tag-label',
+					style: {
+						position: 'absolute',
+						top: '-10px',
+						left: '8px',
+						fontSize: '10px',
+						fontFamily: 'monospace',
+						color: bgImage ? '#fff' : '#999',
+						backgroundColor: bgImage ? 'rgba(0,0,0,0.5)' : '#fff',
+						padding: '0 4px',
+						lineHeight: '1.4',
+						zIndex: 1,
+						borderRadius: '2px',
+						opacity: isSelected ? 1 : 0,
+						transition: 'opacity 0.15s',
+						pointerEvents: 'none',
+					},
+				}, '<' + tagName + '>' + ( tagName === 'a' && attributes.href ? ' ' + attributes.href : '' ) )
+				: null;
+
 			return el( Fragment, null,
 				el( InspectorControls, null, panels ),
 				el( 'div', blockProps,
-					el( 'span', {
-						style: {
-							position: 'absolute',
-							top: '-10px',
-							left: '8px',
-							fontSize: '10px',
-							fontFamily: 'monospace',
-							color: bgImage ? '#fff' : '#999',
-							backgroundColor: bgImage ? 'rgba(0,0,0,0.5)' : '#fff',
-							padding: '0 4px',
-							lineHeight: '1.4',
-							zIndex: 1,
-							borderRadius: bgImage ? '2px' : '0',
-						},
-					}, '<' + tagName + '>' + ( tagName === 'a' && attributes.href ? ' ' + attributes.href : '' ) ),
+					tagLabel,
 					el( InnerBlocks, null )
 				)
 			);

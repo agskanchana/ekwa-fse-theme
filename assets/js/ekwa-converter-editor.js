@@ -146,6 +146,12 @@
 		var s9 = useState( false );   var copied       = s9[0]; var setCopied       = s9[1];
 		var s10 = useState( {} );     var mediaMaps    = s10[0]; var setMediaMaps   = s10[1];
 		var s11 = useState( 'input' ); var step        = s11[0]; var setStep        = s11[1];
+		var s12 = useState( true );    var detectDyn   = s12[0]; var setDetectDyn   = s12[1];
+		var s13 = useState( '' );      var refined     = s13[0]; var setRefined     = s13[1];
+		var s14 = useState( false );   var refining    = s14[0]; var setRefining    = s14[1];
+		var s15 = useState( null );    var aiNotes     = s15[0]; var setAiNotes     = s15[1];
+		var s16 = useState( null );    var aiError     = s16[0]; var setAiError     = s16[1];
+		var s17 = useState( false );   var showAi      = s17[0]; var setShowAi      = s17[1];
 		// steps: 'input' | 'result'
 
 		var fileRef = useRef( null );
@@ -162,6 +168,7 @@
 			var body = {
 				html: htmlValue,
 				use_server_manifest: useServerM,
+				detect_dynamic: detectDyn,
 			};
 
 			if ( ! useServerM && manifestData ) {
@@ -213,9 +220,12 @@
 			doConvert( manifest );
 		}
 
+		// Active markup — refined if available and toggled on, otherwise original.
+		var activeMarkup = showAi && refined ? refined : markup;
+
 		function handleInsert() {
-			if ( ! markup ) return;
-			var blocks = parse( markup );
+			if ( ! activeMarkup ) return;
+			var blocks = parse( activeMarkup );
 			if ( blocks && blocks.length ) {
 				dispatch( 'core/block-editor' ).insertBlocks( blocks );
 				onClose();
@@ -223,11 +233,62 @@
 		}
 
 		function handleCopy() {
-			if ( ! markup ) return;
-			navigator.clipboard.writeText( markup ).then( function () {
+			if ( ! activeMarkup ) return;
+
+			function onSuccess() {
 				setCopied( true );
 				setTimeout( function () { setCopied( false ); }, 2000 );
+			}
+
+			if ( navigator.clipboard && navigator.clipboard.writeText ) {
+				navigator.clipboard.writeText( activeMarkup ).then( onSuccess ).catch( function () {
+					copyFallback( activeMarkup );
+					onSuccess();
+				} );
+			} else {
+				copyFallback( activeMarkup );
+				onSuccess();
+			}
+		}
+
+		function handleRefine() {
+			setRefining( true );
+			setAiError( null );
+			setAiNotes( null );
+			setRefined( '' );
+			setCopied( false );
+
+			apiFetch( {
+				path: '/ekwa/v1/ai-refine-markup',
+				method: 'POST',
+				data: {
+					html: htmlValue,
+					markup: markup,
+					warnings: warnings,
+				},
+			} ).then( function ( res ) {
+				setRefined( res.refined_markup || '' );
+				setAiNotes( res.ai_notes || [] );
+				setRefining( false );
+				setShowAi( true );
+			} ).catch( function ( err ) {
+				var msg = err.message || 'AI refinement failed.';
+				if ( err.code === 'no_api_key' ) {
+					msg = 'Gemini API key not configured. Set it in Ekwa Settings or wp-config.php.';
+				}
+				setAiError( msg );
+				setRefining( false );
 			} );
+		}
+
+		function copyFallback( text ) {
+			var textarea = document.createElement( 'textarea' );
+			textarea.value = text;
+			textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+			document.body.appendChild( textarea );
+			textarea.select();
+			try { document.execCommand( 'copy' ); } catch ( e ) { /* noop */ }
+			document.body.removeChild( textarea );
 		}
 
 		function handleManifestFile( event ) {
@@ -304,6 +365,17 @@
 						}, __( 'Clear', 'ekwa' ) ) : null
 					) : null
 				)
+			);
+
+			// Dynamic data detection toggle.
+			inputChildren.push(
+				el( ToggleControl, {
+					key: 'detect-dynamic',
+					label: __( 'Detect dynamic data', 'ekwa' ),
+					help: __( 'Auto-replace phone, email, hours, social links with dynamic shortcodes.', 'ekwa' ),
+					checked: detectDyn,
+					onChange: setDetectDyn,
+				} )
 			);
 
 			// Error.
@@ -428,20 +500,87 @@
 			);
 		}
 
+		// AI Refinement section.
+		if ( markup && ! refined && ! refining ) {
+			resultChildren.push(
+				el( 'div', { key: 'ai-section', className: 'ekwa-mc-ai-section' },
+					el( 'div', { className: 'ekwa-mc-ai-prompt' },
+						el( 'span', { className: 'dashicons dashicons-superhero ekwa-mc-ai-icon' } ),
+						el( 'div', { className: 'ekwa-mc-ai-prompt-text' },
+							el( 'strong', null, __( 'AI Refinement', 'ekwa' ) ),
+							el( 'p', null, __( 'Improve block types, fix nesting, and wire dynamic data blocks.', 'ekwa' ) )
+						),
+						el( Button, {
+							variant: 'secondary',
+							onClick: handleRefine,
+							className: 'ekwa-mc-ai-btn',
+						}, __( 'Refine with AI', 'ekwa' ) )
+					)
+				)
+			);
+		}
+
+		if ( refining ) {
+			resultChildren.push(
+				el( 'div', { key: 'ai-refining', className: 'ekwa-mc-ai-refining' },
+					el( Spinner, null ),
+					el( 'span', null, __( 'Refining with AI... This may take a moment.', 'ekwa' ) )
+				)
+			);
+		}
+
+		if ( aiError ) {
+			resultChildren.push(
+				el( Notice, { key: 'ai-err', status: 'error', isDismissible: true,
+					onRemove: function () { setAiError( null ); }
+				}, aiError )
+			);
+		}
+
+		// Before/After toggle.
+		if ( refined ) {
+			resultChildren.push(
+				el( 'div', { key: 'ai-toggle', className: 'ekwa-mc-ai-toggle' },
+					el( Button, {
+						variant: showAi ? 'primary' : 'secondary',
+						isSmall: true,
+						onClick: function () { setShowAi( true ); },
+					}, __( 'AI Refined', 'ekwa' ) ),
+					el( Button, {
+						variant: ! showAi ? 'primary' : 'secondary',
+						isSmall: true,
+						onClick: function () { setShowAi( false ); },
+					}, __( 'Original', 'ekwa' ) )
+				)
+			);
+
+			if ( aiNotes && aiNotes.length > 0 ) {
+				resultChildren.push(
+					el( Notice, { key: 'ai-notes', status: 'info', isDismissible: false },
+						el( 'strong', null, __( 'AI Changes:', 'ekwa' ) ),
+						el( 'ul', { className: 'ekwa-mc-ai-notes-list' },
+							aiNotes.map( function ( n, i ) { return el( 'li', { key: i }, n ); } )
+						)
+					)
+				);
+			}
+		}
+
 		// Result markup.
 		if ( markup ) {
 			resultChildren.push(
 				el( 'div', { key: 'result', className: 'ekwa-mc-result' },
 					el( 'div', { className: 'ekwa-mc-result-label' },
-						el( 'strong', null, __( 'Block Markup', 'ekwa' ) ),
-						hasMissing && ! allMapped
+						el( 'strong', null, __( 'Block Markup', 'ekwa' )
+							+ ( refined && showAi ? ' (AI Refined)' : '' ) ),
+						hasMissing && ! allMapped && ! showAi
 							? el( 'span', { className: 'ekwa-mc-result-note' },
 								__( 'Some media not mapped — you can still insert and fix later', 'ekwa' )
 							)
 							: null
 					),
 					el( TextareaControl, {
-						value: markup,
+						value: activeMarkup,
 						readOnly: true,
 						rows: 12,
 						className: 'ekwa-mc-textarea',

@@ -326,6 +326,12 @@
 	flex-shrink: 0;
 }
 
+/* Ekwa Div — show tag label on hover */
+.wp-block[data-type="ekwa/div"]:hover > .ekwa-div-tag-label,
+.wp-block[data-type="ekwa/div"].is-selected > .ekwa-div-tag-label {
+	opacity: 1 !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOCKUP CONVERTER MODAL
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -601,4 +607,81 @@
 .ekwa-converter-fab.components-button:focus {
 	background: #3b82f6;
 	color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AI REFINEMENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ekwa-mc-ai-section {
+	margin: 20px 0;
+}
+.ekwa-mc-ai-prompt {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 14px 18px;
+	background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
+	border: 1px solid #a5b4fc;
+	border-radius: 8px;
+}
+.ekwa-mc-ai-icon {
+	font-size: 24px;
+	color: #4f46e5;
+	flex-shrink: 0;
+}
+.ekwa-mc-ai-prompt-text {
+	flex: 1;
+}
+.ekwa-mc-ai-prompt-text strong {
+	font-size: 13px;
+	color: #312e81;
+}
+.ekwa-mc-ai-prompt-text p {
+	font-size: 12px;
+	color: #4338ca;
+	margin: 2px 0 0;
+	line-height: 1.4;
+}
+.ekwa-mc-ai-btn.components-button {
+	flex-shrink: 0;
+	border-color: #6366f1;
+	color: #4f46e5;
+}
+.ekwa-mc-ai-btn.components-button:hover {
+	background: #eef2ff;
+}
+.ekwa-mc-ai-refining {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 16px 20px;
+	margin: 20px 0;
+	background: #f5f3ff;
+	border: 1px solid #c4b5fd;
+	border-radius: 8px;
+	font-size: 13px;
+	color: #5b21b6;
+}
+.ekwa-mc-ai-toggle {
+	display: flex;
+	gap: 4px;
+	margin: 16px 0 8px;
+	padding: 3px;
+	background: #f1f5f9;
+	border-radius: 6px;
+	width: fit-content;
+}
+.ekwa-mc-ai-toggle .components-button {
+	border-radius: 4px;
+	font-size: 12px;
+	font-weight: 500;
+	padding: 6px 14px;
+}
+.ekwa-mc-ai-notes-list {
+	margin: 6px 0 0 16px;
+	font-size: 12px;
+}
+.ekwa-mc-ai-notes-list li {
+	margin-bottom: 3px;
 }

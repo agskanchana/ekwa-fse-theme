@@ -4,19 +4,24 @@
 <!-- wp:group {"tagName":"main","layout":{"type":"default"}} -->
 <main class="wp-block-group">
 
-	<!-- Blog heading -->
+	<!-- Search results header -->
 	<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|xl","bottom":"var:preset|spacing|md"}}},"backgroundColor":"background-alt","layout":{"type":"constrained"}} -->
 	<div class="wp-block-group has-background-alt-background-color has-background" style="padding-top:var(--wp--preset--spacing--xl);padding-bottom:var(--wp--preset--spacing--md)">
-		<!-- wp:heading {"textAlign":"center","level":1} -->
-		<h1 class="wp-block-heading has-text-align-center">Blog</h1>
-		<!-- /wp:heading -->
+		<!-- wp:query-title {"type":"search","textAlign":"center"} /-->
 	</div>
 	<!-- /wp:group -->
 
-	<!-- Post grid -->
+	<!-- Refine search -->
+	<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|lg","bottom":"0"}}},"layout":{"type":"constrained","contentSize":"600px"}} -->
+	<div class="wp-block-group" style="padding-top:var(--wp--preset--spacing--lg)">
+		<!-- wp:search {"label":"Search","showLabel":false,"placeholder":"Refine your search...","buttonText":"Search","style":{"border":{"radius":"6px"}}} /-->
+	</div>
+	<!-- /wp:group -->
+
+	<!-- Search results -->
 	<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|xl","bottom":"var:preset|spacing|xl"}}},"layout":{"type":"constrained"}} -->
 	<div class="wp-block-group" style="padding-top:var(--wp--preset--spacing--xl);padding-bottom:var(--wp--preset--spacing--xl)">
-		<!-- wp:query {"queryId":1,"query":{"perPage":12,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","inherit":true}} -->
+		<!-- wp:query {"queryId":3,"query":{"perPage":12,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"relevance","inherit":true}} -->
 		<div class="wp-block-query">
 			<!-- wp:post-template {"layout":{"type":"grid","columnCount":3},"className":"ekwa-blog-grid"} -->
 				<!-- wp:group {"className":"ekwa-blog-card","style":{"border":{"radius":"10px","width":"1px","style":"solid","color":"var:preset|color|surface"},"spacing":{"blockGap":"0"}},"layout":{"type":"default"}} -->
@@ -26,11 +31,7 @@
 					<div class="wp-block-group" style="padding:var(--wp--preset--spacing--md)">
 						<!-- wp:post-title {"level":3,"isLink":true,"fontSize":"medium","style":{"spacing":{"margin":{"bottom":"8px"}}}} /-->
 						<!-- wp:post-excerpt {"excerptLength":18,"fontSize":"small","style":{"spacing":{"margin":{"bottom":"12px"}}}} /-->
-						<!-- wp:group {"layout":{"type":"flex","justifyContent":"space-between","flexWrap":"wrap"},"style":{"spacing":{"blockGap":"8px"}},"fontSize":"small"} -->
-						<div class="wp-block-group has-small-font-size">
-							<!-- wp:post-date {"fontSize":"small"} /-->
-						</div>
-						<!-- /wp:group -->
+						<!-- wp:post-date {"fontSize":"small"} /-->
 						<!-- wp:read-more {"content":"Read More →","style":{"spacing":{"margin":{"top":"12px"}},"elements":{"link":{"color":{"text":"var:preset|color|primary"}}}},"fontSize":"small"} /-->
 					</div>
 					<!-- /wp:group -->
@@ -42,12 +43,21 @@
 			<div style="height:var(--wp--preset--spacing--lg)" aria-hidden="true" class="wp-block-spacer"></div>
 			<!-- /wp:spacer -->
 
-			<!-- wp:ekwa/load-more {"buttonText":"Load More Posts"} /-->
+			<!-- wp:query-pagination {"layout":{"type":"flex","justifyContent":"center"}} -->
+				<!-- wp:query-pagination-previous /-->
+				<!-- wp:query-pagination-numbers /-->
+				<!-- wp:query-pagination-next /-->
+			<!-- /wp:query-pagination -->
 
 			<!-- wp:query-no-results -->
 				<!-- wp:paragraph {"align":"center","fontSize":"medium"} -->
-				<p class="has-text-align-center has-medium-font-size">No posts found.</p>
+				<p class="has-text-align-center has-medium-font-size">No results found. Try a different search term.</p>
 				<!-- /wp:paragraph -->
+				<!-- wp:group {"layout":{"type":"constrained","contentSize":"400px"},"style":{"spacing":{"margin":{"top":"var:preset|spacing|md"}}}} -->
+				<div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--md)">
+					<!-- wp:search {"label":"Search","showLabel":false,"placeholder":"Try another search...","buttonText":"Search","style":{"border":{"radius":"6px"}}} /-->
+				</div>
+				<!-- /wp:group -->
 			<!-- /wp:query-no-results -->
 		</div>
 		<!-- /wp:query -->

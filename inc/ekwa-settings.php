@@ -216,6 +216,7 @@ function ekwa_save_settings() {
 		'ekwa_share_image'      => 'absint',
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
+		'ekwa_gemini_api_key'   => 'sanitize_text_field',
 	);
 
 	foreach ( $fields as $key => $sanitize ) {
@@ -510,6 +511,31 @@ function ekwa_render_settings_page() {
 					<?php ekwa_render_social_row( '__SOC_INDEX__', array() ); ?>
 				</script>
 			</div>
+
+			<!-- AI Settings -->
+			<h2 class="title" style="margin-top:2em;"><?php esc_html_e( 'AI Settings', 'ekwa' ); ?></h2>
+			<table class="form-table">
+				<tr>
+					<th><label for="ekwa_gemini_api_key"><?php esc_html_e( 'Gemini API Key', 'ekwa' ); ?></label></th>
+					<td>
+						<?php $gemini_key = get_option( 'ekwa_gemini_api_key', '' ); ?>
+						<input type="password" id="ekwa_gemini_api_key" name="ekwa_gemini_api_key" value="<?php echo esc_attr( $gemini_key ); ?>" class="regular-text" autocomplete="off" />
+						<p class="description">
+							<?php
+							if ( defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY ) {
+								esc_html_e( 'API key is set via wp-config.php (EKWA_GEMINI_API_KEY). This field is ignored.', 'ekwa' );
+							} else {
+								printf(
+									/* translators: %s: link to Google AI Studio */
+									esc_html__( 'Get a free API key from %s. Used by the Mockup Converter\'s "Refine with AI" feature.', 'ekwa' ),
+									'<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
+								);
+							}
+							?>
+						</p>
+					</td>
+				</tr>
+			</table>
 
 			<?php submit_button( __( 'Save Settings', 'ekwa' ) ); ?>
 		</form>
