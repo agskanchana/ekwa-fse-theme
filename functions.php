@@ -10,6 +10,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * GitHub auto-updater — checks agskanchana/ekwa-fse-theme for new releases.
+ */
+require_once get_template_directory() . '/includes/plugin-update-checker/plugin-update-checker.php';
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+
+$ekwa_theme_updater = PucFactory::buildUpdateChecker(
+	'https://github.com/agskanchana/ekwa-fse-theme/',
+	get_template_directory() . '/style.css',
+	'ekwa'
+);
+
+/**
  * Load theme settings page.
  */
 require_once get_template_directory() . '/inc/ekwa-settings.php';
