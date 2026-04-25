@@ -178,7 +178,7 @@ function ekwa_phone_shortcode( $atts ) {
 		}
 
 		// Build default prefix label when none was supplied.
-		if ( '' === $prefix_text ) {
+		if ( '' === trim( $prefix_text ) ) {
 			$prefix_text = ( 'existing' === $type )
 				? __( 'Existing Patients:', 'ekwa' )
 				: __( 'New Patients:', 'ekwa' );
@@ -707,10 +707,10 @@ function ekwa_social_shortcode( $atts ) {
 			. '.ekwa-social-icons .sm-icons{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:none;background:none;padding:0}'
 			. '.ekwa-social-icons .addthis{position:relative;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer}'
 			. '.ekwa-social-icons .addthis span.hide{display:none}'
-			. '.ekwa-social-icons .share-toggle{visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px;transition:all .3s ease;z-index:99;white-space:nowrap}'
+			. '.ekwa-social-icons .share-toggle{visibility:hidden;opacity:0;position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:8px;transition:all .3s ease;z-index:99;white-space:nowrap;display:flex;flex-direction:column;align-items:center;gap:4px}'
 			. '.ekwa-social-icons .share-toggle.active{visibility:visible;opacity:1;transform:translateX(-50%) translateY(0)}'
 			. '.ekwa-social-icons .share-toggle::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:10px solid transparent;border-top-color:#fff;filter:drop-shadow(0 3px 2px rgba(0,0,0,.1))}'
-			. '.ekwa-social-icons .share-toggle a{color:#fff;width:44px;height:44px;margin:4px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:8px;transition:all .2s ease}'
+			. '.ekwa-social-icons .share-toggle a{color:#fff;width:44px;height:44px;margin:0;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:8px;transition:all .2s ease}'
 			. '.ekwa-social-icons .share-toggle a:hover{transform:scale(1.1)}'
 			. '.ekwa-social-icons .share-toggle i{font-size:20px}'
 			. '.share-facebook{background:#3b5998}'

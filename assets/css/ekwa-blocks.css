@@ -552,6 +552,10 @@
 	transition: all 0.3s ease;
 	z-index: 99;
 	white-space: nowrap;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
 }
 .ekwa-social-icons .share-toggle.active {
 	visibility: visible;
@@ -572,7 +576,7 @@
 	color: #fff;
 	width: 44px;
 	height: 44px;
-	margin: 4px;
+	margin: 0;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -720,6 +724,25 @@
 	margin-top: 3px;
 	flex-shrink: 0;
 	font-size: 0.85em;
+}
+
+/* ================================================================
+   Phone block (single number)
+   ================================================================ */
+.ekwa-phone-number {
+	display: inline-block;
+}
+.ekwa-phone-number__link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	text-decoration: none;
+}
+.ekwa-phone-number__icon {
+	flex-shrink: 0;
+}
+.ekwa-phone-number__prefix {
+	font-weight: 500;
 }
 
 /* ================================================================
