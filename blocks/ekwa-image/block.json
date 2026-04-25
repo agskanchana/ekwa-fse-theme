@@ -21,7 +21,9 @@
 		"width":     { "type": "string",  "default": "" },
 		"height":    { "type": "string",  "default": "" },
 		"loading":   { "type": "string",  "default": "lazy" },
-		"objectFit": { "type": "string",  "default": "" }
+		"objectFit":   { "type": "string",  "default": "" },
+		"linkUrl":     { "type": "string",  "default": "" },
+		"linkNewTab":  { "type": "boolean", "default": false }
 	},
 	"editorScript": "ekwa-image-editor"
 }

@@ -2512,14 +2512,16 @@ function ekwa_render_text_block( $attrs ) {
  * @return string
  */
 function ekwa_render_image_block( $attrs ) {
-	$src        = isset( $attrs['src'] )       ? esc_url( $attrs['src'] ) : '';
-	$alt        = isset( $attrs['alt'] )       ? esc_attr( $attrs['alt'] ) : '';
-	$width      = isset( $attrs['width'] )     ? esc_attr( $attrs['width'] ) : '';
-	$height     = isset( $attrs['height'] )    ? esc_attr( $attrs['height'] ) : '';
-	$loading    = isset( $attrs['loading'] )   ? esc_attr( $attrs['loading'] ) : 'lazy';
-	$object_fit = isset( $attrs['objectFit'] ) ? esc_attr( $attrs['objectFit'] ) : '';
-	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
-	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$src         = isset( $attrs['src'] )        ? esc_url( $attrs['src'] ) : '';
+	$alt         = isset( $attrs['alt'] )        ? esc_attr( $attrs['alt'] ) : '';
+	$width       = isset( $attrs['width'] )      ? esc_attr( $attrs['width'] ) : '';
+	$height      = isset( $attrs['height'] )     ? esc_attr( $attrs['height'] ) : '';
+	$loading     = isset( $attrs['loading'] )    ? esc_attr( $attrs['loading'] ) : 'lazy';
+	$object_fit  = isset( $attrs['objectFit'] )  ? esc_attr( $attrs['objectFit'] ) : '';
+	$anchor      = isset( $attrs['anchor'] )     ? sanitize_html_class( $attrs['anchor'] ) : '';
+	$class_name  = isset( $attrs['className'] )  ? sanitize_text_field( $attrs['className'] ) : '';
+	$link_url    = isset( $attrs['linkUrl'] )    ? esc_url( $attrs['linkUrl'] ) : '';
+	$link_blank  = ! empty( $attrs['linkNewTab'] );
 
 	if ( ! $src ) {
 		return '';
@@ -2539,6 +2541,15 @@ function ekwa_render_image_block( $attrs ) {
 	if ( $style )   { $html .= ' style="' . esc_attr( $style ) . '"'; }
 	if ( $anchor )  { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	$html .= '>';
+
+	if ( $link_url ) {
+		$link_html = '<a href="' . $link_url . '"';
+		if ( $link_blank ) {
+			$link_html .= ' target="_blank" rel="noopener noreferrer"';
+		}
+		$link_html .= '>' . $html . '</a>';
+		$html = $link_html;
+	}
 
 	return $html;
 }

@@ -217,3 +217,60 @@ function ekwa_register_pattern_categories() {
 	) );
 }
 add_action( 'init', 'ekwa_register_pattern_categories' );
+
+/**
+ * Allow SVG uploads and display them correctly in the media library.
+ */
+function ekwa_allow_svg_upload( $mimes ) {
+	$mimes['svg']  = 'image/svg+xml';
+	$mimes['svgz'] = 'image/svg+xml';
+	return $mimes;
+}
+add_filter( 'upload_mimes', 'ekwa_allow_svg_upload' );
+
+function ekwa_fix_svg_mime_check( $data, $file, $filename, $mimes ) {
+	$ext = pathinfo( $filename, PATHINFO_EXTENSION );
+	if ( 'svg' === strtolower( $ext ) ) {
+		$data['type'] = 'image/svg+xml';
+		$data['ext']  = 'svg';
+	}
+	return $data;
+}
+add_filter( 'wp_check_filetype_and_ext', 'ekwa_fix_svg_mime_check', 10, 4 );
+
+function ekwa_sanitize_svg_on_upload( $file ) {
+	if ( 'image/svg+xml' !== $file['type'] ) {
+		return $file;
+	}
+
+	$contents = file_get_contents( $file['tmp_name'] );
+	if ( false === $contents ) {
+		$file['error'] = __( 'Could not read SVG file.', 'ekwa' );
+		return $file;
+	}
+
+	// Strip XML processing instructions, scripts, and event handlers.
+	$contents = preg_replace( '/<\?xml.*?\?>/s', '', $contents );
+	$contents = preg_replace( '/<script[^>]*>.*?<\/script>/si', '', $contents );
+	$contents = preg_replace( '/\bon\w+\s*=\s*["\'][^"\']*["\']/i', '', $contents );
+
+	// Must contain an <svg tag to be valid.
+	if ( false === stripos( $contents, '<svg' ) ) {
+		$file['error'] = __( 'Invalid SVG file.', 'ekwa' );
+		return $file;
+	}
+
+	file_put_contents( $file['tmp_name'], $contents );
+	return $file;
+}
+add_filter( 'wp_handle_upload_prefilter', 'ekwa_sanitize_svg_on_upload' );
+
+function ekwa_svg_media_library_display() {
+	echo '<style>
+		.attachment-266x266, .thumbnail img[src$=".svg"] {
+			width: 100% !important;
+			height: auto !important;
+		}
+	</style>';
+}
+add_action( 'admin_head', 'ekwa_svg_media_library_display' );

@@ -18,6 +18,7 @@
 	var TextControl        = wp.components.TextControl;
 	var SelectControl      = wp.components.SelectControl;
 	var Button             = wp.components.Button;
+	var ToggleControl      = wp.components.ToggleControl;
 	var Placeholder        = wp.components.Placeholder;
 	var __                 = wp.i18n.__;
 
@@ -26,13 +27,15 @@
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 
-			var src       = attributes.src       || '';
-			var mediaId   = attributes.mediaId   || 0;
-			var alt       = attributes.alt       || '';
-			var width     = attributes.width     || '';
-			var height    = attributes.height    || '';
-			var loading   = attributes.loading   || 'lazy';
-			var objectFit = attributes.objectFit || '';
+			var src        = attributes.src        || '';
+			var mediaId    = attributes.mediaId    || 0;
+			var alt        = attributes.alt        || '';
+			var width      = attributes.width      || '';
+			var height     = attributes.height     || '';
+			var loading    = attributes.loading    || 'lazy';
+			var objectFit  = attributes.objectFit  || '';
+			var linkUrl    = attributes.linkUrl    || '';
+			var linkNewTab = !! attributes.linkNewTab;
 
 			var blockProps = useBlockProps( {
 				style: {
@@ -54,6 +57,25 @@
 				setAttributes( {
 					src: '',
 					mediaId: 0,
+				} );
+			}
+
+			function isExternalUrl( url ) {
+				if ( ! url || url.charAt( 0 ) === '/' || url.charAt( 0 ) === '#' ) {
+					return false;
+				}
+				try {
+					var linkHost = new URL( url ).hostname;
+					return linkHost !== window.location.hostname;
+				} catch ( e ) {
+					return false;
+				}
+			}
+
+			function onLinkUrlChange( val ) {
+				setAttributes( {
+					linkUrl: val,
+					linkNewTab: isExternalUrl( val ),
 				} );
 			}
 
@@ -101,6 +123,19 @@
 						],
 						onChange: function ( val ) { setAttributes( { objectFit: val } ); },
 					} )
+				),
+				el( PanelBody, { title: __( 'Link Settings' ), initialOpen: false },
+					el( TextControl, {
+						label: __( 'Link URL' ),
+						value: linkUrl,
+						onChange: onLinkUrlChange,
+						help: __( 'External links automatically open in a new tab.' ),
+					} ),
+					linkUrl ? el( ToggleControl, {
+						label: __( 'Open in new tab' ),
+						checked: linkNewTab,
+						onChange: function ( val ) { setAttributes( { linkNewTab: val } ); },
+					} ) : null
 				)
 			);
 
