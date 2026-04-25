@@ -120,6 +120,28 @@ function ekwa_get_days() {
 }
 
 /**
+ * Resolve the configured appointment URL.
+ *
+ * Reads `ekwa_appt_type` and returns either the chosen page's permalink
+ * or the configured external URL. Returns an empty string when nothing
+ * is configured. Caller is responsible for esc_url() on output.
+ *
+ * @return string
+ */
+function ekwa_get_appointment_url() {
+	$type = get_option( 'ekwa_appt_type', 'page' );
+	if ( 'url' === $type ) {
+		return (string) get_option( 'ekwa_appt_url', '' );
+	}
+	$page_id = absint( get_option( 'ekwa_appt_page', 0 ) );
+	if ( ! $page_id ) {
+		return '';
+	}
+	$link = get_permalink( $page_id );
+	return $link ? $link : '';
+}
+
+/**
  * Sanitize locations data.
  */
 function ekwa_sanitize_locations( $locations ) {

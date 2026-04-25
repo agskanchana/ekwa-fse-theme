@@ -50,8 +50,8 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-icon-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-icon-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-icon-editor.js' ),
 		true
 	);
 
@@ -295,12 +295,29 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Shared link-source Inspector helper (used by ekwa-link, ekwa-button, ekwa-card-link).
+	wp_register_script(
+		'ekwa-link-source-control',
+		get_template_directory_uri() . '/assets/js/ekwa-link-source-control.js',
+		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-link-source-control.js' ),
+		true
+	);
+	wp_localize_script(
+		'ekwa-link-source-control',
+		'ekwaBlockData',
+		array(
+			'appointmentUrl'  => ekwa_get_appointment_url(),
+			'apptSettingsUrl' => admin_url( 'themes.php?page=ekwa-settings' ),
+		)
+	);
+
 	// Card link block (linked card wrapper with InnerBlocks).
 	wp_register_script(
 		'ekwa-card-link-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-card-link-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-card-link-editor.js' ),
 		true
 	);
 
@@ -379,8 +396,8 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-button-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-button-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-button-editor.js' ),
 		true
 	);
 
@@ -475,8 +492,8 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-link-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-link-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-link-editor.js' ),
 		true
 	);
 
@@ -751,7 +768,7 @@ function ekwa_render_icon_block( $attrs ) {
 	$color         = sanitize_text_field( isset( $attrs['color'] ) ? $attrs['color'] : '' );
 	$align_raw     = isset( $attrs['align'] ) ? $attrs['align'] : '';
 	$anchor        = isset( $attrs['anchor'] ) ? sanitize_html_class( $attrs['anchor'] ) : '';
-	$url           = isset( $attrs['url'] )        ? esc_url( $attrs['url'] )                   : '';
+	$url           = ekwa_resolve_block_link_url( $attrs );
 	$link_target   = isset( $attrs['linkTarget'] ) ? sanitize_text_field( $attrs['linkTarget'] ) : '';
 	$link_rel      = isset( $attrs['linkRel'] )    ? sanitize_text_field( $attrs['linkRel'] )    : '';
 
@@ -1572,19 +1589,16 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 function ekwa_render_mobile_dock_block( $attrs ) {
 	$locations  = get_option( 'ekwa_locations', array() );
 	$appt_type  = get_option( 'ekwa_appt_type', 'page' );
-	$appt_page  = get_option( 'ekwa_appt_page', 0 );
-	$appt_url   = get_option( 'ekwa_appt_url', '' );
 	$adsense    = get_option( 'ekwa_adsense_number', '' );
 
-	// Determine appointment link.
-	if ( 'external' === $appt_type && $appt_url ) {
-		$appt_link   = $appt_url;
-		$appt_target = ' target="_blank" rel="noopener"';
-	} elseif ( $appt_page ) {
-		$appt_link   = get_permalink( $appt_page );
-		$appt_target = '';
-	} else {
+	// Determine appointment link via shared resolver.
+	$appt_link = ekwa_get_appointment_url();
+	if ( ! $appt_link ) {
 		$appt_link   = '#';
+		$appt_target = '';
+	} elseif ( 'url' === $appt_type ) {
+		$appt_target = ' target="_blank" rel="noopener"';
+	} else {
 		$appt_target = '';
 	}
 
@@ -2189,7 +2203,7 @@ function ekwa_render_page_title_block( $attrs ) {
  * @return string
  */
 function ekwa_render_card_link_block( $attrs, $content ) {
-	$url     = isset( $attrs['url'] )    ? esc_url( $attrs['url'] ) : '';
+	$url     = ekwa_resolve_block_link_url( $attrs );
 	$new_tab = ! empty( $attrs['newTab'] );
 	$rel_val = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
 
@@ -2380,6 +2394,37 @@ function ekwa_render_grid_block( $attrs, $content ) {
 
 
 /**
+ * Resolve a block's link URL from its attributes.
+ *
+ * Three sources, controlled by the linkType attribute:
+ *   - 'external'    → uses the url attribute as-is
+ *   - 'internal'    → uses get_permalink( pageId ) for the chosen page/post
+ *   - 'appointment' → uses ekwa_get_appointment_url()
+ *
+ * Caller is responsible for esc_url() on output.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_resolve_block_link_url( $attrs ) {
+	$type = isset( $attrs['linkType'] ) ? sanitize_key( $attrs['linkType'] ) : 'external';
+
+	if ( 'appointment' === $type ) {
+		return ekwa_get_appointment_url();
+	}
+	if ( 'internal' === $type ) {
+		$pid = isset( $attrs['pageId'] ) ? absint( $attrs['pageId'] ) : 0;
+		if ( ! $pid ) {
+			return '';
+		}
+		$link = get_permalink( $pid );
+		return $link ? $link : '';
+	}
+	return isset( $attrs['url'] ) ? (string) $attrs['url'] : '';
+}
+
+
+/**
  * Server-side render callback for the ekwa/button block.
  *
  * Outputs a single <a> or <button> element with variant and size classes.
@@ -2389,7 +2434,7 @@ function ekwa_render_grid_block( $attrs, $content ) {
  */
 function ekwa_render_button_block( $attrs ) {
 	$text          = isset( $attrs['text'] )         ? $attrs['text'] : '';
-	$url           = isset( $attrs['url'] )          ? esc_url( $attrs['url'] ) : '';
+	$url           = ekwa_resolve_block_link_url( $attrs );
 	$new_tab       = ! empty( $attrs['newTab'] );
 	$rel_val       = isset( $attrs['rel'] )          ? sanitize_text_field( $attrs['rel'] ) : '';
 	$html_tag      = isset( $attrs['htmlTag'] )      ? sanitize_key( $attrs['htmlTag'] ) : 'a';
@@ -2658,7 +2703,8 @@ function ekwa_render_video_block( $attrs ) {
  * @return string
  */
 function ekwa_render_link_block( $attrs, $content = '' ) {
-	$url        = isset( $attrs['url'] )       ? esc_url( $attrs['url'] ) : '#';
+	$resolved   = ekwa_resolve_block_link_url( $attrs );
+	$url        = $resolved ? esc_url( $resolved ) : '#';
 	$text       = isset( $attrs['text'] )      ? $attrs['text'] : '';
 	$new_tab    = ! empty( $attrs['newTab'] );
 	$rel_val    = isset( $attrs['rel'] )       ? sanitize_text_field( $attrs['rel'] ) : '';

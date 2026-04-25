@@ -42,7 +42,10 @@
 		"variant":      { "type": "string",  "default": "filled" },
 		"size":         { "type": "string",  "default": "default" },
 		"iconClass":    { "type": "string",  "default": "" },
-		"iconPosition": { "type": "string",  "default": "left" }
+		"iconPosition": { "type": "string",  "default": "left" },
+		"linkType":     { "type": "string",  "default": "external" },
+		"pageType":     { "type": "string",  "default": "page" },
+		"pageId":       { "type": "number",  "default": 0 }
 	},
 	"editorScript": "ekwa-button-editor"
 }

@@ -16,13 +16,13 @@
 	var TextControl        = wp.components.TextControl;
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 
 	registerBlockType( 'ekwa/link', {
 		edit: function ( props ) {
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 
-			var url    = attributes.url    || '';
 			var text   = attributes.text   || '';
 			var newTab = !! attributes.newTab;
 			var rel    = attributes.rel    || '';
@@ -37,11 +37,9 @@
 			return el( Fragment, null,
 				el( InspectorControls, null,
 					el( PanelBody, { title: __( 'Link Settings' ), initialOpen: true },
-						el( TextControl, {
-							label: __( 'URL' ),
-							value: url,
-							onChange: function ( val ) { setAttributes( { url: val } ); },
-							type: 'url',
+						LinkSourceControls && el( LinkSourceControls, {
+							attributes:    attributes,
+							setAttributes: setAttributes
 						} ),
 						el( TextControl, {
 							label: __( 'Link Text' ),

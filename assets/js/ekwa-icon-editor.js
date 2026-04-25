@@ -21,6 +21,7 @@
 	var ColorPicker        = wp.components.ColorPicker;
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;  // double underscore — the i18n translation function
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 
 	/* ------------------------------------------------------------------ */
 	/* Icon list                                                            */
@@ -186,6 +187,15 @@
 		var url          = attributes.url          || '';
 		var linkTarget   = attributes.linkTarget   || '';
 		var linkRel      = attributes.linkRel      || '';
+		var linkType     = attributes.linkType     || 'external';
+		var pageId       = attributes.pageId       || 0;
+
+		// "Has a destination" gate for showing target/rel controls.
+		var hasDestination = (
+			( 'external'    === linkType && url ) ||
+			( 'internal'    === linkType && pageId ) ||
+			( 'appointment' === linkType )
+		);
 
 		var blockProps = useBlockProps( {
 			style: { textAlign: align || undefined },
@@ -266,22 +276,17 @@
 				),
 
 				el( PanelBody, { title: __( 'Link Settings', 'ekwa' ), initialOpen: false },
-					el( TextControl, {
-						label:                  __( 'URL', 'ekwa' ),
-						help:                   __( 'Make the icon a clickable link.', 'ekwa' ),
-						value:                  url,
-						onChange:               function ( v ) { setAttributes( { url: v.trim() } ); },
-						type:                   'url',
-						__next40pxDefaultSize:  true,
-						__nextHasNoMarginBottom: true,
+					LinkSourceControls && el( LinkSourceControls, {
+						attributes:    attributes,
+						setAttributes: setAttributes
 					} ),
-					url && el( ToggleControl, {
+					hasDestination && el( ToggleControl, {
 						label:    __( 'Open in new tab', 'ekwa' ),
 						checked:  linkTarget === '_blank',
 						onChange: function ( v ) { setAttributes( { linkTarget: v ? '_blank' : '' } ); },
 						__nextHasNoMarginBottom: true,
 					} ),
-					url && el( TextControl, {
+					hasDestination && el( TextControl, {
 						label:                  __( 'Link rel', 'ekwa' ),
 						help:                   __( 'Optional rel attribute (e.g. nofollow)', 'ekwa' ),
 						value:                  linkRel,

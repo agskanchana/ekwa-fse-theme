@@ -18,6 +18,7 @@
 	var TextControl        = wp.components.TextControl;
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 
 	var TEMPLATE = [
 		[ 'ekwa/icon', {} ],
@@ -32,9 +33,22 @@
 		var attributes    = props.attributes;
 		var setAttributes = props.setAttributes;
 
-		var url    = attributes.url    || '';
-		var newTab = !! attributes.newTab;
-		var rel    = attributes.rel    || '';
+		var linkType = attributes.linkType || 'external';
+		var url      = attributes.url      || '';
+		var newTab   = !! attributes.newTab;
+		var rel      = attributes.rel      || '';
+
+		// Indicator label depends on link source.
+		var indicatorLabel = '';
+		if ( 'external' === linkType ) {
+			indicatorLabel = url;
+		} else if ( 'internal' === linkType ) {
+			indicatorLabel = attributes.pageId
+				? __( 'Linked to selected page/post', 'ekwa' )
+				: __( 'No page/post selected', 'ekwa' );
+		} else if ( 'appointment' === linkType ) {
+			indicatorLabel = __( 'Appointment URL (from settings)', 'ekwa' );
+		}
 
 		var blockProps = useBlockProps( {
 			className: 'ekwa-card-link ekwa-card-link--editor',
@@ -45,14 +59,9 @@
 			/* ---------- Inspector sidebar ---------- */
 			el( InspectorControls, null,
 				el( PanelBody, { title: __( 'Link Settings', 'ekwa' ), initialOpen: true },
-					el( TextControl, {
-						label:                  __( 'URL', 'ekwa' ),
-						help:                   __( 'The destination when the card is clicked.', 'ekwa' ),
-						value:                  url,
-						onChange:               function ( v ) { setAttributes( { url: v.trim() } ); },
-						type:                   'url',
-						__next40pxDefaultSize:  true,
-						__nextHasNoMarginBottom: true,
+					LinkSourceControls && el( LinkSourceControls, {
+						attributes:    attributes,
+						setAttributes: setAttributes
 					} ),
 					el( ToggleControl, {
 						label:    __( 'Open in new tab', 'ekwa' ),
@@ -75,9 +84,9 @@
 			el( 'div', blockProps,
 
 				/* Link indicator bar */
-				url && el( 'div', { className: 'ekwa-card-link__indicator' },
+				indicatorLabel && el( 'div', { className: 'ekwa-card-link__indicator' },
 					el( 'i', { className: 'fa-solid fa-link', 'aria-hidden': 'true' } ),
-					el( 'span', null, ' ' + url )
+					el( 'span', null, ' ' + indicatorLabel )
 				),
 
 				el( InnerBlocks, {

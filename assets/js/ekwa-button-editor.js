@@ -17,6 +17,7 @@
 	var SelectControl      = wp.components.SelectControl;
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 
 	var VARIANT_OPTIONS = [
 		{ label: 'Filled',  value: 'filled' },
@@ -45,7 +46,6 @@
 		var setAttributes = props.setAttributes;
 
 		var text         = attributes.text         || '';
-		var url          = attributes.url          || '';
 		var newTab       = !! attributes.newTab;
 		var rel          = attributes.rel          || '';
 		var htmlTag      = attributes.htmlTag      || 'a';
@@ -78,13 +78,9 @@
 						__next40pxDefaultSize:  true,
 						__nextHasNoMarginBottom: true,
 					} ),
-					el( TextControl, {
-						label:    __( 'URL', 'ekwa' ),
-						value:    url,
-						onChange: function ( v ) { setAttributes( { url: v.trim() } ); },
-						type:     'url',
-						__next40pxDefaultSize:  true,
-						__nextHasNoMarginBottom: true,
+					LinkSourceControls && el( LinkSourceControls, {
+						attributes:    attributes,
+						setAttributes: setAttributes
 					} ),
 					el( ToggleControl, {
 						label:    __( 'Open in new tab', 'ekwa' ),

@@ -21,7 +21,10 @@
 		"align":        { "type": "string", "default": "" },
 		"url":          { "type": "string", "default": "" },
 		"linkTarget":   { "type": "string", "default": "" },
-		"linkRel":      { "type": "string", "default": "" }
+		"linkRel":      { "type": "string", "default": "" },
+		"linkType":     { "type": "string", "default": "external" },
+		"pageType":     { "type": "string", "default": "page" },
+		"pageId":       { "type": "number", "default": 0 }
 	},
 	"editorScript": "ekwa-icon-editor"
 }
