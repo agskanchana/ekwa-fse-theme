@@ -43,6 +43,7 @@ function ekwa_admin_enqueue( $hook ) {
 		return;
 	}
 	wp_enqueue_media();
+	wp_enqueue_style( 'wp-color-picker' );
 	// Font Awesome — needed so icon previews render inside the admin settings page.
 	wp_enqueue_style(
 		'font-awesome',
@@ -59,7 +60,7 @@ function ekwa_admin_enqueue( $hook ) {
 	wp_enqueue_script(
 		'ekwa-admin-js',
 		get_template_directory_uri() . '/assets/js/ekwa-admin.js',
-		array( 'jquery' ),
+		array( 'jquery', 'wp-color-picker' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
@@ -68,6 +69,14 @@ function ekwa_admin_enqueue( $hook ) {
 		'mediaButton'      => __( 'Use this image', 'ekwa' ),
 		'confirmRemove'    => __( 'Are you sure you want to remove this item?', 'ekwa' ),
 		'noImage'          => __( 'No image selected', 'ekwa' ),
+		'webpRegenUrl'     => esc_url_raw( rest_url( 'ekwa/v1/webp-regen-batch' ) ),
+		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
+		'webpStrings'      => array(
+			'starting'  => __( 'Starting…', 'ekwa' ),
+			'progress'  => __( '%1$s of %2$s processed', 'ekwa' ),
+			'done'      => __( 'Done. %s files generated.', 'ekwa' ),
+			'error'     => __( 'Error during regeneration. Check console for details.', 'ekwa' ),
+		),
 	) );
 }
 add_action( 'admin_enqueue_scripts', 'ekwa_admin_enqueue' );
@@ -139,6 +148,24 @@ function ekwa_get_appointment_url() {
 	}
 	$link = get_permalink( $page_id );
 	return $link ? $link : '';
+}
+
+/**
+ * Sanitize a color value — accepts hex (#abc/#aabbcc) or rgb()/rgba(); empty string allowed.
+ */
+function ekwa_sanitize_color( $value ) {
+	$value = trim( (string) $value );
+	if ( '' === $value ) {
+		return '';
+	}
+	$hex = sanitize_hex_color( $value );
+	if ( $hex ) {
+		return $hex;
+	}
+	if ( preg_match( '/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/i', $value ) ) {
+		return $value;
+	}
+	return '';
 }
 
 /**
@@ -239,12 +266,26 @@ function ekwa_save_settings() {
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
 		'ekwa_gemini_api_key'   => 'sanitize_text_field',
+		'ekwa_mmenu_bg'           => 'ekwa_sanitize_color',
+		'ekwa_mmenu_text'         => 'ekwa_sanitize_color',
+		'ekwa_mmenu_icon'         => 'ekwa_sanitize_color',
+		'ekwa_mmenu_divider'      => 'ekwa_sanitize_color',
+		'ekwa_mmenu_navbar_bg'    => 'ekwa_sanitize_color',
+		'ekwa_mmenu_navbar_text'  => 'ekwa_sanitize_color',
 	);
 
 	foreach ( $fields as $key => $sanitize ) {
 		$value = isset( $_POST[ $key ] ) ? call_user_func( $sanitize, wp_unslash( $_POST[ $key ] ) ) : '';
 		update_option( $key, $value );
 	}
+
+	// WebP options — checkboxes need explicit handling so unchecked saves as 0.
+	update_option( 'ekwa_webp_enabled', isset( $_POST['ekwa_webp_enabled'] ) ? 1 : 0 );
+	update_option( 'ekwa_webp_apply_core_image', isset( $_POST['ekwa_webp_apply_core_image'] ) ? 1 : 0 );
+	$quality = isset( $_POST['ekwa_webp_quality'] ) ? (int) $_POST['ekwa_webp_quality'] : 82;
+	if ( $quality < 50 ) { $quality = 50; }
+	if ( $quality > 100 ) { $quality = 100; }
+	update_option( 'ekwa_webp_quality', $quality );
 
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
@@ -299,6 +340,12 @@ function ekwa_render_settings_page() {
 	$pub_logo      = get_option( 'ekwa_publisher_logo', 0 );
 	$share_img     = get_option( 'ekwa_share_image', 0 );
 	$country       = get_option( 'ekwa_country', '' );
+	$mmenu_bg          = get_option( 'ekwa_mmenu_bg', '' );
+	$mmenu_text        = get_option( 'ekwa_mmenu_text', '' );
+	$mmenu_icon        = get_option( 'ekwa_mmenu_icon', '' );
+	$mmenu_divider     = get_option( 'ekwa_mmenu_divider', '' );
+	$mmenu_navbar_bg   = get_option( 'ekwa_mmenu_navbar_bg', '' );
+	$mmenu_navbar_text = get_option( 'ekwa_mmenu_navbar_text', '' );
 	$locations     = get_option( 'ekwa_locations', array() );
 	$social        = get_option( 'ekwa_social', array() );
 	$pages         = get_pages();
@@ -492,6 +539,38 @@ function ekwa_render_settings_page() {
 				</table>
 			</div>
 
+			<!-- ========== MOBILE MENU COLORS ========== -->
+			<div class="ekwa-section">
+				<h2><?php esc_html_e( 'Mobile Menu Colors', 'ekwa' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Overrides the off-canvas mobile menu (mmenu) colors. Leave a field empty to use the theme palette default.', 'ekwa' ); ?></p>
+				<table class="form-table">
+					<tr>
+						<th><label for="ekwa_mmenu_bg"><?php esc_html_e( 'Panel Background', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_bg" name="ekwa_mmenu_bg" value="<?php echo esc_attr( $mmenu_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_mmenu_text"><?php esc_html_e( 'Menu Item Text', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_text" name="ekwa_mmenu_text" value="<?php echo esc_attr( $mmenu_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_mmenu_icon"><?php esc_html_e( 'Menu Item Icon', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_icon" name="ekwa_mmenu_icon" value="<?php echo esc_attr( $mmenu_icon ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_mmenu_divider"><?php esc_html_e( 'Item Divider', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_divider" name="ekwa_mmenu_divider" value="<?php echo esc_attr( $mmenu_divider ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_mmenu_navbar_bg"><?php esc_html_e( 'Sub-page Header Background', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_navbar_bg" name="ekwa_mmenu_navbar_bg" value="<?php echo esc_attr( $mmenu_navbar_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_mmenu_navbar_text"><?php esc_html_e( 'Sub-page Header Text', 'ekwa' ); ?></label></th>
+						<td><input type="text" id="ekwa_mmenu_navbar_text" name="ekwa_mmenu_navbar_text" value="<?php echo esc_attr( $mmenu_navbar_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+					</tr>
+				</table>
+			</div>
+
 			<!-- ========== LOCATIONS REPEATER ========== -->
 			<div class="ekwa-section">
 				<h2><?php esc_html_e( 'Locations', 'ekwa' ); ?></h2>
@@ -558,6 +637,52 @@ function ekwa_render_settings_page() {
 					</td>
 				</tr>
 			</table>
+
+			<!-- ========== WEBP IMAGES ========== -->
+			<div class="ekwa-section">
+				<h2><?php esc_html_e( 'WebP Images', 'ekwa' ); ?></h2>
+				<p class="description" style="margin-bottom:1em;">
+					<?php esc_html_e( 'Generates smaller .webp companions for every uploaded image and serves them automatically to browsers that support WebP. The original JPG/PNG is delivered unchanged to browsers that don\'t support WebP — no markup or block changes needed.', 'ekwa' ); ?>
+				</p>
+				<table class="form-table">
+					<tr>
+						<th><?php esc_html_e( 'Enable WebP', 'ekwa' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="ekwa_webp_enabled" value="1" <?php checked( get_option( 'ekwa_webp_enabled', 1 ), 1 ); ?> />
+								<?php esc_html_e( 'Auto-generate WebP on upload and swap image URLs for compatible browsers', 'ekwa' ); ?>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_webp_quality"><?php esc_html_e( 'Quality', 'ekwa' ); ?></label></th>
+						<td>
+							<input type="number" id="ekwa_webp_quality" name="ekwa_webp_quality" min="50" max="100" step="1" value="<?php echo esc_attr( get_option( 'ekwa_webp_quality', 82 ) ); ?>" class="small-text" />
+							<p class="description"><?php esc_html_e( '50–100. 82 is a good balance of size and visual quality.', 'ekwa' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Apply to core/image', 'ekwa' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="ekwa_webp_apply_core_image" value="1" <?php checked( get_option( 'ekwa_webp_apply_core_image', 1 ), 1 ); ?> />
+								<?php esc_html_e( 'Also swap URLs in core WordPress image blocks (recommended)', 'ekwa' ); ?>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Existing media', 'ekwa' ); ?></th>
+						<td>
+							<button type="button" class="button button-secondary" id="ekwa-webp-regen-btn"><?php esc_html_e( 'Regenerate WebP for All Images', 'ekwa' ); ?></button>
+							<div id="ekwa-webp-regen-status" style="margin-top:8px;"></div>
+							<div id="ekwa-webp-regen-progress" style="margin-top:8px;display:none;background:#eee;border-radius:4px;height:14px;overflow:hidden;max-width:400px;">
+								<div id="ekwa-webp-regen-bar" style="background:#2271b1;height:100%;width:0;transition:width .15s ease;"></div>
+							</div>
+							<p class="description"><?php esc_html_e( 'Run this once to convert images uploaded before WebP was enabled. New uploads convert automatically.', 'ekwa' ); ?></p>
+						</td>
+					</tr>
+				</table>
+			</div>
 
 			<?php submit_button( __( 'Save Settings', 'ekwa' ) ); ?>
 		</form>

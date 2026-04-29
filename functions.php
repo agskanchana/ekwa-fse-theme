@@ -27,6 +27,11 @@ $ekwa_theme_updater = PucFactory::buildUpdateChecker(
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * Load schema.org JSON-LD output (uses ekwa-settings data).
+ */
+require_once get_template_directory() . '/inc/ekwa-schema.php';
+
+/**
  * Load shortcode builder admin page.
  */
 require_once get_template_directory() . '/inc/ekwa-shortcode-builder.php';
@@ -41,6 +46,11 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
  */
 
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
+
+/**
+ * Load WebP image support (auto-generation + transparent URL swap).
+ */
+require_once get_template_directory() . '/inc/ekwa-webp.php';
 
 /**
  * Load block style variations.
@@ -190,8 +200,9 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script
  */
 function ekwa_setup() {
 	register_nav_menus( array(
-		'primary' => __( 'Primary Menu', 'ekwa' ),
-		'mobile'  => __( 'Mobile Menu', 'ekwa' ),
+		'primary'         => __( 'Primary Menu', 'ekwa' ),
+		'mobile'          => __( 'Mobile Menu', 'ekwa' ),
+		'mobile_services' => __( 'Mobile Services Menu', 'ekwa' ),
 	) );
 	add_theme_support( 'post-thumbnails' );
 	add_theme_support( 'title-tag' );

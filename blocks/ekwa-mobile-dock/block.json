@@ -14,6 +14,12 @@
 		"anchor": true,
 		"multiple": false
 	},
-	"attributes": {},
+	"attributes": {
+		"iconCall":     { "type": "string", "default": "" },
+		"iconBook":     { "type": "string", "default": "" },
+		"iconUp":       { "type": "string", "default": "" },
+		"iconServices": { "type": "string", "default": "" },
+		"iconFindUs":   { "type": "string", "default": "" }
+	},
 	"editorScript": "ekwa-mobile-dock-editor"
 }

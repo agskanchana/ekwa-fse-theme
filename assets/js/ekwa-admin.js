@@ -2,6 +2,15 @@
 	'use strict';
 
 	/* ============================================================
+	 *  Color pickers
+	 * ============================================================ */
+	$(function () {
+		if ($.fn.wpColorPicker) {
+			$('.ekwa-color-field').wpColorPicker();
+		}
+	});
+
+	/* ============================================================
 	 *  Appointment type toggle
 	 * ============================================================ */
 	$(document).on('change', '.ekwa-appt-type-radio', function () {
@@ -288,6 +297,72 @@
 	$(document).on('blur', '.ekwa-icon-input', function () {
 		var $field = $(this).closest('.ekwa-icon-field');
 		setTimeout(function () { ekwaClosePicker($field); }, 120);
+	});
+
+	/* ============================================================
+	 *  WebP bulk regeneration
+	 * ============================================================ */
+	$(document).on('click', '#ekwa-webp-regen-btn', function (e) {
+		e.preventDefault();
+
+		var $btn      = $(this);
+		var $status   = $('#ekwa-webp-regen-status');
+		var $progress = $('#ekwa-webp-regen-progress');
+		var $bar      = $('#ekwa-webp-regen-bar');
+		var strings   = (window.ekwaAdmin && ekwaAdmin.webpStrings) || {};
+		var endpoint  = window.ekwaAdmin && ekwaAdmin.webpRegenUrl;
+		var nonce     = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
+
+		if (!endpoint) {
+			$status.text('REST endpoint missing.');
+			return;
+		}
+
+		$btn.prop('disabled', true);
+		$progress.show();
+		$bar.css('width', '0%');
+		$status.text(strings.starting || 'Starting…');
+
+		var totalProcessed = 0;
+		var totalGenerated = 0;
+		var totalImages    = 0;
+		var offset         = 0;
+		var batchSize      = 10;
+
+		function tick() {
+			$.ajax({
+				url: endpoint,
+				method: 'POST',
+				data: { offset: offset, batch_size: batchSize },
+				headers: { 'X-WP-Nonce': nonce }
+			}).done(function (res) {
+				totalProcessed += (res.processed || 0);
+				totalGenerated += (res.generated || 0);
+				totalImages     = res.total || totalImages;
+				offset          = res.next_offset || (offset + batchSize);
+
+				var pct = totalImages ? Math.round((totalProcessed / totalImages) * 100) : 100;
+				$bar.css('width', pct + '%');
+
+				var progressText = (strings.progress || '%1$s of %2$s processed')
+					.replace('%1$s', totalProcessed)
+					.replace('%2$s', totalImages);
+				$status.text(progressText);
+
+				if (res.done) {
+					$status.text((strings.done || 'Done. %s files generated.').replace('%s', totalGenerated));
+					$btn.prop('disabled', false);
+				} else {
+					tick();
+				}
+			}).fail(function (xhr) {
+				$status.text(strings.error || 'Error during regeneration.');
+				$btn.prop('disabled', false);
+				if (window.console && xhr) { console.error('WebP regen failed:', xhr.responseText); }
+			});
+		}
+
+		tick();
 	});
 
 })(jQuery);

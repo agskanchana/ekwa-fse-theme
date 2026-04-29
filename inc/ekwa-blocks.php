@@ -1544,6 +1544,25 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 		true
 	);
 
+	// Emit per-site mmenu color overrides as CSS custom properties.
+	$mmenu_color_map = array(
+		'--ekwa-mmenu-bg'           => get_option( 'ekwa_mmenu_bg', '' ),
+		'--ekwa-mmenu-text'         => get_option( 'ekwa_mmenu_text', '' ),
+		'--ekwa-mmenu-icon'         => get_option( 'ekwa_mmenu_icon', '' ),
+		'--ekwa-mmenu-divider'      => get_option( 'ekwa_mmenu_divider', '' ),
+		'--ekwa-mmenu-navbar-bg'    => get_option( 'ekwa_mmenu_navbar_bg', '' ),
+		'--ekwa-mmenu-navbar-text'  => get_option( 'ekwa_mmenu_navbar_text', '' ),
+	);
+	$mmenu_css = '';
+	foreach ( $mmenu_color_map as $var_name => $var_value ) {
+		if ( '' !== $var_value ) {
+			$mmenu_css .= $var_name . ':' . $var_value . ';';
+		}
+	}
+	if ( '' !== $mmenu_css ) {
+		wp_add_inline_style( 'mmenu-light', ':root{' . $mmenu_css . '}' );
+	}
+
 	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
 	$out = '';
 
@@ -1577,6 +1596,73 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 	return $out;
 }
 
+
+/**
+ * Sanitize a user-pasted SVG string for safe inline output.
+ *
+ * Allows only the tags/attributes needed for simple icon SVGs. Strips
+ * <script>, event handlers, and external xlink:href values.
+ *
+ * @param string $svg
+ * @return string Sanitized SVG, or '' when nothing valid remains.
+ */
+function ekwa_sanitize_dock_svg( $svg ) {
+	$svg = is_string( $svg ) ? trim( $svg ) : '';
+	if ( '' === $svg || stripos( $svg, '<svg' ) === false ) {
+		return '';
+	}
+
+	$attrs_common = array(
+		'class'            => true,
+		'fill'             => true,
+		'stroke'           => true,
+		'stroke-width'     => true,
+		'stroke-linecap'   => true,
+		'stroke-linejoin'  => true,
+		'stroke-miterlimit'=> true,
+		'stroke-dasharray' => true,
+		'opacity'          => true,
+		'transform'        => true,
+		'style'            => true,
+	);
+
+	$allowed = array(
+		'svg' => array_merge( $attrs_common, array(
+			'xmlns'       => true,
+			'xmlns:xlink' => true,
+			'viewbox'     => true,
+			'width'       => true,
+			'height'      => true,
+			'preserveaspectratio' => true,
+			'aria-hidden' => true,
+			'role'        => true,
+			'focusable'   => true,
+		) ),
+		'g'      => array_merge( $attrs_common, array( 'id' => true ) ),
+		'title'  => array(),
+		'desc'   => array(),
+		'defs'   => array(),
+		'path'   => array_merge( $attrs_common, array( 'd' => true ) ),
+		'circle' => array_merge( $attrs_common, array( 'cx' => true, 'cy' => true, 'r' => true ) ),
+		'ellipse'=> array_merge( $attrs_common, array( 'cx' => true, 'cy' => true, 'rx' => true, 'ry' => true ) ),
+		'rect'   => array_merge( $attrs_common, array( 'x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'ry' => true ) ),
+		'line'   => array_merge( $attrs_common, array( 'x1' => true, 'y1' => true, 'x2' => true, 'y2' => true ) ),
+		'polyline' => array_merge( $attrs_common, array( 'points' => true ) ),
+		'polygon'  => array_merge( $attrs_common, array( 'points' => true ) ),
+		'linearGradient' => array_merge( $attrs_common, array( 'id' => true, 'x1' => true, 'y1' => true, 'x2' => true, 'y2' => true, 'gradientunits' => true ) ),
+		'radialGradient' => array_merge( $attrs_common, array( 'id' => true, 'cx' => true, 'cy' => true, 'r' => true, 'fx' => true, 'fy' => true, 'gradientunits' => true ) ),
+		'stop'   => array_merge( $attrs_common, array( 'offset' => true, 'stop-color' => true, 'stop-opacity' => true ) ),
+		'use'    => array_merge( $attrs_common, array( 'href' => true, 'x' => true, 'y' => true, 'width' => true, 'height' => true ) ),
+	);
+
+	$clean = wp_kses( $svg, $allowed );
+
+	// Defense-in-depth: drop any remaining on* event attrs and javascript: URIs.
+	$clean = preg_replace( '/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean );
+	$clean = preg_replace( '/(href|xlink:href)\s*=\s*("|\')\s*javascript:[^"\']*\2/i', '', $clean );
+
+	return ( stripos( $clean, '<svg' ) === false ) ? '' : $clean;
+}
 
 /**
  * Server-side render callback for the ekwa/mobile-dock block.
@@ -1658,22 +1744,45 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 
 	$bid = 'ekwa-mobile-dock';
 
+	// Ensure mmenu-light is loaded for the services drawer (and harmless if the
+	// hamburger block already enqueued it — wp_enqueue_* dedupes on handle).
+	wp_enqueue_style(
+		'mmenu-light',
+		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
+		array(),
+		'3.2.2'
+	);
+	wp_enqueue_script(
+		'mmenu-light',
+		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
+		array(),
+		'3.2.2',
+		true
+	);
+
 	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
 	// ── HTML ─────────────────────────────────────────────────────
 	$html  = '<div class="ekwa-mobile-dock">';
 	$html .= '<div class="dock-wrap">';
 
-	// SVG icons.
-	$svg_phone    = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
-	$svg_calendar = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
-	$svg_arrow_up = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
-	$svg_services = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path d="M12 8v8M8 12h8"/></svg>';
-	$svg_pin      = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
-	$svg_chevron  = '<svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+	// Default SVG icons.
+	$default_phone    = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+	$default_calendar = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+	$default_arrow_up = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+	$default_services = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path d="M12 8v8M8 12h8"/></svg>';
+	$default_pin      = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+	$svg_chevron      = '<svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+	// Per-button override: sanitized SVG from attributes, falling back to default.
+	$svg_phone    = ekwa_sanitize_dock_svg( $attrs['iconCall']     ?? '' ) ?: $default_phone;
+	$svg_calendar = ekwa_sanitize_dock_svg( $attrs['iconBook']     ?? '' ) ?: $default_calendar;
+	$svg_arrow_up = ekwa_sanitize_dock_svg( $attrs['iconUp']       ?? '' ) ?: $default_arrow_up;
+	$svg_services = ekwa_sanitize_dock_svg( $attrs['iconServices'] ?? '' ) ?: $default_services;
+	$svg_pin      = ekwa_sanitize_dock_svg( $attrs['iconFindUs']   ?? '' ) ?: $default_pin;
 
 	// 1. Call
 	if ( $needs_call_popup ) {
-		$html .= '<button class="dock-item call-item" data-popup="call-popup-' . $bid . '" aria-label="Call">';
+		$html .= '<button type="button" class="dock-item call-item" data-popup="call-popup-' . $bid . '" aria-label="Call">';
 	} else {
 		$html .= '<a href="tel:' . esc_attr( $single_phone ) . '" class="dock-item call-item" aria-label="Call">';
 	}
@@ -1687,18 +1796,18 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 	$html .= '<span class="dock-divider"></span>';
 
 	// 3. Scroll Up (FAB)
-	$html .= '<button class="dock-item scroll-up-item" aria-label="Scroll to Top">';
+	$html .= '<button type="button" class="dock-item scroll-up-item" aria-label="Scroll to Top">';
 	$html .= $svg_arrow_up . '<span class="dock-label">Up</span></button>';
 
 	$html .= '<span class="dock-divider"></span>';
 
 	// 4. Services
-	$html .= '<button class="dock-item services-item" aria-label="Services">';
+	$html .= '<button type="button" class="dock-item services-item" aria-label="Services" aria-controls="ekwa-mobile-services-nav" aria-expanded="false">';
 	$html .= $svg_services . '<span class="dock-label">Services</span></button>';
 
 	// 5. Find Us
 	if ( $needs_loc_popup ) {
-		$html .= '<button class="dock-item findus-item" data-popup="location-popup-' . $bid . '" aria-label="Find Us">';
+		$html .= '<button type="button" class="dock-item findus-item" data-popup="location-popup-' . $bid . '" aria-label="Find Us">';
 	} else {
 		$html .= '<a href="' . esc_url( $single_direction ) . '" class="dock-item findus-item" target="_blank" rel="noopener" aria-label="Find Us">';
 	}
@@ -1708,12 +1817,27 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 	$html .= '</div>'; // .dock-wrap
 	$html .= '</div>'; // #bid
 
+	// ── Mobile Services nav (mmenu-light drawer) ───────────────────
+	if ( has_nav_menu( 'mobile_services' ) ) {
+		ob_start();
+		wp_nav_menu( array(
+			'theme_location'  => 'mobile_services',
+			'container'       => 'nav',
+			'container_id'    => 'ekwa-mobile-services-nav',
+			'container_class' => 'ekwa-mobile-nav ekwa-mobile-services-nav',
+			'walker'          => new Ekwa_Mobile_Menu_Walker(),
+			'fallback_cb'     => false,
+			'depth'           => 3,
+		) );
+		$html .= ob_get_clean();
+	}
+
 	// ── Call popup ──────────────────────────────────────────────
 	if ( $needs_call_popup ) {
 		$html .= '<div class="ekwa-dock-popup" id="call-popup-' . esc_attr( $bid ) . '">';
 		$html .= '<div class="popup-content"><div class="popup-header">';
 		$html .= '<div class="popup-title">Call Us</div>';
-		$html .= '<button class="popup-close" aria-label="Close">&times;</button>';
+		$html .= '<button type="button" class="popup-close" aria-label="Close">&times;</button>';
 		$html .= '</div><div class="popup-body">';
 
 		$li = 0;
@@ -1724,7 +1848,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 
 			$html .= '<div class="location-accordion">';
 			if ( count( $phone_data ) > 1 ) {
-				$html .= '<button class="accordion-header' . ( $first ? ' active' : '' )
+				$html .= '<button type="button" class="accordion-header' . ( $first ? ' active' : '' )
 					. '" data-accordion="' . esc_attr( $aid ) . '">'
 					. '<div class="location-name">' . esc_html( $loc['city'] ) . '</div>'
 					. $svg_chevron . '</button>';
@@ -1757,7 +1881,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 		$html .= '<div class="ekwa-dock-popup" id="location-popup-' . esc_attr( $bid ) . '">';
 		$html .= '<div class="popup-content"><div class="popup-header">';
 		$html .= '<div class="popup-title">Find Us</div>';
-		$html .= '<button class="popup-close" aria-label="Close">&times;</button>';
+		$html .= '<button type="button" class="popup-close" aria-label="Close">&times;</button>';
 		$html .= '</div><div class="popup-body">';
 
 		$li = 0;
@@ -1767,7 +1891,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 			$first = ( 0 === $li );
 
 			$html .= '<div class="location-accordion">';
-			$html .= '<button class="accordion-header' . ( $first ? ' active' : '' )
+			$html .= '<button type="button" class="accordion-header' . ( $first ? ' active' : '' )
 				. '" data-accordion="' . esc_attr( $aid ) . '">'
 				. '<div class="location-name">' . esc_html( $loc['city'] ) . '</div>'
 				. $svg_chevron . '</button>';
