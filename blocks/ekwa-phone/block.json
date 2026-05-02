@@ -17,6 +17,7 @@
 		"type":        { "type": "string",  "default": "new" },
 		"location":    { "type": "number",  "default": 1 },
 		"prefix":      { "type": "string",  "default": "" },
+		"showPrefix":  { "type": "boolean", "default": true },
 		"showIcon":    { "type": "boolean", "default": true },
 		"iconClass":   { "type": "string",  "default": "fa-solid fa-phone" },
 		"countryCode": { "type": "string",  "default": "" }

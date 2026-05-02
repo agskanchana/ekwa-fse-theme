@@ -67,7 +67,15 @@
 							},
 						} ),
 
-						el( TextControl, {
+						el( ToggleControl, {
+							label:    __( 'Show Prefix Label', 'ekwa' ),
+							checked:  attrs.showPrefix,
+							onChange: function ( value ) {
+								setAttrs( { showPrefix: value } );
+							},
+						} ),
+
+						attrs.showPrefix && el( TextControl, {
 							label:    __( 'Prefix Label', 'ekwa' ),
 							help:     __( 'Leave blank to use the default label (e.g. "New Patients:").', 'ekwa' ),
 							value:    attrs.prefix,

@@ -884,6 +884,7 @@ function ekwa_render_phone_block( $attrs ) {
 		'type'         => isset( $attrs['type'] )        ? $attrs['type']                                          : 'new',
 		'location'     => isset( $attrs['location'] )    ? $attrs['location']                                      : 1,
 		'prefix'       => isset( $attrs['prefix'] )      ? $attrs['prefix']                                        : '',
+		'show_prefix'  => isset( $attrs['showPrefix'] )  ? ( $attrs['showPrefix'] ? 'true' : 'false' )             : 'true',
 		'show_icon'    => isset( $attrs['showIcon'] )    ? ( $attrs['showIcon'] ? 'true' : 'false' )               : 'true',
 		'icon_class'   => isset( $attrs['iconClass'] )   ? $attrs['iconClass']                                     : 'fa-solid fa-phone',
 		'country_code' => isset( $attrs['countryCode'] ) ? $attrs['countryCode']                                   : '',
