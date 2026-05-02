@@ -128,3 +128,410 @@
 	transform: translateY(-4px);
 	box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
 }
+
+/* ==========================================================================
+   ekwa/faq — Underline (animated accent line slides in on open)
+   ========================================================================== */
+
+.ekwa-faq.is-style-default,
+.ekwa-faq:not([class*="is-style-"]) {
+	display: block;
+}
+.ekwa-faq.is-style-default .ekwa-faq__item,
+.ekwa-faq:not([class*="is-style-"]) .ekwa-faq__item {
+	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+	position: relative;
+	transition: padding-left 0.25s ease;
+}
+.ekwa-faq.is-style-default .ekwa-faq__item::after,
+.ekwa-faq:not([class*="is-style-"]) .ekwa-faq__item::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	bottom: -1px;
+	height: 2px;
+	width: 0;
+	background: var(--ekwa-faq-accent);
+	transition: width 0.35s ease;
+	pointer-events: none;
+}
+.ekwa-faq.is-style-default .ekwa-faq__item[open]::after,
+.ekwa-faq:not([class*="is-style-"]) .ekwa-faq__item[open]::after {
+	width: 100%;
+}
+.ekwa-faq.is-style-default .ekwa-faq__item:last-child,
+.ekwa-faq:not([class*="is-style-"]) .ekwa-faq__item:last-child {
+	border-bottom: 0;
+}
+
+/* ==========================================================================
+   ekwa/faq — Bordered Box (rounded outer border + accent on open)
+   ========================================================================== */
+
+.ekwa-faq.is-style-bordered {
+	border: 1px solid rgba(0, 0, 0, 0.12);
+	border-radius: 12px;
+	overflow: hidden;
+	background: #fff;
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__item + .ekwa-faq__item {
+	border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__item {
+	transition: background-color 0.25s ease;
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__item:hover {
+	background-color: rgba(0, 0, 0, 0.015);
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__item[open] {
+	background: linear-gradient(180deg, rgba(26, 110, 245, 0.04), transparent);
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__q {
+	padding: 20px 24px;
+}
+.ekwa-faq.is-style-bordered .ekwa-faq__a {
+	padding: 0 24px 20px;
+}
+
+/* ==========================================================================
+   ekwa/faq — Boxed Cards (with animated top accent on open)
+   ========================================================================== */
+
+.ekwa-faq.is-style-boxed {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__item {
+	position: relative;
+	background: var(--ekwa-faq-item-bg, #fff);
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 12px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+	overflow: hidden;
+	transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__item::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 3px;
+	background: var(--ekwa-faq-accent);
+	transform: scaleX(0);
+	transform-origin: left;
+	transition: transform 0.35s ease;
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__item:hover {
+	box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.08);
+	transform: translateY(-1px);
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__item[open] {
+	border-color: rgba(0, 0, 0, 0.04);
+	box-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.18);
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__item[open]::before {
+	transform: scaleX(1);
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__q {
+	padding: 20px 24px;
+}
+.ekwa-faq.is-style-boxed .ekwa-faq__a {
+	padding: 0 24px 20px;
+}
+
+/* ==========================================================================
+   ekwa/faq — Filled (soft gradient + accent border on open)
+   ========================================================================== */
+
+.ekwa-faq.is-style-filled {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.ekwa-faq.is-style-filled .ekwa-faq__item {
+	background: var(--ekwa-faq-item-bg, linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%));
+	border: 1px solid transparent;
+	border-radius: 12px;
+	transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.ekwa-faq.is-style-filled .ekwa-faq__item:hover {
+	border-color: rgba(0, 0, 0, 0.06);
+}
+.ekwa-faq.is-style-filled .ekwa-faq__item[open] {
+	background: var(--ekwa-faq-item-bg, linear-gradient(180deg, #ffffff 0%, #f8fafc 100%));
+	border-color: var(--ekwa-faq-accent);
+	box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.12);
+}
+.ekwa-faq.is-style-filled .ekwa-faq__q {
+	padding: 18px 22px;
+}
+.ekwa-faq.is-style-filled .ekwa-faq__a {
+	padding: 0 22px 18px;
+}
+
+/* ==========================================================================
+   ekwa/faq — Minimal (hairline + tight spacing, refined chevron)
+   ========================================================================== */
+
+.ekwa-faq.is-style-minimal .ekwa-faq__item {
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.ekwa-faq.is-style-minimal .ekwa-faq__item:last-child {
+	border-bottom: 0;
+}
+.ekwa-faq.is-style-minimal .ekwa-faq__q {
+	padding: 14px 0;
+	font-weight: 500;
+}
+.ekwa-faq.is-style-minimal .ekwa-faq__icon {
+	width: 22px;
+	height: 22px;
+	font-size: 0.8em;
+	border: 1px solid currentColor;
+	border-radius: 50%;
+	opacity: 0.6;
+	transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.ekwa-faq.is-style-minimal .ekwa-faq__item[open] .ekwa-faq__icon {
+	opacity: 1;
+}
+.ekwa-faq.is-style-minimal .ekwa-faq__a {
+	padding: 0 0 14px;
+	font-size: 0.95em;
+}
+
+/* ==========================================================================
+   ekwa/faq — Accent Bar (left vertical bar that grows on open)
+   ========================================================================== */
+
+.ekwa-faq.is-style-accent {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__item {
+	position: relative;
+	background: var(--ekwa-faq-item-bg, rgba(0, 0, 0, 0.02));
+	border-radius: 8px;
+	transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__item::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 12px;
+	bottom: 12px;
+	width: 3px;
+	background: var(--ekwa-faq-accent);
+	border-radius: 0 3px 3px 0;
+	opacity: 0.5;
+	transition: width 0.25s ease, opacity 0.25s ease, top 0.25s ease, bottom 0.25s ease;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__item:hover::before {
+	opacity: 0.8;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__item[open]::before {
+	width: 5px;
+	opacity: 1;
+	top: 0;
+	bottom: 0;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__item[open] {
+	background: var(--ekwa-faq-item-bg, rgba(0, 0, 0, 0.04));
+	box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.1);
+}
+.ekwa-faq.is-style-accent .ekwa-faq__q {
+	padding: 18px 22px 18px 24px;
+}
+.ekwa-faq.is-style-accent .ekwa-faq__a {
+	padding: 0 22px 18px 24px;
+}
+
+/* ==========================================================================
+   ekwa/faq — Plus / Cross (CSS-drawn animated +/× icon)
+   ========================================================================== */
+
+.ekwa-faq.is-style-plus .ekwa-faq__item {
+	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+	transition: background-color 0.2s ease;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__item:hover {
+	background-color: rgba(0, 0, 0, 0.02);
+}
+.ekwa-faq.is-style-plus .ekwa-faq__item:last-child {
+	border-bottom: 0;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__q {
+	padding: 22px 8px;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__a {
+	padding: 0 8px 22px;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__icon {
+	position: relative;
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	background: rgba(0, 0, 0, 0.04);
+	transform: none !important;
+	transition: background-color 0.25s ease;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__icon i {
+	display: none;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__icon::before,
+.ekwa-faq.is-style-plus .ekwa-faq__icon::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	background: var(--ekwa-faq-accent);
+	border-radius: 1px;
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__icon::before {
+	width: 12px;
+	height: 2px;
+	transform: translate(-50%, -50%);
+}
+.ekwa-faq.is-style-plus .ekwa-faq__icon::after {
+	width: 2px;
+	height: 12px;
+	transform: translate(-50%, -50%);
+}
+.ekwa-faq.is-style-plus .ekwa-faq__item[open] .ekwa-faq__icon {
+	background: var(--ekwa-faq-accent);
+}
+.ekwa-faq.is-style-plus .ekwa-faq__item[open] .ekwa-faq__icon::before,
+.ekwa-faq.is-style-plus .ekwa-faq__item[open] .ekwa-faq__icon::after {
+	background: #fff;
+}
+.ekwa-faq.is-style-plus .ekwa-faq__item[open] .ekwa-faq__icon::after {
+	transform: translate(-50%, -50%) rotate(90deg);
+	opacity: 0;
+}
+
+/* ==========================================================================
+   ekwa/faq — Numbered (CSS counter shows large faded numbers)
+   ========================================================================== */
+
+.ekwa-faq.is-style-numbered {
+	counter-reset: ekwa-faq;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__item {
+	counter-increment: ekwa-faq;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	transition: background-color 0.25s ease;
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__item:last-child {
+	border-bottom: 0;
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__q {
+	padding: 22px 8px;
+	gap: 18px;
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__q::before {
+	content: counter(ekwa-faq, decimal-leading-zero);
+	flex-shrink: 0;
+	min-width: 2.2em;
+	font-size: 1.5em;
+	font-weight: 800;
+	line-height: 1;
+	color: rgba(0, 0, 0, 0.18);
+	letter-spacing: -0.02em;
+	font-variant-numeric: tabular-nums;
+	transition: color 0.25s ease, transform 0.25s ease;
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__item:hover .ekwa-faq__q::before {
+	color: rgba(0, 0, 0, 0.4);
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__item[open] .ekwa-faq__q::before {
+	color: var(--ekwa-faq-accent);
+	transform: scale(1.05);
+}
+.ekwa-faq.is-style-numbered .ekwa-faq__a {
+	padding: 0 8px 22px calc(2.2em + 26px);
+}
+
+/* ==========================================================================
+   ekwa/faq — Glass (frosted backdrop blur + soft gradient border)
+   ========================================================================== */
+
+.ekwa-faq.is-style-glass {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.ekwa-faq.is-style-glass .ekwa-faq__item {
+	background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.3) 100%);
+	-webkit-backdrop-filter: blur(12px) saturate(160%);
+	backdrop-filter: blur(12px) saturate(160%);
+	border: 1px solid rgba(255, 255, 255, 0.7);
+	border-radius: 16px;
+	box-shadow: 0 8px 32px -8px rgba(31, 38, 135, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+	transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.ekwa-faq.is-style-glass .ekwa-faq__item:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 12px 40px -8px rgba(31, 38, 135, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.ekwa-faq.is-style-glass .ekwa-faq__item[open] {
+	border-color: var(--ekwa-faq-accent);
+	box-shadow: 0 16px 48px -10px rgba(31, 38, 135, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.ekwa-faq.is-style-glass .ekwa-faq__q {
+	padding: 20px 24px;
+}
+.ekwa-faq.is-style-glass .ekwa-faq__a {
+	padding: 0 24px 20px;
+}
+
+/* Fallback for browsers without backdrop-filter support. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.ekwa-faq.is-style-glass .ekwa-faq__item {
+		background: rgba(255, 255, 255, 0.85);
+	}
+}
+
+/* ==========================================================================
+   ekwa/faq — Elevated Soft (neumorphic-style soft shadow lift)
+   ========================================================================== */
+
+.ekwa-faq.is-style-elevated {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.ekwa-faq.is-style-elevated .ekwa-faq__item {
+	background: var(--ekwa-faq-item-bg, #ffffff);
+	border: 0;
+	border-radius: 16px;
+	box-shadow:
+		0 1px 3px rgba(0, 0, 0, 0.04),
+		0 12px 28px -12px rgba(0, 0, 0, 0.12);
+	transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.ekwa-faq.is-style-elevated .ekwa-faq__item:hover {
+	transform: translateY(-2px);
+	box-shadow:
+		0 2px 6px rgba(0, 0, 0, 0.06),
+		0 20px 40px -16px rgba(0, 0, 0, 0.18);
+}
+.ekwa-faq.is-style-elevated .ekwa-faq__item[open] {
+	transform: translateY(-2px);
+	box-shadow:
+		0 2px 8px rgba(0, 0, 0, 0.06),
+		0 28px 56px -18px rgba(0, 0, 0, 0.22),
+		0 0 0 1px rgba(0, 0, 0, 0.02);
+}
+.ekwa-faq.is-style-elevated .ekwa-faq__q {
+	padding: 22px 28px;
+}
+.ekwa-faq.is-style-elevated .ekwa-faq__a {
+	padding: 0 28px 22px;
+}

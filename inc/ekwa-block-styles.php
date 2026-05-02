@@ -67,5 +67,60 @@ function ekwa_register_block_styles() {
 		'name'  => 'card',
 		'label' => __( 'Card', 'ekwa' ),
 	) );
+
+	/* ---------------------------------------------------------------
+	 * ekwa/faq design variations
+	 * ------------------------------------------------------------- */
+
+	register_block_style( 'ekwa/faq', array(
+		'name'         => 'default',
+		'label'        => __( 'Underline (Animated)', 'ekwa' ),
+		'is_default'   => true,
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'bordered',
+		'label' => __( 'Bordered Box', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'boxed',
+		'label' => __( 'Boxed Cards', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'filled',
+		'label' => __( 'Filled', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'minimal',
+		'label' => __( 'Minimal', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'accent',
+		'label' => __( 'Accent Bar', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'plus',
+		'label' => __( 'Plus / Cross', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'numbered',
+		'label' => __( 'Numbered', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'glass',
+		'label' => __( 'Glass', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'elevated',
+		'label' => __( 'Elevated Soft', 'ekwa' ),
+	) );
 }
 add_action( 'init', 'ekwa_register_block_styles' );

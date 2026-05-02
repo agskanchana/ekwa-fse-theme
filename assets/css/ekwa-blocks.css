@@ -1121,3 +1121,77 @@ p.ekwa-inner-banner__heading {
 .ekwa-card-link p, .ekwa-card-link span {
 	color: inherit;
 }
+
+/* ================================================================
+   FAQ block — base styles (design variations live in ekwa-block-styles.css)
+   ================================================================ */
+.ekwa-faq {
+	--ekwa-faq-accent: #1a6ef5;
+	--ekwa-faq-q-color: inherit;
+	--ekwa-faq-a-color: inherit;
+	--ekwa-faq-item-bg: transparent;
+	display: block;
+}
+
+/* Each FAQ item is a native <details>; reset default marker. */
+.ekwa-faq__item {
+	background: var(--ekwa-faq-item-bg);
+}
+.ekwa-faq__item > summary {
+	list-style: none;
+	cursor: pointer;
+}
+.ekwa-faq__item > summary::-webkit-details-marker {
+	display: none;
+}
+.ekwa-faq__item > summary::marker {
+	display: none;
+	content: "";
+}
+
+.ekwa-faq__q {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 16px 0;
+	font-weight: 600;
+	color: var(--ekwa-faq-q-color);
+	transition: color 0.2s ease;
+}
+.ekwa-faq__q-text {
+	flex: 1;
+	min-width: 0;
+}
+.ekwa-faq__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	flex-shrink: 0;
+	color: var(--ekwa-faq-accent);
+	transition: transform 0.25s ease;
+}
+.ekwa-faq__item[open] > .ekwa-faq__q .ekwa-faq__icon,
+.ekwa-faq__item.is-default-open > .ekwa-faq__q .ekwa-faq__icon {
+	transform: rotate(180deg);
+}
+.ekwa-faq__item[open] > .ekwa-faq__q {
+	color: var(--ekwa-faq-accent);
+}
+
+.ekwa-faq__a {
+	padding: 0 0 16px;
+	color: var(--ekwa-faq-a-color);
+	line-height: 1.65;
+}
+.ekwa-faq__a > *:first-child { margin-top: 0; }
+.ekwa-faq__a > *:last-child  { margin-bottom: 0; }
+
+/* Focus ring for keyboard users. */
+.ekwa-faq__item > summary:focus-visible {
+	outline: 2px solid var(--ekwa-faq-accent);
+	outline-offset: 2px;
+	border-radius: 4px;
+}

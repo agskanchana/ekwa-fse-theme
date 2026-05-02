@@ -704,3 +704,47 @@
 .ekwa-phone-number__prefix {
 	font-weight: 500;
 }
+
+/* --------------------------------------------------------------------------
+   Ekwa FAQ block — editor preview (mirrors frontend base styles)
+   In the editor each item is an open <div>, not <details>, so the
+   answer InnerBlocks remain editable.
+   -------------------------------------------------------------------------- */
+.ekwa-faq {
+	--ekwa-faq-accent: #1a6ef5;
+	--ekwa-faq-q-color: inherit;
+	--ekwa-faq-a-color: inherit;
+	--ekwa-faq-item-bg: transparent;
+}
+.ekwa-faq__item {
+	background: var(--ekwa-faq-item-bg);
+}
+.ekwa-faq__q {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 16px 0;
+	font-weight: 600;
+	color: var(--ekwa-faq-q-color);
+}
+.ekwa-faq__q-text {
+	flex: 1;
+	min-width: 0;
+}
+.ekwa-faq__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	flex-shrink: 0;
+	color: var(--ekwa-faq-accent);
+}
+.ekwa-faq__item.is-default-open .ekwa-faq__icon {
+	transform: rotate(180deg);
+}
+.ekwa-faq__a {
+	padding: 0 0 16px;
+	color: var(--ekwa-faq-a-color);
+}

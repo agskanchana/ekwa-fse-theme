@@ -504,6 +504,38 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// FAQ block (collapsible Q&A list with FAQPage schema markup).
+	wp_register_script(
+		'ekwa-faq-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-faq-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-faq-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-faq',
+		array(
+			'render_callback' => 'ekwa_render_faq_block',
+		)
+	);
+
+	// FAQ Item child block.
+	wp_register_script(
+		'ekwa-faq-item-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-faq-item-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-faq-item-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-faq-item',
+		array(
+			'render_callback' => 'ekwa_render_faq_item_block',
+		)
+	);
+
 	// ── Blog Blocks ─────────────────────────────────────────────────────────
 
 	$blog_blocks = array(
@@ -2353,6 +2385,169 @@ function ekwa_render_card_link_block( $attrs, $content ) {
 	return '<a href="' . esc_url( $url ) . '"' . $target_attr . $rel_attr . ' ' . $wrapper_attrs . '>'
 		. $content
 		. '</a>';
+}
+
+
+/**
+ * Permissive color sanitizer for FAQ CSS variables.
+ *
+ * Accepts hex (#abc / #aabbcc / #aabbccdd), rgb()/rgba(), hsl()/hsla(),
+ * and var(--token) values. Anything else is stripped — this prevents
+ * style-attribute injection while supporting theme palette tokens that
+ * the block editor sometimes returns as CSS custom properties.
+ *
+ * @param string $value Raw color value from block attribute.
+ * @return string Safe color string, or '' if none of the patterns match.
+ */
+function ekwa_faq_sanitize_color( $value ) {
+	$value = is_string( $value ) ? trim( $value ) : '';
+	if ( '' === $value ) {
+		return '';
+	}
+	if ( preg_match( '/^#([a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8})$/i', $value ) ) {
+		return $value;
+	}
+	if ( preg_match( '/^(rgb|rgba|hsl|hsla)\([0-9.,%\s\/-]+\)$/i', $value ) ) {
+		return $value;
+	}
+	if ( preg_match( '/^var\(\s*--[a-z0-9_-]+(\s*,\s*[^()]+)?\s*\)$/i', $value ) ) {
+		return $value;
+	}
+	return '';
+}
+
+/**
+ * Server-side render callback for the ekwa/faq block.
+ *
+ * Wraps inner ekwa/faq-item blocks in a <div class="ekwa-faq"> with custom
+ * CSS variables for color overrides, plus data attributes consumed by the
+ * frontend toggle JS. When emitSchema is enabled, walks the parsed inner
+ * blocks to build a FAQPage JSON-LD <script> tag in the same output.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content Rendered InnerBlocks HTML.
+ * @param object $block   WP_Block instance (used to walk parsed inner blocks).
+ * @return string
+ */
+function ekwa_render_faq_block( $attrs, $content, $block = null ) {
+	$accent      = isset( $attrs['accentColor'] )   ? ekwa_faq_sanitize_color( $attrs['accentColor'] )   : '';
+	$q_color     = isset( $attrs['questionColor'] ) ? ekwa_faq_sanitize_color( $attrs['questionColor'] ) : '';
+	$a_color     = isset( $attrs['answerColor'] )   ? ekwa_faq_sanitize_color( $attrs['answerColor'] )   : '';
+	$item_bg     = isset( $attrs['itemBg'] )        ? ekwa_faq_sanitize_color( $attrs['itemBg'] )        : '';
+	$accordion   = ! empty( $attrs['accordion'] );
+	$first_open  = ! empty( $attrs['firstOpen'] );
+	$emit_schema = ! isset( $attrs['emitSchema'] ) || ! empty( $attrs['emitSchema'] );
+
+	$style_parts = array();
+	if ( $accent )  { $style_parts[] = '--ekwa-faq-accent:'   . $accent;  }
+	if ( $q_color ) { $style_parts[] = '--ekwa-faq-q-color:'  . $q_color; }
+	if ( $a_color ) { $style_parts[] = '--ekwa-faq-a-color:'  . $a_color; }
+	if ( $item_bg ) { $style_parts[] = '--ekwa-faq-item-bg:'  . $item_bg; }
+
+	$extra = array( 'class' => 'ekwa-faq' );
+	if ( $style_parts ) {
+		$extra['style'] = implode( ';', $style_parts ) . ';';
+	}
+	if ( $accordion ) {
+		$extra['data-accordion'] = '1';
+	}
+	if ( $first_open ) {
+		$extra['data-first-open'] = '1';
+	}
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	// Build FAQPage JSON-LD by walking the parsed inner blocks.
+	$schema_html = '';
+	if ( $emit_schema && $block && ! empty( $block->parsed_block['innerBlocks'] ) ) {
+		$entities = array();
+		foreach ( $block->parsed_block['innerBlocks'] as $inner ) {
+			if ( 'ekwa/faq-item' !== $inner['blockName'] ) {
+				continue;
+			}
+			$question = isset( $inner['attrs']['question'] ) ? wp_strip_all_tags( $inner['attrs']['question'] ) : '';
+			$question = trim( html_entity_decode( $question, ENT_QUOTES, 'UTF-8' ) );
+			if ( '' === $question ) {
+				continue;
+			}
+
+			// Render the inner blocks of the faq-item to get the answer HTML.
+			$answer_html = '';
+			if ( ! empty( $inner['innerBlocks'] ) ) {
+				foreach ( $inner['innerBlocks'] as $child ) {
+					$answer_html .= render_block( $child );
+				}
+			} else {
+				$answer_html = isset( $inner['innerHTML'] ) ? $inner['innerHTML'] : '';
+			}
+
+			$answer_text = trim( wp_strip_all_tags( $answer_html ) );
+			$answer_text = preg_replace( '/\s+/', ' ', $answer_text );
+			if ( '' === $answer_text ) {
+				continue;
+			}
+
+			$entities[] = array(
+				'@type'          => 'Question',
+				'name'           => $question,
+				'acceptedAnswer' => array(
+					'@type' => 'Answer',
+					'text'  => $answer_text,
+				),
+			);
+		}
+
+		if ( $entities ) {
+			$schema = array(
+				'@context'   => 'https://schema.org',
+				'@type'      => 'FAQPage',
+				'mainEntity' => $entities,
+			);
+			$schema_html = '<script type="application/ld+json">'
+				. wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+				. '</script>';
+		}
+	}
+
+	return '<div ' . $wrapper_attrs . '>' . $content . '</div>' . $schema_html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/faq-item block.
+ *
+ * Renders <details>/<summary> so the block works without JavaScript;
+ * the frontend script enhances it (single-open accordion, smooth toggle).
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content Rendered InnerBlocks HTML (the answer).
+ * @return string
+ */
+function ekwa_render_faq_item_block( $attrs, $content ) {
+	$question     = isset( $attrs['question'] ) ? wp_kses( $attrs['question'], array(
+		'strong' => array(),
+		'b'      => array(),
+		'em'     => array(),
+		'i'      => array(),
+	) ) : '';
+	$default_open = ! empty( $attrs['defaultOpen'] );
+
+	$extra = array( 'class' => 'ekwa-faq__item' );
+	if ( $default_open ) {
+		$extra['class'] .= ' is-default-open';
+	}
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	$open_attr = $default_open ? ' open' : '';
+
+	$html  = '<details ' . $wrapper_attrs . $open_attr . '>';
+	$html .= '<summary class="ekwa-faq__q">';
+	$html .= '<span class="ekwa-faq__q-text">' . $question . '</span>';
+	$html .= '<span class="ekwa-faq__icon" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></span>';
+	$html .= '</summary>';
+	$html .= '<div class="ekwa-faq__a">' . $content . '</div>';
+	$html .= '</details>';
+
+	return $html;
 }
 
 

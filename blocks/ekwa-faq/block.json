@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/faq",
+	"version": "1.0.0",
+	"title": "Ekwa FAQ",
+	"category": "design",
+	"icon": "editor-help",
+	"description": "Collapsible FAQ list with FAQPage schema markup. Pick a design from Styles in the sidebar.",
+	"textdomain": "ekwa",
+	"keywords": [ "faq", "accordion", "questions", "schema", "collapse" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"link": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true,
+			"blockGap": true
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		}
+	},
+	"attributes": {
+		"accentColor":   { "type": "string",  "default": "#1a6ef5" },
+		"questionColor": { "type": "string",  "default": "" },
+		"answerColor":   { "type": "string",  "default": "" },
+		"itemBg":        { "type": "string",  "default": "" },
+		"accordion":     { "type": "boolean", "default": false },
+		"firstOpen":     { "type": "boolean", "default": false },
+		"emitSchema":    { "type": "boolean", "default": true }
+	},
+	"editorScript": "ekwa-faq-editor"
+}

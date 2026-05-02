@@ -118,6 +118,13 @@ function ekwa_enqueue_styles() {
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
+	wp_enqueue_script(
+		'ekwa-faq-js',
+		get_template_directory_uri() . '/assets/js/ekwa-faq.js',
+		array(),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
 }
 add_action( 'wp_enqueue_scripts', 'ekwa_enqueue_styles' );
 
