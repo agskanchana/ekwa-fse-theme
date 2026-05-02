@@ -222,12 +222,22 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_icon( $node, $depth );
 	}
 
-	// Inline text elements → ekwa/text (if text-only content).
+	// Inline elements:
+	//   text-only           → ekwa/text
+	//   element-only kids   → ekwa/div with tagName=<inline tag>  (recurse into kids)
+	//   mixed text+element  → wp:html fallback (can't be split cleanly)
 	$inline_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
 	if ( in_array( $tag, $inline_tags, true ) ) {
-		$text_content = trim( $node->textContent );
-		if ( $text_content !== '' && ! ekwa_mc_has_element_children( $node ) ) {
-			return ekwa_mc_convert_text( $node, $depth, $tag );
+		$has_elements = ekwa_mc_has_element_children( $node );
+		if ( ! $has_elements ) {
+			$text_content = trim( $node->textContent );
+			if ( $text_content !== '' ) {
+				return ekwa_mc_convert_text( $node, $depth, $tag );
+			}
+			return ekwa_mc_convert_raw_html( $node, $depth );
+		}
+		if ( ! ekwa_mc_has_mixed_content( $node ) ) {
+			return ekwa_mc_convert_div_block( $node, $depth, $tag );
 		}
 		return ekwa_mc_convert_raw_html( $node, $depth );
 	}

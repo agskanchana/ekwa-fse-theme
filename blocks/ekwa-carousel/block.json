@@ -1,0 +1,38 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/carousel",
+	"version": "1.0.0",
+	"title": "Ekwa Carousel",
+	"category": "design",
+	"icon": "images-alt2",
+	"description": "Responsive, ADA-compliant carousel. Add any blocks as slides. Configure items per view per breakpoint, arrows, dots, autoplay, and loop.",
+	"textdomain": "ekwa",
+	"keywords": [ "carousel", "slider", "slideshow", "owl", "splide" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"spacing": {
+			"padding": true,
+			"margin": true
+		}
+	},
+	"attributes": {
+		"desktopItems":     { "type": "number",  "default": 3 },
+		"tabletItems":      { "type": "number",  "default": 2 },
+		"mobileItems":      { "type": "number",  "default": 1 },
+		"tabletBreakpoint": { "type": "number",  "default": 992 },
+		"mobileBreakpoint": { "type": "number",  "default": 600 },
+		"showArrows":       { "type": "boolean", "default": true },
+		"showDots":         { "type": "boolean", "default": true },
+		"autoplay":         { "type": "boolean", "default": false },
+		"autoplayInterval": { "type": "number",  "default": 5000 },
+		"loop":             { "type": "boolean", "default": false },
+		"gap":              { "type": "number",  "default": 20 },
+		"speed":            { "type": "number",  "default": 350 },
+		"ariaLabel":        { "type": "string",  "default": "" }
+	},
+	"editorScript": "ekwa-carousel-editor",
+	"viewScript":   "ekwa-carousel-view",
+	"style":        "ekwa-carousel-style"
+}

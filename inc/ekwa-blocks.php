@@ -392,6 +392,36 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Carousel block (responsive, ADA-compliant).
+	// Shared frontend script + style — auto-enqueued by WP only on pages where the block (or another consumer) appears.
+	wp_register_script(
+		'ekwa-carousel-view',
+		get_template_directory_uri() . '/assets/js/ekwa-carousel.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/js/ekwa-carousel.js' ),
+		true
+	);
+	wp_register_style(
+		'ekwa-carousel-style',
+		get_template_directory_uri() . '/assets/css/ekwa-carousel.css',
+		array(),
+		filemtime( get_template_directory() . '/assets/css/ekwa-carousel.css' )
+	);
+	wp_register_script(
+		'ekwa-carousel-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-carousel-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-carousel-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-carousel',
+		array(
+			'render_callback' => 'ekwa_render_carousel_block',
+		)
+	);
+
 	// Button block (clean <a> or <button>).
 	wp_register_script(
 		'ekwa-button-editor',
@@ -2713,6 +2743,84 @@ function ekwa_render_grid_block( $attrs, $content ) {
 
 
 /**
+ * Server-side render callback for the ekwa/carousel block.
+ *
+ * Each top-level inner block becomes a slide. Frontend script + style are
+ * auto-enqueued by WP via the block.json viewScript / style handles, so they
+ * load only on pages where the carousel is actually used.
+ *
+ * @param array    $attrs Block attributes.
+ * @param string   $content InnerBlocks HTML (unused — we render slides from block tree).
+ * @param WP_Block $block   Parsed block, gives us the inner block array.
+ * @return string
+ */
+function ekwa_render_carousel_block( $attrs, $content, $block ) {
+	$desktop      = isset( $attrs['desktopItems'] )     ? max( 1, absint( $attrs['desktopItems'] ) )     : 3;
+	$tablet       = isset( $attrs['tabletItems'] )      ? max( 1, absint( $attrs['tabletItems'] ) )      : 2;
+	$mobile       = isset( $attrs['mobileItems'] )      ? max( 1, absint( $attrs['mobileItems'] ) )      : 1;
+	$tablet_bp    = isset( $attrs['tabletBreakpoint'] ) ? max( 1, absint( $attrs['tabletBreakpoint'] ) ) : 992;
+	$mobile_bp    = isset( $attrs['mobileBreakpoint'] ) ? max( 1, absint( $attrs['mobileBreakpoint'] ) ) : 600;
+	$show_arrows  = ! empty( $attrs['showArrows'] );
+	$show_dots    = ! empty( $attrs['showDots'] );
+	$autoplay     = ! empty( $attrs['autoplay'] );
+	$autoplay_int = isset( $attrs['autoplayInterval'] ) ? max( 500, absint( $attrs['autoplayInterval'] ) ) : 5000;
+	$loop         = ! empty( $attrs['loop'] );
+	$gap          = isset( $attrs['gap'] )   ? absint( $attrs['gap'] )   : 20;
+	$speed        = isset( $attrs['speed'] ) ? max( 50, absint( $attrs['speed'] ) ) : 350;
+	$aria_label   = isset( $attrs['ariaLabel'] ) ? sanitize_text_field( $attrs['ariaLabel'] ) : '';
+
+	// Render each top-level inner block individually so each becomes one slide.
+	$slides = '';
+	if ( $block instanceof WP_Block && ! empty( $block->parsed_block['innerBlocks'] ) ) {
+		foreach ( $block->parsed_block['innerBlocks'] as $inner ) {
+			$slides .= '<div class="ekwa-carousel__item">' . render_block( $inner ) . '</div>';
+		}
+	}
+
+	if ( '' === $slides ) {
+		return '';
+	}
+
+	$data  = ' data-desktop-items="' . esc_attr( $desktop ) . '"';
+	$data .= ' data-tablet-items="'  . esc_attr( $tablet )  . '"';
+	$data .= ' data-mobile-items="'  . esc_attr( $mobile )  . '"';
+	$data .= ' data-tablet-bp="'     . esc_attr( $tablet_bp ) . '"';
+	$data .= ' data-mobile-bp="'     . esc_attr( $mobile_bp ) . '"';
+	$data .= ' data-show-arrows="'   . ( $show_arrows ? 'true' : 'false' ) . '"';
+	$data .= ' data-show-dots="'     . ( $show_dots   ? 'true' : 'false' ) . '"';
+	$data .= ' data-autoplay="'      . ( $autoplay    ? 'true' : 'false' ) . '"';
+	$data .= ' data-autoplay-interval="' . esc_attr( $autoplay_int ) . '"';
+	$data .= ' data-loop="'          . ( $loop ? 'true' : 'false' ) . '"';
+	$data .= ' data-gap="'           . esc_attr( $gap ) . '"';
+	$data .= ' data-speed="'         . esc_attr( $speed ) . '"';
+
+	$wrapper_attrs = get_block_wrapper_attributes( array(
+		'class'      => 'ekwa-carousel',
+		'aria-label' => $aria_label ? $aria_label : __( 'Carousel', 'ekwa' ),
+	) );
+
+	$html  = '<div ' . $wrapper_attrs . $data . '>';
+	$html .=   '<div class="ekwa-carousel__viewport">';
+	$html .=     '<div class="ekwa-carousel__track">' . $slides . '</div>';
+	$html .=   '</div>';
+
+	if ( $show_arrows ) {
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>';
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>';
+	}
+
+	if ( $show_dots ) {
+		$html .= '<div class="ekwa-carousel__dots" role="tablist" aria-label="' . esc_attr__( 'Slide pagination', 'ekwa' ) . '"></div>';
+	}
+
+	$html .= '<div class="ekwa-carousel__sr-status" aria-live="polite" aria-atomic="true"></div>';
+	$html .= '</div>';
+
+	return $html;
+}
+
+
+/**
  * Resolve a block's link URL from its attributes.
  *
  * Three sources, controlled by the linkType attribute:
@@ -2940,7 +3048,10 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$target       = isset( $attrs['target'] )          ? sanitize_text_field( $attrs['target'] ) : '';
 	$rel          = isset( $attrs['rel'] )             ? sanitize_text_field( $attrs['rel'] ) : '';
 
-	$allowed = array( 'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a' );
+	$allowed = array(
+		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',
+		'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub',
+	);
 	if ( ! in_array( $tag, $allowed, true ) ) {
 		$tag = 'div';
 	}
@@ -3329,14 +3440,9 @@ function ekwa_render_related_articles_block( $attrs ) {
 		return '';
 	}
 
-	// Enqueue carousel JS.
-	wp_enqueue_script(
-		'ekwa-carousel',
-		get_template_directory_uri() . '/assets/js/ekwa-carousel.js',
-		array(),
-		filemtime( get_template_directory() . '/assets/js/ekwa-carousel.js' ),
-		true
-	);
+	// Enqueue shared carousel assets (registered by ekwa_register_blocks).
+	wp_enqueue_script( 'ekwa-carousel-view' );
+	wp_enqueue_style(  'ekwa-carousel-style' );
 
 	$data_attrs = ' data-desktop-items="' . $desktop . '"'
 	            . ' data-tablet-items="' . $tablet . '"'

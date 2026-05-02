@@ -258,67 +258,7 @@
 	margin: 0 0 24px;
 	text-align: center;
 }
-.ekwa-carousel {
-	position: relative;
-	overflow: hidden;
-}
-.ekwa-carousel__track {
-	display: flex;
-	transition: transform 0.35s ease;
-}
-.ekwa-carousel__item {
-	flex-shrink: 0;
-	padding: 0 10px;
-	box-sizing: border-box;
-}
-.ekwa-carousel__arrow {
-	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	width: 40px;
-	height: 40px;
-	border-radius: 50%;
-	border: 1px solid #e5e7eb;
-	background: #fff;
-	color: var(--wp--preset--color--foreground, #1e1e1e);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 2;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	transition: background 0.15s, color 0.15s;
-}
-.ekwa-carousel__arrow:hover {
-	background: var(--wp--preset--color--primary, #4f46e5);
-	color: #fff;
-	border-color: var(--wp--preset--color--primary, #4f46e5);
-}
-.ekwa-carousel__arrow:disabled {
-	opacity: 0.3;
-	cursor: default;
-}
-.ekwa-carousel__arrow--prev { left: 0; }
-.ekwa-carousel__arrow--next { right: 0; }
-.ekwa-carousel__dots {
-	display: flex;
-	justify-content: center;
-	gap: 8px;
-	margin-top: 20px;
-}
-.ekwa-carousel__dot {
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	border: none;
-	background: #d1d5db;
-	cursor: pointer;
-	padding: 0;
-	transition: background 0.15s;
-}
-.ekwa-carousel__dot.is-active {
-	background: var(--wp--preset--color--primary, #4f46e5);
-}
+/* Carousel styles live in assets/css/ekwa-carousel.css (loaded on demand). */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LOAD MORE

@@ -23,15 +23,25 @@
 	var __                 = wp.i18n.__;
 
 	var TAG_OPTIONS = [
-		{ label: 'div',     value: 'div' },
-		{ label: 'section', value: 'section' },
-		{ label: 'header',  value: 'header' },
-		{ label: 'footer',  value: 'footer' },
-		{ label: 'nav',     value: 'nav' },
-		{ label: 'main',    value: 'main' },
-		{ label: 'aside',   value: 'aside' },
-		{ label: 'article', value: 'article' },
-		{ label: 'a',       value: 'a' },
+		{ label: 'div',         value: 'div' },
+		{ label: 'section',     value: 'section' },
+		{ label: 'header',      value: 'header' },
+		{ label: 'footer',      value: 'footer' },
+		{ label: 'nav',         value: 'nav' },
+		{ label: 'main',        value: 'main' },
+		{ label: 'aside',       value: 'aside' },
+		{ label: 'article',     value: 'article' },
+		{ label: 'a',           value: 'a' },
+		{ label: '— inline —',  value: '',         disabled: true },
+		{ label: 'span',        value: 'span' },
+		{ label: 'small',       value: 'small' },
+		{ label: 'strong',      value: 'strong' },
+		{ label: 'em',          value: 'em' },
+		{ label: 'mark',        value: 'mark' },
+		{ label: 'time',        value: 'time' },
+		{ label: 'label',       value: 'label' },
+		{ label: 'sup',         value: 'sup' },
+		{ label: 'sub',         value: 'sub' },
 	];
 
 	/**

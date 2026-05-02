@@ -748,3 +748,27 @@
 	padding: 0 0 16px;
 	color: var(--ekwa-faq-a-color);
 }
+
+/* ==========================================================================
+   Carousel block — editor-only preview
+   Frontend uses assets/css/ekwa-carousel.css. In the editor we show slides
+   stacked so authors can edit each one in place.
+   ========================================================================== */
+.ekwa-carousel--editor {
+	border: 1px dashed #c3c4c7;
+	border-radius: 6px;
+	padding: 12px;
+	background: #fafafa;
+}
+.ekwa-carousel__editor-notice {
+	color: #646970;
+	margin-bottom: 8px;
+	font-style: italic;
+}
+.ekwa-carousel__editor-slides > .block-editor-inner-blocks > .block-editor-block-list__layout > [data-block] {
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	padding: 12px;
+	margin-bottom: 8px;
+	background: #fff;
+}
