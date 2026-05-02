@@ -99,6 +99,7 @@ function ekwa_mobile_number( $phone_number, $country_code_override = null ) {
  *   type          (string)  'new' | 'existing'   Default: 'new'
  *   location      (int)     1-based location index. Default: 1
  *   prefix        (string)  Label shown before the number. Leave blank for auto.
+ *   show_prefix   (bool)    Whether to show the prefix label at all. Default: true
  *   show_icon     (bool)    Whether to render the phone icon. Default: true
  *   icon_class    (string)  CSS class(es) for the icon. Default: 'fa-solid fa-phone'
  *   country_code  (string)  Override the dialling country code (digits only,
@@ -119,7 +120,8 @@ function ekwa_phone_shortcode( $atts ) {
 			'type'         => 'new',
 			'location'     => 1,
 			'prefix'       => '',
-			'show_icon'    => 'true',
+			'show_prefix'  => 'false',
+			'show_icon'    => 'false',
 			'icon_class'   => 'fa-solid fa-phone',
 			'country_code' => '',   // '' = auto-detect; 'none' = no prefix; digits = forced code
 		),
@@ -127,11 +129,12 @@ function ekwa_phone_shortcode( $atts ) {
 		'ekwa_phone'
 	);
 
-	$type       = sanitize_text_field( $atts['type'] );
-	$loc_index  = max( 1, absint( $atts['location'] ) ) - 1;
-	$prefix     = sanitize_text_field( $atts['prefix'] );
-	$show_icon  = filter_var( $atts['show_icon'], FILTER_VALIDATE_BOOLEAN );
-	$icon_class = sanitize_text_field( $atts['icon_class'] );
+	$type        = sanitize_text_field( $atts['type'] );
+	$loc_index   = max( 1, absint( $atts['location'] ) ) - 1;
+	$prefix      = sanitize_text_field( $atts['prefix'] );
+	$show_prefix = filter_var( $atts['show_prefix'], FILTER_VALIDATE_BOOLEAN );
+	$show_icon   = filter_var( $atts['show_icon'], FILTER_VALIDATE_BOOLEAN );
+	$icon_class  = sanitize_text_field( $atts['icon_class'] );
 
 	// Resolve country_code override:
 	//   ''     → null  (auto-detect)
@@ -183,6 +186,10 @@ function ekwa_phone_shortcode( $atts ) {
 				? __( 'Existing Patients:', 'ekwa' )
 				: __( 'New Patients:', 'ekwa' );
 		}
+	}
+
+	if ( ! $show_prefix ) {
+		$prefix_text = '';
 	}
 
 	if ( empty( $phone_number ) ) {

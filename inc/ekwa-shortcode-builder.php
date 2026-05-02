@@ -78,18 +78,27 @@ function ekwa_render_shortcode_builder_page() {
 					'help'    => __( '1-based index of the saved location.', 'ekwa' ),
 				),
 				array(
+					'key'     => 'show_prefix',
+					'label'   => __( 'Show Prefix Label', 'ekwa' ),
+					'type'    => 'toggle',
+					'default' => 'false',
+					'help'    => __( 'Turn on to show a prefix label (e.g. "New Patients:") before the number.', 'ekwa' ),
+				),
+				array(
 					'key'     => 'prefix',
 					'label'   => __( 'Prefix Label', 'ekwa' ),
 					'type'    => 'text',
 					'default' => '',
 					'placeholder' => 'e.g. Call us:',
 					'help'    => __( 'Text shown before the number. Leave blank for the default label.', 'ekwa' ),
+					'show_if_key' => 'show_prefix',
+					'show_if_val' => 'true',
 				),
 				array(
 					'key'     => 'show_icon',
 					'label'   => __( 'Show Icon', 'ekwa' ),
 					'type'    => 'toggle',
-					'default' => 'true',
+					'default' => 'false',
 					'help'    => __( 'Display the phone icon next to the number.', 'ekwa' ),
 				),
 				array(
@@ -99,6 +108,8 @@ function ekwa_render_shortcode_builder_page() {
 					'default' => 'fa-solid fa-phone',
 					'placeholder' => 'fa-solid fa-phone',
 					'help'    => __( 'Font Awesome class string for the icon.', 'ekwa' ),
+					'show_if_key' => 'show_icon',
+					'show_if_val' => 'true',
 				),
 				array(
 					'key'     => 'country_code',
