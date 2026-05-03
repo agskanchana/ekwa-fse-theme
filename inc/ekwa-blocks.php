@@ -2282,30 +2282,38 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
  * ==================================================================== */
 
 /**
- * Look up the current page's menu-item title from the "primary" menu location.
+ * Look up the current page's menu-item title from the header menu location.
  *
- * Walks the menu items assigned to the "primary" location and returns
- * the title of the item whose object_id matches the given post ID.
- * Also checks parent items (in case the page is a child page listed
- * under a parent menu item).
+ * Prefers the "main_menu" theme location (used by the Ekwa Header Menu block)
+ * and falls back to "primary" for backwards compatibility. Returns the title
+ * of the item whose object_id matches the given post ID.
  *
  * @param int $post_id The current post/page ID.
  * @return string Menu item title, or empty string if not found.
  */
 function ekwa_get_menu_name_for_page( $post_id ) {
 	$locations = get_nav_menu_locations();
-	if ( empty( $locations['primary'] ) ) {
+
+	$candidates = array();
+	if ( ! empty( $locations['main_menu'] ) ) {
+		$candidates[] = $locations['main_menu'];
+	}
+	if ( ! empty( $locations['primary'] ) && ! in_array( $locations['primary'], $candidates, true ) ) {
+		$candidates[] = $locations['primary'];
+	}
+	if ( empty( $candidates ) ) {
 		return '';
 	}
 
-	$menu_items = wp_get_nav_menu_items( $locations['primary'] );
-	if ( empty( $menu_items ) || ! is_array( $menu_items ) ) {
-		return '';
-	}
-
-	foreach ( $menu_items as $item ) {
-		if ( 'post_type' === $item->type && (int) $item->object_id === (int) $post_id ) {
-			return $item->title;
+	foreach ( $candidates as $menu_id ) {
+		$menu_items = wp_get_nav_menu_items( $menu_id );
+		if ( empty( $menu_items ) || ! is_array( $menu_items ) ) {
+			continue;
+		}
+		foreach ( $menu_items as $item ) {
+			if ( 'post_type' === $item->type && (int) $item->object_id === (int) $post_id ) {
+				return $item->title;
+			}
 		}
 	}
 
@@ -2355,15 +2363,11 @@ function ekwa_inner_banner_heading_data() {
  * @return string
  */
 function ekwa_render_inner_banner_block( $attrs ) {
-	// Only render on singular pages (not front page, not archives).
-	if ( ! is_page() || is_front_page() ) {
-		// In the editor, show a placeholder.
-		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-			return '<div class="ekwa-inner-banner ekwa-inner-banner--preview">'
-				. '<div class="ekwa-inner-banner__content">'
-				. '<p class="ekwa-inner-banner__heading" style="opacity:.5">Inner Page Banner</p>'
-				. '</div></div>';
-		}
+	$is_rest = defined( 'REST_REQUEST' ) && REST_REQUEST;
+	$is_real = is_page() && ! is_front_page();
+
+	// Outside the editor (e.g. archives, front page), bail out.
+	if ( ! $is_real && ! $is_rest ) {
 		return '';
 	}
 
@@ -2371,51 +2375,78 @@ function ekwa_render_inner_banner_block( $attrs ) {
 	$min_height       = isset( $attrs['minHeight'] )      ? absint( $attrs['minHeight'] )      : 200;
 	$show_breadcrumbs = (bool) ( $attrs['showBreadcrumbs'] ?? true );
 
-	$post_id = get_the_ID();
-	$data    = ekwa_inner_banner_heading_data();
-
-	// Determine background image: featured image if set.
-	$bg_style = '';
-	if ( has_post_thumbnail( $post_id ) ) {
-		$img_url  = get_the_post_thumbnail_url( $post_id, 'full' );
-		$bg_style = 'background-image:url(' . esc_url( $img_url ) . ');';
+	// Resolve heading data and featured image.
+	if ( $is_real ) {
+		$post_id   = get_the_ID();
+		$data      = ekwa_inner_banner_heading_data();
+		$bg_url    = has_post_thumbnail( $post_id ) ? get_the_post_thumbnail_url( $post_id, 'full' ) : '';
+		$is_sample = false;
+	} else {
+		// Editor-only template preview — no real post context.
+		$data = array(
+			'mode'       => 'different',
+			'page_title' => __( 'Sample Page Title', 'ekwa' ),
+			'menu_name'  => __( 'Menu Name', 'ekwa' ),
+		);
+		$bg_url    = '';
+		$is_sample = true;
 	}
 
-	$classes = 'ekwa-inner-banner';
-	if ( $bg_style ) {
-		$classes .= ' ekwa-inner-banner--has-bg';
+	// Inline styles for min-height + optional background image.
+	$inline = 'min-height:' . $min_height . 'px;';
+	if ( $bg_url ) {
+		$inline .= 'background-image:url(' . esc_url( $bg_url ) . ');';
 	}
 
-	$out  = '<section class="' . esc_attr( $classes ) . '"'
-		. ' style="min-height:' . $min_height . 'px;' . $bg_style . '">';
+	// Build wrapper classes — keep our base hook + a flag when a bg image is present.
+	$extra_classes = array( 'ekwa-inner-banner' );
+	if ( $bg_url ) {
+		$extra_classes[] = 'ekwa-inner-banner--has-bg';
+	}
+	if ( $is_sample ) {
+		$extra_classes[] = 'ekwa-inner-banner--editor-preview';
+	}
 
-	// Overlay.
-	if ( $overlay_opacity > 0 ) {
+	// get_block_wrapper_attributes() merges:
+	//   • is-style-{name} from the registered style variations
+	//   • has-{slug}-background-color / has-{slug}-color / has-background / has-text-color
+	//   • inline color styles when the user picks a custom hex
+	//   • the user's "Additional CSS classes"
+	$wrapper_attrs = get_block_wrapper_attributes( array(
+		'class' => implode( ' ', $extra_classes ),
+		'style' => $inline,
+	) );
+
+	$out  = '<section ' . $wrapper_attrs . '>';
+
+	// Overlay (only when bg image is present and opacity > 0).
+	if ( $bg_url && $overlay_opacity > 0 ) {
 		$out .= '<div class="ekwa-inner-banner__overlay" style="opacity:' . ( $overlay_opacity / 100 ) . '"></div>';
 	}
 
 	$out .= '<div class="ekwa-inner-banner__content">';
 
-	// Heading logic.
+	// Heading logic — same as before. For the editor preview we always render
+	// the "different" path so users see how the menu-name layout looks.
 	if ( 'same' === $data['mode'] ) {
-		// Menu name = page title (or not in menu) → show as <h1>.
 		$out .= '<h1 class="ekwa-inner-banner__heading">' . esc_html( $data['page_title'] ) . '</h1>';
 	} else {
-		// Menu name ≠ page title → show menu name (not an h-tag).
 		$out .= '<p class="ekwa-inner-banner__heading">' . esc_html( $data['menu_name'] ) . '</p>';
 	}
 
-	// Breadcrumbs (Yoast SEO, RankMath, or simple fallback).
+	// Breadcrumbs.
 	if ( $show_breadcrumbs ) {
 		$out .= '<nav class="ekwa-inner-banner__breadcrumbs" aria-label="' . esc_attr__( 'Breadcrumb', 'ekwa' ) . '">';
-		if ( function_exists( 'yoast_breadcrumb' ) ) {
+		if ( $is_sample ) {
+			$out .= '<span><a href="#">' . esc_html__( 'Home', 'ekwa' ) . '</a>'
+				. ' &raquo; <span>' . esc_html( $data['page_title'] ) . '</span></span>';
+		} elseif ( function_exists( 'yoast_breadcrumb' ) ) {
 			$out .= yoast_breadcrumb( '<span>', '</span>', false );
 		} elseif ( function_exists( 'rank_math_the_breadcrumbs' ) ) {
 			ob_start();
 			rank_math_the_breadcrumbs();
 			$out .= ob_get_clean();
 		} else {
-			// Simple fallback: Home > Page Title.
 			$out .= '<span><a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html__( 'Home', 'ekwa' ) . '</a>'
 				. ' &raquo; <span>' . esc_html( get_the_title() ) . '</span></span>';
 		}

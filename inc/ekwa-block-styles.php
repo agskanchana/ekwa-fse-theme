@@ -122,5 +122,35 @@ function ekwa_register_block_styles() {
 		'name'  => 'elevated',
 		'label' => __( 'Elevated Soft', 'ekwa' ),
 	) );
+
+	/* ---------------------------------------------------------------
+	 * ekwa/inner-banner design variations
+	 * ------------------------------------------------------------- */
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'       => 'classic',
+		'label'      => __( 'Classic (Centered)', 'ekwa' ),
+		'is_default' => true,
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'left',
+		'label' => __( 'Left Aligned', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'minimal',
+		'label' => __( 'Minimal (Solid Band)', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'gradient',
+		'label' => __( 'Gradient', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'split',
+		'label' => __( 'Split (Side Accent)', 'ekwa' ),
+	) );
 }
 add_action( 'init', 'ekwa_register_block_styles' );

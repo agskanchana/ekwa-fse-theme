@@ -934,11 +934,14 @@
 	align-items: center;
 	justify-content: center;
 	text-align: center;
-	background-color: var(--wp--preset--color--primary, #1a1a2e);
 	background-size: cover;
 	background-position: center;
 	background-repeat: no-repeat;
 	color: #fff;
+}
+/* Apply the default brand bg only when no color picker / featured image set one. */
+.ekwa-inner-banner:not(.has-background):not(.ekwa-inner-banner--has-bg) {
+	background-color: var(--wp--preset--color--primary, #1a1a2e);
 }
 .ekwa-inner-banner__overlay {
 	position: absolute;
@@ -984,10 +987,82 @@ p.ekwa-inner-banner__heading {
 	text-decoration: underline;
 }
 
-/* Editor preview placeholder */
-.ekwa-inner-banner--preview {
-	min-height: 150px;
-	background: #334;
+/* ----- Style: Classic (default) — already covered by base. ----- */
+
+/* ----- Style: Left Aligned ----- */
+.ekwa-inner-banner.is-style-left {
+	justify-content: flex-start;
+	text-align: left;
+}
+.ekwa-inner-banner.is-style-left .ekwa-inner-banner__content {
+	padding-left: clamp(20px, 6vw, 80px);
+}
+
+/* ----- Style: Minimal (solid band, no overlay, compact) ----- */
+.ekwa-inner-banner.is-style-minimal {
+	min-height: 0 !important; /* override inline min-height for compact band */
+}
+.ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__overlay {
+	display: none;
+}
+.ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__content {
+	padding: 24px 20px;
+}
+.ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__heading {
+	font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+}
+
+/* ----- Style: Gradient ----- */
+.ekwa-inner-banner.is-style-gradient {
+	background-image: linear-gradient(
+		135deg,
+		var(--wp--preset--color--primary, #1a1a2e) 0%,
+		var(--wp--preset--color--secondary, #4a4a8e) 100%
+	);
+}
+.ekwa-inner-banner.is-style-gradient.ekwa-inner-banner--has-bg {
+	/* Featured image present → blend gradient over it. */
+	background-image:
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--wp--preset--color--primary, #1a1a2e) 75%, transparent) 0%,
+			color-mix(in srgb, var(--wp--preset--color--secondary, #4a4a8e) 75%, transparent) 100%
+		),
+		var(--ekwa-banner-bg, none);
+}
+.ekwa-inner-banner.is-style-gradient .ekwa-inner-banner__overlay {
+	display: none;
+}
+
+/* ----- Style: Split (vertical accent stripe on the left) ----- */
+.ekwa-inner-banner.is-style-split {
+	justify-content: flex-start;
+	text-align: left;
+}
+.ekwa-inner-banner.is-style-split::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 8px;
+	background: var(--wp--preset--color--accent, var(--wp--preset--color--secondary, #ffffff));
+	z-index: 3;
+}
+.ekwa-inner-banner.is-style-split .ekwa-inner-banner__content {
+	padding-left: clamp(32px, 7vw, 96px);
+}
+
+/* Editor template-preview tint — barely visible "this is sample data" hint. */
+.ekwa-inner-banner--editor-preview .ekwa-inner-banner__heading::after {
+	content: ' (preview)';
+	font-size: 0.5em;
+	font-weight: 400;
+	opacity: 0.6;
+	margin-left: 6px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	vertical-align: middle;
 }
 
 /* ================================================================

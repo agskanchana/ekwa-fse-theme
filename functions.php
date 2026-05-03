@@ -158,6 +158,7 @@ function ekwa_editor_styles() {
 	add_editor_style( 'assets/fontawesome/css/all.min.css' );
 	add_editor_style( 'assets/css/ekwa-editor.css' );
 	add_editor_style( 'assets/css/ekwa-block-styles.css' );
+	add_editor_style( 'assets/css/ekwa-blocks.css' );
 }
 add_action( 'after_setup_theme', 'ekwa_editor_styles' );
 
