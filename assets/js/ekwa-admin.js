@@ -365,4 +365,44 @@
 		tick();
 	});
 
+	/* ============================================================
+	 *  Nav-menu item image picker (used by mega-menu columns)
+	 * ============================================================ */
+	$(document).on('click', '.ekwa-menu-image-pick', function (e) {
+		e.preventDefault();
+		if (typeof wp === 'undefined' || !wp.media) {
+			window.console && console.error('Ekwa: wp.media is not loaded — cannot open image picker.');
+			alert('Media library failed to load. Please refresh the page and try again.');
+			return;
+		}
+		var $btn   = $(this);
+		var $field = $btn.closest('.ekwa-menu-image-field');
+		var frame  = wp.media({
+			title: 'Select Menu Image',
+			button: { text: 'Use this image' },
+			multiple: false,
+			library: { type: 'image' }
+		});
+		frame.on('select', function () {
+			var att = frame.state().get('selection').first().toJSON();
+			$field.find('.ekwa-menu-image-id').val(att.id);
+			var thumbUrl = (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url;
+			$field.find('.ekwa-menu-image-preview').html(
+				'<img src="' + thumbUrl + '" alt="" style="max-width:80px;height:auto;display:block;" />'
+			);
+			$btn.text('Change Image');
+			$field.find('.ekwa-menu-image-remove').show();
+		});
+		frame.open();
+	});
+
+	$(document).on('click', '.ekwa-menu-image-remove', function (e) {
+		e.preventDefault();
+		var $field = $(this).closest('.ekwa-menu-image-field');
+		$field.find('.ekwa-menu-image-id').val('');
+		$field.find('.ekwa-menu-image-preview').empty();
+		$field.find('.ekwa-menu-image-pick').text('Select Image');
+		$(this).hide();
+	});
+
 })(jQuery);

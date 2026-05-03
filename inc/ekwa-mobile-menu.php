@@ -29,11 +29,13 @@ function ekwa_enqueue_nav_menu_admin_assets( $hook ) {
 		array(),
 		wp_get_theme()->get( 'Version' )
 	);
+	// Load the WP media library before our admin JS so wp.media is defined when our handler binds.
+	wp_enqueue_media();
 	wp_enqueue_script(
 		'ekwa-admin-js',
 		get_template_directory_uri() . '/assets/js/ekwa-admin.js',
-		array( 'jquery' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'jquery', 'media-editor', 'media-views' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-admin.js' ),
 		true
 	);
 }

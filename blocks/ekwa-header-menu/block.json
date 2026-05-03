@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/header-menu",
+	"version": "1.0.0",
+	"title": "Ekwa Header Menu",
+	"category": "common",
+	"icon": "menu-alt3",
+	"description": "Multi-level header navigation that uses the Main Menu location. Top-level items can be flagged as mega menus from the nav-menus screen.",
+	"textdomain": "ekwa",
+	"keywords": [ "menu", "header", "navigation", "mega menu" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"link": true
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"attributes": {
+		"alignment": {
+			"type": "string",
+			"default": "center"
+		},
+		"itemGap": {
+			"type": "number",
+			"default": 24
+		},
+		"submenuMinWidth": {
+			"type": "number",
+			"default": 220
+		}
+	},
+	"editorScript": "ekwa-header-menu-editor",
+	"viewScript":   "ekwa-header-menu-view",
+	"style":        "ekwa-header-menu-style"
+}

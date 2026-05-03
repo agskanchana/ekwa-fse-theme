@@ -215,6 +215,35 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Header menu block (multi-level desktop nav with optional mega menus).
+	wp_register_script(
+		'ekwa-header-menu-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-header-menu-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-header-menu-editor.js' ),
+		true
+	);
+	wp_register_style(
+		'ekwa-header-menu-style',
+		get_template_directory_uri() . '/assets/css/ekwa-header-menu.css',
+		array(),
+		filemtime( get_template_directory() . '/assets/css/ekwa-header-menu.css' )
+	);
+	wp_register_script(
+		'ekwa-header-menu-view',
+		get_template_directory_uri() . '/assets/js/ekwa-header-menu.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/js/ekwa-header-menu.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-header-menu',
+		array(
+			'render_callback' => 'ekwa_render_header_menu_block',
+		)
+	);
+
 	// Inner page banner block.
 	wp_register_script(
 		'ekwa-inner-banner-editor',
@@ -1657,6 +1686,60 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 	}
 
 	return $out;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/header-menu block.
+ *
+ * Builds a multi-level desktop nav from the menu assigned to the
+ * "Main Menu" theme location. Top-level items flagged as mega menus
+ * expand into a columnar grid; other items render as nested flyouts.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_header_menu_block( $attrs ) {
+	wp_enqueue_style( 'ekwa-header-menu-style' );
+	wp_enqueue_script( 'ekwa-header-menu-view' );
+
+	$nav = ekwa_render_main_nav( 'main_menu' );
+
+	if ( '' === $nav ) {
+		if ( current_user_can( 'edit_theme_options' ) ) {
+			return '<div class="ekwa-header-menu-empty" style="padding:8px 12px;border:1px dashed #b3b3b3;color:#555;font-size:14px;">'
+				. esc_html__( 'Assign a menu to the "Main Menu" location at Appearance → Menus to populate this block.', 'ekwa' )
+				. '</div>';
+		}
+		return '';
+	}
+
+	$alignment_map = array(
+		'left'          => 'flex-start',
+		'center'        => 'center',
+		'right'         => 'flex-end',
+		'space-between' => 'space-between',
+	);
+	$align_value = isset( $alignment_map[ $attrs['alignment'] ?? '' ] )
+		? $alignment_map[ $attrs['alignment'] ]
+		: 'center';
+
+	$gap     = isset( $attrs['itemGap'] ) ? max( 0, (int) $attrs['itemGap'] ) : 24;
+	$sub_min = isset( $attrs['submenuMinWidth'] ) ? max( 120, (int) $attrs['submenuMinWidth'] ) : 220;
+
+	$style = sprintf(
+		'--ekwa-header-align:%s;--ekwa-header-gap:%dpx;--ekwa-submenu-minw:%dpx;',
+		esc_attr( $align_value ),
+		$gap,
+		$sub_min
+	);
+
+	$wrapper_attrs = get_block_wrapper_attributes( array(
+		'class' => 'ekwa-header-menu-wrap',
+		'style' => $style,
+	) );
+
+	return '<div ' . $wrapper_attrs . '>' . $nav . '</div>';
 }
 
 

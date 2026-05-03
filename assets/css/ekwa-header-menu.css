@@ -1,0 +1,238 @@
+/**
+ * Ekwa Header Menu — desktop nav with mixed standard / mega submenus.
+ *
+ * Responsiveness for sub-1200px is intentionally omitted; the parent theme
+ * hides .ekwa-desktop-header below 1200px (see ekwa-mobile.css).
+ */
+
+/* ---- Reset list styling ---- */
+.ekwa-header-nav,
+.ekwa-header-nav ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.ekwa-header-nav a {
+	text-decoration: none;
+	color: inherit;
+}
+
+/* ---- Top-level horizontal menu ---- */
+.ekwa-header-menu {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: var(--ekwa-header-align, center);
+	gap: var(--ekwa-header-gap, 24px);
+	position: relative;
+}
+
+.ekwa-header-menu > .menu-item {
+	position: relative;
+}
+
+.ekwa-header-menu > .menu-item > a {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 12px 0;
+	font-weight: inherit;
+	white-space: nowrap;
+	transition: color .15s ease;
+}
+
+/* Caret indicator for items with children */
+.ekwa-caret {
+	width: 0;
+	height: 0;
+	border-left: 4px solid transparent;
+	border-right: 4px solid transparent;
+	border-top: 5px solid currentColor;
+	display: inline-block;
+	margin-left: 4px;
+	transition: transform .2s ease;
+}
+
+.ekwa-header-menu .menu-item-has-children:hover > a .ekwa-caret,
+.ekwa-header-menu .menu-item-has-children:focus-within > a .ekwa-caret,
+.ekwa-header-menu .menu-item-has-children.is-open > a .ekwa-caret {
+	transform: rotate(180deg);
+}
+
+/* ---- Standard nested flyout submenu ---- */
+.ekwa-header-menu .sub-menu {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	min-width: var(--ekwa-submenu-minw, 220px);
+	background: var(--ekwa-submenu-bg, #fff);
+	color: var(--ekwa-submenu-fg, #1a1a1a);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	border-radius: 4px;
+	padding: 8px 0;
+	z-index: 1000;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(8px);
+	transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
+	pointer-events: none;
+}
+
+/* Nested level: open to the side */
+.ekwa-header-menu .sub-menu .sub-menu {
+	top: 0;
+	left: 100%;
+	transform: translate(8px, 0);
+}
+
+.ekwa-header-menu .menu-item-has-children:hover > .sub-menu,
+.ekwa-header-menu .menu-item-has-children:focus-within > .sub-menu,
+.ekwa-header-menu .menu-item-has-children.is-open > .sub-menu {
+	opacity: 1;
+	visibility: visible;
+	transform: translate(0, 0);
+	pointer-events: auto;
+	transition-delay: 0s;
+}
+
+.ekwa-header-menu .sub-menu > .menu-item {
+	position: relative;
+}
+
+.ekwa-header-menu .sub-menu > .menu-item > a {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 10px 16px;
+	font-size: 0.95em;
+	transition: background-color .15s ease, color .15s ease;
+}
+
+.ekwa-header-menu .sub-menu > .menu-item > a:hover,
+.ekwa-header-menu .sub-menu > .menu-item > a:focus-visible {
+	background: var(--ekwa-submenu-hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.ekwa-header-menu .sub-menu .menu-item-has-children > a::after {
+	content: '';
+	width: 0;
+	height: 0;
+	border-top: 4px solid transparent;
+	border-bottom: 4px solid transparent;
+	border-left: 5px solid currentColor;
+	margin-left: 8px;
+	flex-shrink: 0;
+}
+
+.ekwa-header-menu .sub-menu .menu-item-has-children > a .ekwa-caret {
+	display: none; /* sub-menu uses ::after arrow instead */
+}
+
+/* ---- Mega menu panel ---- */
+.ekwa-megamenu {
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translate(-50%, 8px);
+	background: var(--ekwa-megamenu-bg, #fff);
+	color: var(--ekwa-megamenu-fg, #1a1a1a);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+	border-radius: 4px;
+	padding: 24px;
+	z-index: 1000;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
+	min-width: min(var(--ekwa-megamenu-width, 920px), 96vw);
+	max-width: 96vw;
+}
+
+.menu-item-megamenu:hover > .ekwa-megamenu,
+.menu-item-megamenu:focus-within > .ekwa-megamenu,
+.menu-item-megamenu.is-open > .ekwa-megamenu {
+	opacity: 1;
+	visibility: visible;
+	transform: translate(-50%, 0);
+	pointer-events: auto;
+	transition-delay: 0s;
+}
+
+.ekwa-megamenu-grid {
+	display: grid;
+	grid-template-columns: repeat(var(--ekwa-mega-cols, 4), minmax(0, 1fr));
+	gap: 24px;
+}
+
+.ekwa-megamenu-column {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+.ekwa-megamenu-image-wrap {
+	display: flex;
+	justify-content: center;
+	margin-bottom: 4px;
+}
+
+.ekwa-megamenu-image {
+	width: 96px;
+	height: 96px;
+	object-fit: cover;
+	border-radius: 50%;
+	display: block;
+}
+
+.ekwa-megamenu-heading {
+	font-weight: 700;
+	font-size: 1.05em;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--ekwa-megamenu-divider, rgba(0, 0, 0, 0.08));
+	color: inherit;
+}
+
+a.ekwa-megamenu-heading:hover,
+a.ekwa-megamenu-heading:focus-visible {
+	color: var(--ekwa-megamenu-accent, currentColor);
+	text-decoration: underline;
+}
+
+.ekwa-megamenu-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ekwa-megamenu-list .menu-item > a {
+	display: block;
+	padding: 6px 0;
+	font-size: 0.95em;
+	color: inherit;
+	transition: color .15s ease, padding-left .15s ease;
+}
+
+.ekwa-megamenu-list .menu-item > a:hover,
+.ekwa-megamenu-list .menu-item > a:focus-visible {
+	color: var(--ekwa-megamenu-accent, currentColor);
+	padding-left: 4px;
+}
+
+/* ---- Active page highlighting ---- */
+.ekwa-header-menu .current-menu-item > a,
+.ekwa-header-menu .current-menu-ancestor > a,
+.ekwa-header-menu .current-menu-parent > a {
+	font-weight: 700;
+}
+
+/* ---- Editor preview tweaks ---- */
+.ekwa-header-menu-editor-wrapper {
+	pointer-events: none; /* prevent hover dropdowns inside the editor canvas */
+}
+.ekwa-header-menu-editor-wrapper .ekwa-megamenu,
+.ekwa-header-menu-editor-wrapper .sub-menu {
+	display: none !important;
+}

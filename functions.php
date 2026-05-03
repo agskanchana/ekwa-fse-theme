@@ -78,6 +78,11 @@ require_once get_template_directory() . '/inc/ekwa-blog.php';
 require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';
 
 /**
+ * Load header menu: mega-menu meta fields and custom walker.
+ */
+require_once get_template_directory() . '/inc/ekwa-header-menu.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
@@ -207,6 +212,7 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script
  */
 function ekwa_setup() {
 	register_nav_menus( array(
+		'main_menu'       => __( 'Main Menu', 'ekwa' ),
 		'primary'         => __( 'Primary Menu', 'ekwa' ),
 		'mobile'          => __( 'Mobile Menu', 'ekwa' ),
 		'mobile_services' => __( 'Mobile Services Menu', 'ekwa' ),
