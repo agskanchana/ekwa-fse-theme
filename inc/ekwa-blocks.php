@@ -3559,10 +3559,13 @@ function ekwa_render_categories_block( $attrs ) {
 /**
  * Render: ekwa/related-articles.
  *
- * Renders only on WP pages (is_page()): hidden on archives, single posts, search,
- * and 404. Looks up the category whose slug matches the page slug, and shows
- * matching posts. The heading pluralises by post count, and switches to the
- * "featured" labels when the matched category equals the configured featured slug.
+ * On a singular page, looks up the category whose slug matches the page slug
+ * and shows matching posts. On the front page / blog home, falls back to the
+ * configured featured-articles category so the same block doubles as a
+ * "Featured Articles" section. Hidden on single posts, archives, search, 404.
+ *
+ * The heading pluralises by post count, and switches to the "featured" labels
+ * when the matched category equals the configured featured slug.
  *
  * Layout is either a sliding carousel or a simple responsive grid based on the
  * useCarousel toggle.
@@ -3585,22 +3588,18 @@ function ekwa_render_related_articles_block( $attrs ) {
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
 		return '<div class="ekwa-related"><p style="color:#9ca3af;">'
-			. esc_html__( 'Renders on the front-end. Looks up posts whose category slug matches the current page slug.', 'ekwa' )
+			. esc_html__( 'Renders on the front-end. On pages: posts whose category slug matches the page slug. On the front page / blog home: posts in the featured-articles category.', 'ekwa' )
 			. '</p></div>';
 	}
 
-	// Pages only.
-	if ( ! is_page() ) {
+	// Allow on singular pages and on front page / blog home only.
+	if ( ! is_page() && ! is_front_page() && ! is_home() ) {
 		return '';
 	}
 
-	$page = get_queried_object();
-	if ( ! $page || empty( $page->post_name ) ) {
-		return '';
-	}
-
-	$term = get_term_by( 'slug', $page->post_name, 'category' );
-	if ( ! $term || is_wp_error( $term ) ) {
+	// Page slug → category, with a featured-slug fallback for front page / home.
+	$term = ekwa_related_posts_resolve_category( $featured_slug );
+	if ( ! $term ) {
 		return '';
 	}
 
