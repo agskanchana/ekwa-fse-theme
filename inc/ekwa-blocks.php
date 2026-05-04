@@ -519,7 +519,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-div-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-div-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-data', 'ekwa-link-source-control' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-div-editor.js' ),
 		true
 	);
@@ -3164,9 +3164,19 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$anchor       = isset( $attrs['anchor'] )          ? sanitize_html_class( $attrs['anchor'] ) : '';
 	$bg_image     = isset( $attrs['backgroundImage'] ) ? esc_url( $attrs['backgroundImage'] ) : '';
 	$inline_style = isset( $attrs['inlineStyle'] )     ? $attrs['inlineStyle'] : '';
-	$href         = isset( $attrs['href'] )            ? esc_url( $attrs['href'] ) : '';
-	$target       = isset( $attrs['target'] )          ? sanitize_text_field( $attrs['target'] ) : '';
-	$rel          = isset( $attrs['rel'] )             ? sanitize_text_field( $attrs['rel'] ) : '';
+
+	// Resolve href via the shared link-source helper. For external mode, fall
+	// back to the legacy `href` attribute when `url` is empty (backward-compat
+	// with content saved before the Link Source control was added).
+	$resolve_attrs = $attrs;
+	if ( empty( $resolve_attrs['url'] ) && ! empty( $resolve_attrs['href'] )
+		&& ( ! isset( $resolve_attrs['linkType'] ) || 'external' === $resolve_attrs['linkType'] ) ) {
+		$resolve_attrs['url'] = $resolve_attrs['href'];
+	}
+	$resolved_href = ekwa_resolve_block_link_url( $resolve_attrs );
+	$href          = $resolved_href ? esc_url( $resolved_href ) : '';
+	$target        = isset( $attrs['target'] ) ? sanitize_text_field( $attrs['target'] ) : '';
+	$rel           = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
 
 	$allowed = array(
 		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',

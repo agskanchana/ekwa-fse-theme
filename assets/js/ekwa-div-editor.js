@@ -21,6 +21,7 @@
 	var TextareaControl    = wp.components.TextareaControl;
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 
 	var TAG_OPTIONS = [
 		{ label: 'div',         value: 'div' },
@@ -100,14 +101,24 @@
 			);
 
 			if ( tagName === 'a' ) {
-				settingsChildren.push(
-					el( TextControl, {
-						key: 'href',
-						label: __( 'URL (href)' ),
-						value: attributes.href || '',
-						onChange: function ( val ) { setAttributes( { href: val } ); },
-					} )
-				);
+				if ( LinkSourceControls ) {
+					settingsChildren.push(
+						el( LinkSourceControls, {
+							key:           'link-source',
+							attributes:    attributes,
+							setAttributes: setAttributes
+						} )
+					);
+				} else {
+					settingsChildren.push(
+						el( TextControl, {
+							key: 'url',
+							label: __( 'URL' ),
+							value: attributes.url || attributes.href || '',
+							onChange: function ( val ) { setAttributes( { url: val } ); },
+						} )
+					);
+				}
 				settingsChildren.push(
 					el( SelectControl, {
 						key: 'target',
@@ -233,7 +244,7 @@
 						transition: 'opacity 0.15s',
 						pointerEvents: 'none',
 					},
-				}, '<' + tagName + '>' + ( tagName === 'a' && attributes.href ? ' ' + attributes.href : '' ) )
+				}, '<' + tagName + '>' + ( tagName === 'a' && ( attributes.url || attributes.href ) ? ' ' + ( attributes.url || attributes.href ) : '' ) )
 				: null;
 
 			return el( Fragment, null,

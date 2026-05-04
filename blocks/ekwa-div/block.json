@@ -17,6 +17,10 @@
 	"attributes": {
 		"tagName":           { "type": "string",  "default": "div" },
 		"href":              { "type": "string",  "default": "" },
+		"url":               { "type": "string",  "default": "" },
+		"linkType":          { "type": "string",  "default": "external" },
+		"pageType":          { "type": "string",  "default": "page" },
+		"pageId":            { "type": "number",  "default": 0 },
 		"target":            { "type": "string",  "default": "" },
 		"rel":               { "type": "string",  "default": "" },
 		"backgroundImage":   { "type": "string",  "default": "" },
