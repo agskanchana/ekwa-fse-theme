@@ -91,7 +91,7 @@ add_filter( 'author_link', 'ekwa_filter_author_link' );
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Render a single post card for the blog grid.
+ * Render a compact post card used by the related-articles carousel.
  *
  * @param int $post_id Post ID.
  * @return string Card HTML.
@@ -103,7 +103,6 @@ function ekwa_render_post_card( $post_id ) {
 	$date      = get_the_date( 'M j, Y', $post_id );
 	$thumb     = get_the_post_thumbnail( $post_id, 'medium_large', array(
 		'loading' => 'lazy',
-		'style'   => 'width:100%;height:240px;object-fit:cover;display:block;border-radius:8px 8px 0 0;',
 	) );
 
 	$html  = '<article class="ekwa-post-card">';
@@ -114,6 +113,35 @@ function ekwa_render_post_card( $post_id ) {
 	$html .= '<span class="ekwa-post-card__date"><i class="fa-regular fa-calendar" aria-hidden="true"></i> ' . esc_html( $date ) . '</span>';
 	$html .= '</div>';
 	$html .= '</article>';
+
+	return $html;
+}
+
+/**
+ * Render a blog-grid card matching the post-template markup in index.html.
+ * Wrapped in <li class="wp-block-post"> so it slots into the existing grid
+ * when appended via the AJAX load-more flow.
+ */
+function ekwa_render_blog_grid_li( $post_id ) {
+	$permalink = get_permalink( $post_id );
+	$title     = get_the_title( $post_id );
+	$excerpt   = get_the_excerpt( $post_id );
+	$date      = get_the_date( 'M j, Y', $post_id );
+	$thumb     = get_the_post_thumbnail( $post_id, 'medium_large', array( 'loading' => 'lazy' ) );
+
+	$html  = '<li class="wp-block-post post type-post status-publish has-post-thumbnail">';
+	$html .= '<div class="wp-block-group ekwa-blog-card">';
+	$html .= '<div class="wp-block-group ekwa-blog-card__media">';
+	$html .= '<figure class="wp-block-post-featured-image"><a href="' . esc_url( $permalink ) . '">' . $thumb . '</a></figure>';
+	$html .= '<div class="wp-block-post-date ekwa-blog-card__date has-small-font-size"><time datetime="' . esc_attr( get_the_date( 'c', $post_id ) ) . '">' . esc_html( $date ) . '</time></div>';
+	$html .= '</div>';
+	$html .= '<div class="wp-block-group ekwa-blog-card__body">';
+	$html .= '<h3 class="wp-block-post-title has-medium-font-size"><a href="' . esc_url( $permalink ) . '">' . esc_html( $title ) . '</a></h3>';
+	$html .= '<div class="wp-block-post-excerpt has-small-font-size"><p class="wp-block-post-excerpt__excerpt">' . esc_html( wp_trim_words( $excerpt, 22, '&hellip;' ) ) . '</p></div>';
+	$html .= '<a class="wp-block-read-more" href="' . esc_url( $permalink ) . '">Continue Reading</a>';
+	$html .= '</div>';
+	$html .= '</div>';
+	$html .= '</li>';
 
 	return $html;
 }
@@ -147,7 +175,7 @@ function ekwa_ajax_load_more() {
 	if ( $q->have_posts() ) {
 		while ( $q->have_posts() ) {
 			$q->the_post();
-			$html .= ekwa_render_post_card( get_the_ID() );
+			$html .= ekwa_render_blog_grid_li( get_the_ID() );
 		}
 		wp_reset_postdata();
 	}
@@ -223,9 +251,11 @@ function ekwa_inject_query_data( $block_content, $block ) {
 	$nonce      = wp_create_nonce( 'ekwa_load_more' );
 	$query_json = esc_attr( wp_json_encode( $args ) );
 
-	// Inject data attributes into the first div.
+	// Inject data attributes into the first div whose class contains wp-block-query.
+	// WordPress may add layout classes (e.g. "wp-block-query is-layout-flow ..."),
+	// so match wp-block-query as a class token rather than the exact attribute value.
 	$block_content = preg_replace(
-		'/^(<div\b[^>]*class="wp-block-query"[^>]*)>/s',
+		'/(<div\b[^>]*\bclass="[^"]*\bwp-block-query\b[^"]*"[^>]*?)>/s',
 		'$1 data-ekwa-query="' . $query_json . '" data-ekwa-max-pages="' . $max_pages . '" data-ekwa-nonce="' . $nonce . '">',
 		$block_content,
 		1

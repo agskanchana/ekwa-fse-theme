@@ -56,17 +56,6 @@
 
 		headings.forEach( function ( h ) { observer.observe( h.el ); } );
 
-		// Mobile collapse.
-		var title = toc.querySelector( '.ekwa-toc__title' );
-		var list  = toc.querySelector( '.ekwa-toc__list' );
-		if ( title && list && window.innerWidth < 782 ) {
-			list.style.display = 'none';
-			title.style.cursor = 'pointer';
-			title.addEventListener( 'click', function () {
-				var open = list.style.display !== 'none';
-				list.style.display = open ? 'none' : 'block';
-				toc.classList.toggle( 'is-open', ! open );
-			} );
-		}
+		// On mobile the TOC is always expanded — no collapse toggle.
 	} );
 } )();

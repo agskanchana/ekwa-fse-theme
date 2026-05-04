@@ -1,0 +1,17 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/categories",
+	"version": "1.0.0",
+	"title": "Ekwa Categories",
+	"category": "common",
+	"icon": "category",
+	"description": "Sidebar widget listing post categories with counts.",
+	"textdomain": "ekwa",
+	"keywords": [ "categories", "taxonomy", "sidebar", "widget" ],
+	"supports": { "html": false },
+	"attributes": {
+		"title": { "type": "string", "default": "Categories" }
+	},
+	"editorScript": "ekwa-categories-editor"
+}

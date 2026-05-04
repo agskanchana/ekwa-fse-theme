@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/related-posts",
+	"version": "1.0.0",
+	"title": "Ekwa Related Posts",
+	"category": "common",
+	"icon": "admin-post",
+	"description": "Lists blog posts whose category slug matches the current page slug. On the home page falls back to the configured featured category.",
+	"textdomain": "ekwa",
+	"keywords": [ "related", "posts", "footer", "context" ],
+	"supports": { "html": false },
+	"attributes": {
+		"headingLevel":            { "type": "string", "default": "h2" },
+		"singularLabel":           { "type": "string", "default": "Related article" },
+		"pluralLabel":             { "type": "string", "default": "Related articles" },
+		"featuredSingularLabel":   { "type": "string", "default": "Featured article" },
+		"featuredPluralLabel":     { "type": "string", "default": "Featured articles" },
+		"featuredCategorySlug":    { "type": "string", "default": "featured-articles" },
+		"count":                   { "type": "number", "default": 3 },
+		"hideHeading":             { "type": "boolean", "default": false }
+	},
+	"editorScript": "ekwa-related-posts-editor"
+}

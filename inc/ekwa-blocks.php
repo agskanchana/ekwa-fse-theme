@@ -604,6 +604,9 @@ function ekwa_register_blocks() {
 		'toc'              => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
 		'related-articles' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'load-more'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
+		'recent-posts'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'categories'       => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'related-posts'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 	);
 
 	foreach ( $blog_blocks as $slug => $config ) {
@@ -3453,36 +3456,68 @@ function ekwa_render_toc_block( $attrs ) {
 		$html .= '</ul></nav>';
 	}
 
-	// ── Recent Posts widget ──────────────────────────────────────
-	$recent = get_posts( array(
-		'posts_per_page' => 5,
-		'post__not_in'   => array( get_the_ID() ),
-		'post_status'    => 'publish',
-	) );
+	return $html;
+}
 
-	if ( $recent ) {
-		$html .= '<div class="ekwa-sidebar-widget">';
-		$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html__( 'Recent Posts', 'ekwa' ) . '</h4>';
-		$html .= '<ul class="ekwa-recent-posts">';
-		foreach ( $recent as $rp ) {
-			$thumb = get_the_post_thumbnail( $rp->ID, 'thumbnail', array(
-				'class'   => 'ekwa-recent-posts__thumb',
-				'loading' => 'lazy',
-			) );
-			$html .= '<li class="ekwa-recent-posts__item">';
-			$html .= '<a href="' . esc_url( get_permalink( $rp->ID ) ) . '" class="ekwa-recent-posts__link">';
-			$html .= $thumb;
-			$html .= '<span class="ekwa-recent-posts__info">';
-			$html .= '<span class="ekwa-recent-posts__name">' . esc_html( get_the_title( $rp->ID ) ) . '</span>';
-			$html .= '<span class="ekwa-recent-posts__date">' . esc_html( get_the_date( 'M j, Y', $rp->ID ) ) . '</span>';
-			$html .= '</span>';
-			$html .= '</a>';
-			$html .= '</li>';
-		}
-		$html .= '</ul></div>';
+/**
+ * Render: ekwa/recent-posts.
+ *
+ * Sidebar widget listing the latest published posts (excludes the current post).
+ */
+function ekwa_render_recent_posts_block( $attrs ) {
+	$count = absint( $attrs['count'] ?? 5 );
+	$title = $attrs['title'] ?? __( 'Recent Posts', 'ekwa' );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-sidebar-widget"><h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4><p style="color:#9ca3af;font-size:12px;">Latest posts list (rendered on front-end).</p></div>';
 	}
 
-	// ── Categories widget ────────────────────────────────────────
+	$args = array(
+		'posts_per_page' => $count,
+		'post_status'    => 'publish',
+	);
+	if ( get_the_ID() ) {
+		$args['post__not_in'] = array( get_the_ID() );
+	}
+	$recent = get_posts( $args );
+	if ( ! $recent ) {
+		return '';
+	}
+
+	$html  = '<div class="ekwa-sidebar-widget ekwa-sidebar-widget--recent">';
+	$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4>';
+	$html .= '<ul class="ekwa-recent-posts">';
+	foreach ( $recent as $rp ) {
+		$thumb = get_the_post_thumbnail( $rp->ID, 'thumbnail', array(
+			'class'   => 'ekwa-recent-posts__thumb',
+			'loading' => 'lazy',
+		) );
+		$html .= '<li class="ekwa-recent-posts__item">';
+		$html .= '<a href="' . esc_url( get_permalink( $rp->ID ) ) . '" class="ekwa-recent-posts__link">';
+		$html .= $thumb;
+		$html .= '<span class="ekwa-recent-posts__info">';
+		$html .= '<span class="ekwa-recent-posts__name">' . esc_html( get_the_title( $rp->ID ) ) . '</span>';
+		$html .= '<span class="ekwa-recent-posts__date"><i class="fa-regular fa-calendar" aria-hidden="true"></i> ' . esc_html( get_the_date( 'M j, Y', $rp->ID ) ) . '</span>';
+		$html .= '</span>';
+		$html .= '</a>';
+		$html .= '</li>';
+	}
+	$html .= '</ul></div>';
+	return $html;
+}
+
+/**
+ * Render: ekwa/categories.
+ *
+ * Sidebar widget listing post categories (skips uncategorized + featured slugs).
+ */
+function ekwa_render_categories_block( $attrs ) {
+	$title = $attrs['title'] ?? __( 'Categories', 'ekwa' );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-sidebar-widget"><h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4><p style="color:#9ca3af;font-size:12px;">Category list (rendered on front-end).</p></div>';
+	}
+
 	$excluded_slugs = array( 'uncategorized', 'featured', 'featured-articles' );
 	$cats = get_categories( array(
 		'hide_empty' => true,
@@ -3492,72 +3527,125 @@ function ekwa_render_toc_block( $attrs ) {
 	$cats = array_filter( $cats, function ( $c ) use ( $excluded_slugs ) {
 		return ! in_array( strtolower( $c->slug ), $excluded_slugs, true );
 	} );
-
-	if ( $cats ) {
-		$html .= '<div class="ekwa-sidebar-widget">';
-		$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html__( 'Categories', 'ekwa' ) . '</h4>';
-		$html .= '<ul class="ekwa-categories">';
-		foreach ( $cats as $cat ) {
-			$html .= '<li class="ekwa-categories__item">';
-			$html .= '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '">' . esc_html( $cat->name ) . '</a>';
-			$html .= '<span class="ekwa-categories__count">(' . $cat->count . ')</span>';
-			$html .= '</li>';
-		}
-		$html .= '</ul></div>';
+	if ( ! $cats ) {
+		return '';
 	}
 
+	$html  = '<div class="ekwa-sidebar-widget ekwa-sidebar-widget--cats">';
+	$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4>';
+	$html .= '<ul class="ekwa-categories">';
+	foreach ( $cats as $cat ) {
+		$html .= '<li class="ekwa-categories__item">';
+		$html .= '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '"><i class="fa-regular fa-folder" aria-hidden="true"></i> ' . esc_html( $cat->name ) . '</a>';
+		$html .= '<span class="ekwa-categories__count">' . $cat->count . '</span>';
+		$html .= '</li>';
+	}
+	$html .= '</ul></div>';
 	return $html;
 }
 
 /**
  * Render: ekwa/related-articles.
+ *
+ * Renders only on WP pages (is_page()): hidden on archives, single posts, search,
+ * and 404. Looks up the category whose slug matches the page slug, and shows
+ * matching posts. The heading pluralises by post count, and switches to the
+ * "featured" labels when the matched category equals the configured featured slug.
+ *
+ * Layout is either a sliding carousel or a simple responsive grid based on the
+ * useCarousel toggle.
  */
 function ekwa_render_related_articles_block( $attrs ) {
-	$count        = absint( $attrs['count'] ?? 6 );
-	$desktop      = absint( $attrs['desktopItems'] ?? 3 );
-	$tablet       = absint( $attrs['tabletItems'] ?? 2 );
-	$mobile       = absint( $attrs['mobileItems'] ?? 1 );
-	$show_arrows  = ! empty( $attrs['showArrows'] );
-	$show_dots    = ! empty( $attrs['showDots'] );
-	$title        = $attrs['title'] ?? __( 'Related Articles', 'ekwa' );
+	$use_carousel  = ! isset( $attrs['useCarousel'] ) ? true : (bool) $attrs['useCarousel'];
+	$count         = max( 1, absint( $attrs['count'] ?? 6 ) );
+	$desktop       = absint( $attrs['desktopItems'] ?? 3 );
+	$tablet        = absint( $attrs['tabletItems'] ?? 2 );
+	$mobile        = absint( $attrs['mobileItems'] ?? 1 );
+	$show_arrows   = ! empty( $attrs['showArrows'] );
+	$show_dots     = ! empty( $attrs['showDots'] );
+	$heading_level = preg_match( '/^h[1-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
+	$singular      = $attrs['singularLabel']         ?? __( 'Related article',  'ekwa' );
+	$plural        = $attrs['pluralLabel']           ?? __( 'Related articles', 'ekwa' );
+	$f_singular    = $attrs['featuredSingularLabel'] ?? __( 'Featured article',  'ekwa' );
+	$f_plural      = $attrs['featuredPluralLabel']   ?? __( 'Featured articles', 'ekwa' );
+	$featured_slug = sanitize_title( $attrs['featuredCategorySlug'] ?? 'featured-articles' );
+	$hide_heading  = ! empty( $attrs['hideHeading'] );
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-		return '<div class="ekwa-related"><h2>' . esc_html( $title ) . '</h2><p style="color:#9ca3af;">Related articles carousel (rendered on front-end).</p></div>';
+		return '<div class="ekwa-related"><p style="color:#9ca3af;">'
+			. esc_html__( 'Renders on the front-end. Looks up posts whose category slug matches the current page slug.', 'ekwa' )
+			. '</p></div>';
 	}
 
-	if ( ! get_the_ID() || get_post_type() !== 'post' ) {
+	// Pages only.
+	if ( ! is_page() ) {
 		return '';
 	}
 
-	// Get primary category.
-	$categories = get_the_category();
-	$excluded   = array( 'uncategorized', 'featured', 'featured-articles' );
-	$filtered   = array_filter( $categories, function ( $cat ) use ( $excluded ) {
-		return ! in_array( strtolower( $cat->slug ), $excluded, true );
-	} );
-
-	if ( empty( $filtered ) ) {
+	$page = get_queried_object();
+	if ( ! $page || empty( $page->post_name ) ) {
 		return '';
 	}
 
-	$cat_id = reset( $filtered )->term_id;
+	$term = get_term_by( 'slug', $page->post_name, 'category' );
+	if ( ! $term || is_wp_error( $term ) ) {
+		return '';
+	}
 
 	$posts = get_posts( array(
 		'post_type'      => 'post',
 		'posts_per_page' => $count,
-		'cat'            => $cat_id,
-		'post__not_in'   => array( get_the_ID() ),
+		'cat'            => $term->term_id,
 		'orderby'        => 'date',
 		'order'          => 'DESC',
 	) );
-
 	if ( empty( $posts ) ) {
 		return '';
 	}
 
-	// Enqueue shared carousel assets (registered by ekwa_register_blocks).
+	// Heading: featured slug match uses featured labels, otherwise generic related labels.
+	$is_featured  = ( $term->slug === $featured_slug );
+	if ( $is_featured ) {
+		$heading_text = ( count( $posts ) === 1 ) ? $f_singular : $f_plural;
+	} else {
+		$heading_text = ( count( $posts ) === 1 ) ? $singular : $plural;
+	}
+
+	$heading_html = $hide_heading
+		? ''
+		: '<' . $heading_level . ' class="ekwa-related__title">' . esc_html( $heading_text ) . '</' . $heading_level . '>';
+
+	$wrap_open  = '<section class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
+	$wrap_close = '</section>';
+
+	// ── Grid mode ─────────────────────────────────────────────────────
+	if ( ! $use_carousel ) {
+		// Make sure the blog stylesheet is loaded so the post-card styles apply on page contexts.
+		wp_enqueue_style(
+			'ekwa-blog',
+			get_template_directory_uri() . '/assets/css/ekwa-blog.css',
+			array(),
+			filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
+		);
+
+		$grid_html = '<div class="ekwa-related__grid" data-desktop-items="' . $desktop . '" data-tablet-items="' . $tablet . '" data-mobile-items="' . $mobile . '">';
+		foreach ( $posts as $p ) {
+			$grid_html .= ekwa_render_post_card( $p->ID );
+		}
+		$grid_html .= '</div>';
+
+		return $wrap_open . $heading_html . $grid_html . $wrap_close;
+	}
+
+	// ── Carousel mode ─────────────────────────────────────────────────
 	wp_enqueue_script( 'ekwa-carousel-view' );
 	wp_enqueue_style(  'ekwa-carousel-style' );
+	wp_enqueue_style(
+		'ekwa-blog',
+		get_template_directory_uri() . '/assets/css/ekwa-blog.css',
+		array(),
+		filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
+	);
 
 	$data_attrs = ' data-desktop-items="' . $desktop . '"'
 	            . ' data-tablet-items="' . $tablet . '"'
@@ -3565,30 +3653,25 @@ function ekwa_render_related_articles_block( $attrs ) {
 	            . ' data-show-arrows="' . ( $show_arrows ? 'true' : 'false' ) . '"'
 	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"';
 
-	$html  = '<div class="ekwa-related">';
-	$html .= '<h2 class="ekwa-related__title">' . esc_html( $title ) . '</h2>';
+	$html  = $wrap_open;
+	$html .= $heading_html;
 	$html .= '<div class="ekwa-carousel"' . $data_attrs . '>';
 	$html .= '<div class="ekwa-carousel__track">';
-
 	foreach ( $posts as $p ) {
 		$html .= '<div class="ekwa-carousel__item">';
 		$html .= ekwa_render_post_card( $p->ID );
 		$html .= '</div>';
 	}
-
 	$html .= '</div>'; // track
-
 	if ( $show_arrows ) {
 		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left"></i></button>';
 		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right"></i></button>';
 	}
-
 	if ( $show_dots ) {
 		$html .= '<div class="ekwa-carousel__dots"></div>';
 	}
-
 	$html .= '</div>'; // carousel
-	$html .= '</div>'; // related
+	$html .= $wrap_close;
 
 	return $html;
 }
@@ -3620,4 +3703,209 @@ function ekwa_render_load_more_block( $attrs ) {
 	return '<div class="ekwa-load-more" data-loading-text="' . esc_attr( $loading_text ) . '" data-no-more-text="' . esc_attr( $no_more_text ) . '">'
 		. '<button class="ekwa-load-more__btn">' . esc_html( $button_text ) . '</button>'
 		. '</div>';
+}
+
+/**
+ * Default HTML template for ekwa/related-posts post items. Tokens like
+ * {{title}}, {{date}}, {{featured_image}}, {{permalink}}, {{excerpt}}, etc.
+ * are replaced per post. Users can override this in Ekwa Settings → Related Posts.
+ */
+function ekwa_related_posts_default_template() {
+	return "<article class=\"article-card\">\n"
+		 . "\t<div class=\"article-img\">\n"
+		 . "\t\t<a href=\"{{permalink}}\">{{featured_image}}</a>\n"
+		 . "\t\t<span class=\"article-date\">{{date}}</span>\n"
+		 . "\t</div>\n"
+		 . "\t<div class=\"article-body\">\n"
+		 . "\t\t<h3 class=\"wp-block-heading\"><a href=\"{{permalink}}\">{{title}}</a></h3>\n"
+		 . "\t\t<p>{{excerpt}}</p>\n"
+		 . "\t\t<a href=\"{{permalink}}\" class=\"btn btn-dark btn-sm\">Continue Reading</a>\n"
+		 . "\t</div>\n"
+		 . "</article>";
+}
+
+/**
+ * Replace {{token}} placeholders inside the post-item template.
+ *
+ * Supported tokens:
+ *   {{title}} {{title_attr}} {{permalink}}
+ *   {{featured_image}}              — <img> at medium_large
+ *   {{featured_image:size}}         — <img> at the named size (thumbnail|medium|medium_large|large|full)
+ *   {{featured_image_url}}          — URL at large
+ *   {{featured_image_url:size}}     — URL at named size
+ *   {{date}}                        — uses Ekwa Settings date format
+ *   {{date:format}}                 — custom PHP date() format
+ *   {{excerpt}}                     — uses Ekwa Settings excerpt length
+ *   {{excerpt:N}}                   — N-word excerpt
+ *   {{author}} {{author_url}}
+ *   {{categories}}                  — comma-separated linked category list
+ *   {{read_time}}                   — minutes read
+ */
+function ekwa_related_posts_render_template( $template, $post_id ) {
+	$default_format = get_option( 'ekwa_related_posts_date_format', 'M j, Y' );
+	$default_words  = absint( get_option( 'ekwa_related_posts_excerpt_words', 22 ) );
+	if ( $default_words < 1 ) { $default_words = 22; }
+
+	$replacements = array();
+
+	// Static tokens.
+	$replacements['{{title}}']              = esc_html( get_the_title( $post_id ) );
+	$replacements['{{title_attr}}']         = esc_attr( get_the_title( $post_id ) );
+	$replacements['{{permalink}}']          = esc_url( get_permalink( $post_id ) );
+	$replacements['{{author}}']             = esc_html( get_the_author_meta( 'display_name', get_post_field( 'post_author', $post_id ) ) );
+	$replacements['{{author_url}}']         = esc_url( get_author_posts_url( get_post_field( 'post_author', $post_id ) ) );
+	$replacements['{{featured_image}}']     = get_the_post_thumbnail( $post_id, 'medium_large', array( 'loading' => 'lazy' ) );
+	$replacements['{{featured_image_url}}'] = esc_url( get_the_post_thumbnail_url( $post_id, 'large' ) ?: '' );
+	$replacements['{{date}}']               = esc_html( get_the_date( $default_format, $post_id ) );
+
+	// Excerpt at default length.
+	$raw_excerpt = get_the_excerpt( $post_id );
+	$replacements['{{excerpt}}'] = esc_html( wp_trim_words( $raw_excerpt, $default_words, '&hellip;' ) );
+
+	// Read time.
+	$content    = get_post_field( 'post_content', $post_id );
+	$word_count = str_word_count( wp_strip_all_tags( $content ) );
+	$minutes    = max( 1, (int) ceil( $word_count / 200 ) );
+	$replacements['{{read_time}}'] = esc_html( sprintf( _n( '%d min read', '%d min read', $minutes, 'ekwa' ), $minutes ) );
+
+	// Categories (linked).
+	$cats = get_the_category( $post_id );
+	if ( $cats ) {
+		$cat_links = array();
+		foreach ( $cats as $cat ) {
+			$cat_links[] = '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '">' . esc_html( $cat->name ) . '</a>';
+		}
+		$replacements['{{categories}}'] = implode( ', ', $cat_links );
+	} else {
+		$replacements['{{categories}}'] = '';
+	}
+
+	// Apply static tokens.
+	$out = strtr( $template, $replacements );
+
+	// Parametrized tokens: {{date:format}}, {{excerpt:N}}, {{featured_image:size}}, {{featured_image_url:size}}.
+	$out = preg_replace_callback(
+		'/\{\{(date|excerpt|featured_image|featured_image_url):([^}]+)\}\}/',
+		function ( $m ) use ( $post_id ) {
+			$key = $m[1];
+			$arg = trim( $m[2] );
+			switch ( $key ) {
+				case 'date':
+					return esc_html( get_the_date( $arg, $post_id ) );
+				case 'excerpt':
+					$n = absint( $arg );
+					if ( $n < 1 ) { $n = 22; }
+					return esc_html( wp_trim_words( get_the_excerpt( $post_id ), $n, '&hellip;' ) );
+				case 'featured_image':
+					return get_the_post_thumbnail( $post_id, $arg, array( 'loading' => 'lazy' ) );
+				case 'featured_image_url':
+					return esc_url( get_the_post_thumbnail_url( $post_id, $arg ) ?: '' );
+			}
+			return '';
+		},
+		$out
+	);
+
+	return $out;
+}
+
+/**
+ * Resolve the category to use for ekwa/related-posts based on current context.
+ * Returns a WP_Term or null.
+ */
+function ekwa_related_posts_resolve_category( $featured_slug ) {
+	// Single page: use page slug as category slug.
+	if ( is_page() ) {
+		$page = get_queried_object();
+		if ( $page && ! empty( $page->post_name ) ) {
+			$term = get_term_by( 'slug', $page->post_name, 'category' );
+			if ( $term && ! is_wp_error( $term ) ) {
+				return $term;
+			}
+		}
+	}
+
+	// Front page or home: use the configured featured-articles slug.
+	if ( is_front_page() || is_home() ) {
+		$term = get_term_by( 'slug', $featured_slug, 'category' );
+		if ( $term && ! is_wp_error( $term ) ) {
+			return $term;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Render: ekwa/related-posts.
+ *
+ * Pulls posts from the category whose slug matches the current page's slug
+ * (or the configured featured slug on home/front-page). Each post is rendered
+ * using the template stored in Ekwa Settings → Related Posts; tokens like
+ * {{title}}, {{featured_image}}, {{date}} are replaced per post.
+ */
+function ekwa_render_related_posts_block( $attrs ) {
+	$heading_level    = preg_match( '/^h[1-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
+	$singular         = $attrs['singularLabel']         ?? __( 'Related article',  'ekwa' );
+	$plural           = $attrs['pluralLabel']           ?? __( 'Related articles', 'ekwa' );
+	$f_singular       = $attrs['featuredSingularLabel'] ?? __( 'Featured article',  'ekwa' );
+	$f_plural         = $attrs['featuredPluralLabel']   ?? __( 'Featured articles', 'ekwa' );
+	$featured_slug    = sanitize_title( $attrs['featuredCategorySlug'] ?? 'featured-articles' );
+	$count            = max( 1, absint( $attrs['count'] ?? 3 ) );
+	$hide_heading     = ! empty( $attrs['hideHeading'] );
+
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		return '<div class="ekwa-related-posts"><p style="color:#9ca3af;">Renders on the front-end based on the current page slug.</p></div>';
+	}
+
+	$term = ekwa_related_posts_resolve_category( $featured_slug );
+	if ( ! $term ) {
+		return '';
+	}
+
+	$posts = get_posts( array(
+		'post_type'      => 'post',
+		'posts_per_page' => $count,
+		'cat'            => $term->term_id,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+	if ( empty( $posts ) ) {
+		return '';
+	}
+
+	// Heading: featured-slug match uses the featured labels, otherwise generic related labels.
+	$is_featured_ctx = ( $term->slug === $featured_slug );
+	if ( $is_featured_ctx ) {
+		$heading_text = ( count( $posts ) === 1 ) ? $f_singular : $f_plural;
+	} else {
+		$heading_text = ( count( $posts ) === 1 ) ? $singular : $plural;
+	}
+
+	// Make sure the blog stylesheet is on the page (it carries the article-card styles).
+	wp_enqueue_style(
+		'ekwa-blog',
+		get_template_directory_uri() . '/assets/css/ekwa-blog.css',
+		array(),
+		filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
+	);
+
+	$template = (string) get_option( 'ekwa_related_posts_template', '' );
+	if ( '' === trim( $template ) ) {
+		$template = ekwa_related_posts_default_template();
+	}
+
+	$items_html = '';
+	foreach ( $posts as $p ) {
+		$items_html .= ekwa_related_posts_render_template( $template, $p->ID );
+	}
+
+	$html  = '<section class="ekwa-related-posts" data-category="' . esc_attr( $term->slug ) . '">';
+	if ( ! $hide_heading ) {
+		$html .= '<' . $heading_level . ' class="ekwa-related-posts__heading">' . esc_html( $heading_text ) . '</' . $heading_level . '>';
+	}
+	$html .= '<div class="ekwa-related-posts__grid">' . $items_html . '</div>';
+	$html .= '</section>';
+
+	return $html;
 }

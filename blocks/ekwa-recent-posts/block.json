@@ -1,0 +1,18 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/recent-posts",
+	"version": "1.0.0",
+	"title": "Ekwa Recent Posts",
+	"category": "common",
+	"icon": "list-view",
+	"description": "Sidebar widget listing the latest blog posts.",
+	"textdomain": "ekwa",
+	"keywords": [ "recent", "posts", "sidebar", "widget" ],
+	"supports": { "html": false },
+	"attributes": {
+		"title": { "type": "string", "default": "Recent Posts" },
+		"count": { "type": "number", "default": 5 }
+	},
+	"editorScript": "ekwa-recent-posts-editor"
+}

@@ -272,11 +272,21 @@ function ekwa_save_settings() {
 		'ekwa_mmenu_divider'      => 'ekwa_sanitize_color',
 		'ekwa_mmenu_navbar_bg'    => 'ekwa_sanitize_color',
 		'ekwa_mmenu_navbar_text'  => 'ekwa_sanitize_color',
+		'ekwa_related_posts_date_format'    => 'sanitize_text_field',
+		'ekwa_related_posts_excerpt_words'  => 'absint',
 	);
 
 	foreach ( $fields as $key => $sanitize ) {
 		$value = isset( $_POST[ $key ] ) ? call_user_func( $sanitize, wp_unslash( $_POST[ $key ] ) ) : '';
 		update_option( $key, $value );
+	}
+
+	// Related Posts template HTML — keep raw markup but normalize line endings.
+	if ( isset( $_POST['ekwa_related_posts_template'] ) ) {
+		$tpl = wp_unslash( $_POST['ekwa_related_posts_template'] );
+		// Strip script/style tags as a safety net; keep everything else verbatim.
+		$tpl = preg_replace( '#<\s*(script|style)[^>]*>.*?<\s*/\s*\1\s*>#is', '', $tpl );
+		update_option( 'ekwa_related_posts_template', $tpl );
 	}
 
 	// WebP options — checkboxes need explicit handling so unchecked saves as 0.
@@ -348,6 +358,13 @@ function ekwa_render_settings_page() {
 	$mmenu_navbar_text = get_option( 'ekwa_mmenu_navbar_text', '' );
 	$locations     = get_option( 'ekwa_locations', array() );
 	$social        = get_option( 'ekwa_social', array() );
+	$rp_template   = get_option( 'ekwa_related_posts_template', '' );
+	if ( '' === trim( $rp_template ) ) {
+		$rp_template = ekwa_related_posts_default_template();
+	}
+	$rp_date_fmt   = get_option( 'ekwa_related_posts_date_format', 'M j, Y' );
+	$rp_words      = (int) get_option( 'ekwa_related_posts_excerpt_words', 22 );
+	if ( $rp_words < 1 ) { $rp_words = 22; }
 	$pages         = get_pages();
 	$countries     = ekwa_get_countries();
 	$org_types     = ekwa_get_organization_types();
@@ -682,6 +699,110 @@ function ekwa_render_settings_page() {
 						</td>
 					</tr>
 				</table>
+			</div>
+
+			<!-- ========== RELATED POSTS ========== -->
+			<div class="ekwa-section">
+				<h2><?php esc_html_e( 'Related Posts', 'ekwa' ); ?></h2>
+				<p class="description" style="margin-bottom:1em;">
+					<?php esc_html_e( 'Controls the Ekwa Related Posts block that you place inside the footer template part. The block pulls posts whose category slug matches the current page slug, and falls back to a featured-articles category on the home page.', 'ekwa' ); ?>
+				</p>
+				<table class="form-table">
+					<tr>
+						<th><label for="ekwa_related_posts_template"><?php esc_html_e( 'Post item template', 'ekwa' ); ?></label></th>
+						<td>
+							<textarea
+								id="ekwa_related_posts_template"
+								name="ekwa_related_posts_template"
+								rows="14"
+								class="large-text code"
+								spellcheck="false"
+								style="font-family:Menlo,Consolas,monospace;font-size:12.5px;"
+							><?php echo esc_textarea( $rp_template ); ?></textarea>
+							<p class="description"><?php esc_html_e( 'Raw HTML rendered once per post. Use the tokens listed below — they are replaced with the post\'s data at render time.', 'ekwa' ); ?></p>
+
+							<details style="margin-top:10px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:10px 14px;">
+								<summary style="cursor:pointer;font-weight:600;"><?php esc_html_e( 'Available tokens', 'ekwa' ); ?></summary>
+								<table style="width:100%;margin-top:10px;font-size:13px;">
+									<tbody>
+										<tr><td style="padding:4px 8px;width:240px;"><code>{{title}}</code></td><td>The post title (escaped).</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{title_attr}}</code></td><td>The post title, attribute-safe (for <code>title=""</code>).</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{permalink}}</code></td><td>Full URL to the post.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{featured_image}}</code></td><td>Full <code>&lt;img&gt;</code> tag at <em>medium_large</em> size.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{featured_image:size}}</code></td><td>Image at a named size (<code>thumbnail</code>, <code>medium</code>, <code>medium_large</code>, <code>large</code>, <code>full</code>).</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{featured_image_url}}</code></td><td>URL of the featured image (large size).</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{featured_image_url:size}}</code></td><td>URL of the featured image at a named size.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{date}}</code></td><td>Post date using the format below.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{date:F j, Y}}</code></td><td>Post date with a custom <a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a> inline.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{excerpt}}</code></td><td>Trimmed excerpt at the word count below.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{excerpt:30}}</code></td><td>Excerpt trimmed to N words (overrides default).</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{author}}</code></td><td>Author display name.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{author_url}}</code></td><td>Link to the author page.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{categories}}</code></td><td>Comma-separated linked category list.</td></tr>
+										<tr><td style="padding:4px 8px;"><code>{{read_time}}</code></td><td>Estimated read time, e.g. <em>4 min read</em>.</td></tr>
+									</tbody>
+								</table>
+							</details>
+
+							<p style="margin-top:10px;">
+								<button type="button" class="button" id="ekwa-rp-reset-template"><?php esc_html_e( 'Reset to default', 'ekwa' ); ?></button>
+								<span id="ekwa-rp-reset-msg" style="margin-left:10px;color:#46b450;display:none;">✓ <?php esc_html_e( 'Reset — remember to save.', 'ekwa' ); ?></span>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_related_posts_date_format"><?php esc_html_e( 'Date format', 'ekwa' ); ?></label></th>
+						<td>
+							<input type="text" id="ekwa_related_posts_date_format" name="ekwa_related_posts_date_format" value="<?php echo esc_attr( $rp_date_fmt ); ?>" class="regular-text" placeholder="M j, Y" />
+							<p class="description">
+								<?php
+								printf(
+									/* translators: %s: PHP date format docs URL. */
+									esc_html__( 'Format used by the %1$s token. Uses %2$s. Examples: %3$s, %4$s, %5$s.', 'ekwa' ),
+									'<code>{{date}}</code>',
+									'<a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a>',
+									'<code>M j, Y</code>',
+									'<code>F j, Y</code>',
+									'<code>j M Y</code>'
+								);
+								?>
+								<br>
+								<?php
+								printf(
+									/* translators: %s: today's date in the configured format. */
+									esc_html__( 'Preview: %s', 'ekwa' ),
+									'<strong>' . esc_html( date_i18n( $rp_date_fmt ?: 'M j, Y' ) ) . '</strong>'
+								);
+								?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="ekwa_related_posts_excerpt_words"><?php esc_html_e( 'Excerpt word count', 'ekwa' ); ?></label></th>
+						<td>
+							<input type="number" id="ekwa_related_posts_excerpt_words" name="ekwa_related_posts_excerpt_words" value="<?php echo esc_attr( $rp_words ); ?>" min="5" max="100" class="small-text" />
+							<p class="description"><?php esc_html_e( 'Default word count for the {{excerpt}} token. Per-instance override: {{excerpt:30}}.', 'ekwa' ); ?></p>
+						</td>
+					</tr>
+				</table>
+				<script type="text/html" id="tmpl-ekwa-rp-default"><?php echo esc_html( ekwa_related_posts_default_template() ); ?></script>
+				<script>
+					document.addEventListener( 'DOMContentLoaded', function () {
+						var btn  = document.getElementById( 'ekwa-rp-reset-template' );
+						var ta   = document.getElementById( 'ekwa_related_posts_template' );
+						var tpl  = document.getElementById( 'tmpl-ekwa-rp-default' );
+						var msg  = document.getElementById( 'ekwa-rp-reset-msg' );
+						if ( btn && ta && tpl ) {
+							btn.addEventListener( 'click', function () {
+								ta.value = tpl.textContent.trim();
+								if ( msg ) {
+									msg.style.display = 'inline';
+									setTimeout( function () { msg.style.display = 'none'; }, 3000 );
+								}
+							} );
+						}
+					} );
+				</script>
 			</div>
 
 			<?php submit_button( __( 'Save Settings', 'ekwa' ) ); ?>
