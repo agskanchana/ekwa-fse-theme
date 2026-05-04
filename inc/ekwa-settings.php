@@ -282,11 +282,30 @@ function ekwa_save_settings() {
 	}
 
 	// Related Posts template HTML — keep raw markup but normalize line endings.
-	if ( isset( $_POST['ekwa_related_posts_template'] ) ) {
-		$tpl = wp_unslash( $_POST['ekwa_related_posts_template'] );
+	// Many shared hosts run mod_security / WAF rules that strip or block POST
+	// fields containing raw HTML (<article>, <a href=, etc.), which silently
+	// wipes the option on save. To bypass that, the form ships a base64 copy
+	// in `ekwa_related_posts_template_b64`; we prefer it when present and fall
+	// back to the plain textarea so saves still work without JS.
+	$tpl_input = null;
+	if ( isset( $_POST['ekwa_related_posts_template_b64'] ) && '' !== $_POST['ekwa_related_posts_template_b64'] ) {
+		$decoded = base64_decode( wp_unslash( $_POST['ekwa_related_posts_template_b64'] ), true );
+		if ( false !== $decoded ) {
+			$tpl_input = $decoded;
+		}
+	}
+	if ( null === $tpl_input && isset( $_POST['ekwa_related_posts_template'] ) ) {
+		$tpl_input = wp_unslash( $_POST['ekwa_related_posts_template'] );
+	}
+	if ( null !== $tpl_input ) {
 		// Strip script/style tags as a safety net; keep everything else verbatim.
-		$tpl = preg_replace( '#<\s*(script|style)[^>]*>.*?<\s*/\s*\1\s*>#is', '', $tpl );
-		update_option( 'ekwa_related_posts_template', $tpl );
+		// Guard against preg_replace returning null on malformed UTF-8, which
+		// would otherwise wipe the option.
+		$stripped = preg_replace( '#<\s*(script|style)[^>]*>.*?<\s*/\s*\1\s*>#is', '', $tpl_input );
+		if ( null !== $stripped ) {
+			$tpl_input = $stripped;
+		}
+		update_option( 'ekwa_related_posts_template', $tpl_input );
 	}
 
 	// WebP options — checkboxes need explicit handling so unchecked saves as 0.
@@ -719,6 +738,7 @@ function ekwa_render_settings_page() {
 								spellcheck="false"
 								style="font-family:Menlo,Consolas,monospace;font-size:12.5px;"
 							><?php echo esc_textarea( $rp_template ); ?></textarea>
+							<input type="hidden" id="ekwa_related_posts_template_b64" name="ekwa_related_posts_template_b64" value="" />
 							<p class="description"><?php esc_html_e( 'Raw HTML rendered once per post. Use the tokens listed below — they are replaced with the post\'s data at render time.', 'ekwa' ); ?></p>
 
 							<details style="margin-top:10px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:10px 14px;">
@@ -792,12 +812,30 @@ function ekwa_render_settings_page() {
 						var ta   = document.getElementById( 'ekwa_related_posts_template' );
 						var tpl  = document.getElementById( 'tmpl-ekwa-rp-default' );
 						var msg  = document.getElementById( 'ekwa-rp-reset-msg' );
+						var b64  = document.getElementById( 'ekwa_related_posts_template_b64' );
 						if ( btn && ta && tpl ) {
 							btn.addEventListener( 'click', function () {
 								ta.value = tpl.textContent.trim();
 								if ( msg ) {
 									msg.style.display = 'inline';
 									setTimeout( function () { msg.style.display = 'none'; }, 3000 );
+								}
+							} );
+						}
+						// On submit, ship a base64 copy of the textarea in a hidden
+						// field so WAF / mod_security rules that strip raw HTML from
+						// POST bodies don't silently wipe the template on save.
+						if ( ta && b64 && ta.form ) {
+							ta.form.addEventListener( 'submit', function () {
+								try {
+									var bytes = new TextEncoder().encode( ta.value );
+									var bin   = '';
+									for ( var i = 0; i < bytes.length; i++ ) {
+										bin += String.fromCharCode( bytes[ i ] );
+									}
+									b64.value = btoa( bin );
+								} catch ( e ) {
+									b64.value = '';
 								}
 							} );
 						}
