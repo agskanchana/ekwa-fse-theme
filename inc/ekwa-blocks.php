@@ -328,7 +328,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-link-source-control',
 		get_template_directory_uri() . '/assets/js/ekwa-link-source-control.js',
-		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n' ),
+		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n', 'wp-html-entities' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-link-source-control.js' ),
 		true
 	);

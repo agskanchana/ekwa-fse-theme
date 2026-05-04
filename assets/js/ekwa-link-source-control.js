@@ -20,6 +20,7 @@
 	var Notice          = wp.components.Notice;
 	var useSelect       = wp.data.useSelect;
 	var __              = wp.i18n.__;
+	var decodeEntities  = ( wp.htmlEntities && wp.htmlEntities.decodeEntities ) || function ( s ) { return s; };
 
 	var SOURCE_OPTIONS = [
 		{ label: __( 'External URL', 'ekwa' ),               value: 'external' },
@@ -47,12 +48,15 @@
 
 		var data = useSelect( function ( select ) {
 			var core  = select( 'core' );
-			var query = { per_page: 20, status: 'publish' };
+			var query = {
+				per_page: 100,
+				status:   'publish',
+				orderby:  'title',
+				order:    'asc',
+				_fields:  'id,title'
+			};
 			if ( searchValue ) {
 				query.search = searchValue;
-			} else {
-				query.orderby = 'title';
-				query.order   = 'asc';
 			}
 			return {
 				results:  core.getEntityRecords( 'postType', pageType, query ) || [],
@@ -61,7 +65,8 @@
 		}, [ pageType, pageId, searchValue ] );
 
 		function titleOf( p ) {
-			return ( p && p.title && p.title.rendered ) || __( '(no title)', 'ekwa' );
+			var raw = ( p && p.title && p.title.rendered ) || '';
+			return raw ? decodeEntities( raw ) : __( '(no title)', 'ekwa' );
 		}
 
 		var options = data.results.map( function ( p ) {
