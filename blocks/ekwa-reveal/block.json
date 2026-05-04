@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/reveal",
+	"version": "1.0.0",
+	"title": "Ekwa Reveal",
+	"category": "common",
+	"icon": "visibility",
+	"description": "Wrapper block whose trigger button reveals any nested Ekwa Reveal Hidden blocks on click.",
+	"textdomain": "ekwa",
+	"keywords": [ "reveal", "show", "hide", "more", "expand", "toggle" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"triggerText":     { "type": "string",  "default": "Learn More" },
+		"closeText":       { "type": "string",  "default": "Show Less" },
+		"buttonClassName": { "type": "string",  "default": "btn btn-dark" },
+		"alignButton":     { "type": "string",  "default": "center" },
+		"hideAfterReveal": { "type": "boolean", "default": false }
+	},
+	"editorScript": "ekwa-reveal-editor"
+}

@@ -607,6 +607,8 @@ function ekwa_register_blocks() {
 		'recent-posts'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'categories'       => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'related-posts'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'reveal'           => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
+		'reveal-hidden'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
 	);
 
 	foreach ( $blog_blocks as $slug => $config ) {
@@ -3906,6 +3908,68 @@ function ekwa_render_related_posts_block( $attrs ) {
 	}
 	$html .= '<div class="ekwa-related-posts__grid">' . $items_html . '</div>';
 	$html .= '</section>';
+
+	return $html;
+}
+
+/**
+ * Render: ekwa/reveal.
+ *
+ * Wraps the saved inner blocks in a <div class="reveal"> and appends the
+ * trigger <a> at the bottom. The shared front-end JS in assets/js/ekwa-blocks.js
+ * handles the open/close animation by toggling .is-open on the wrapper.
+ */
+function ekwa_render_reveal_block( $attrs, $content ) {
+	$trigger_text  = isset( $attrs['triggerText'] )    ? wp_strip_all_tags( $attrs['triggerText'] ) : __( 'Learn More', 'ekwa' );
+	$close_text    = isset( $attrs['closeText'] )      ? wp_strip_all_tags( $attrs['closeText'] )   : '';
+	$btn_class     = isset( $attrs['buttonClassName'] )? sanitize_text_field( $attrs['buttonClassName'] ) : 'btn btn-dark';
+	$align         = isset( $attrs['alignButton'] )    ? $attrs['alignButton']                       : 'center';
+	$hide_after    = ! empty( $attrs['hideAfterReveal'] );
+	$user_class    = isset( $attrs['className'] )      ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor        = isset( $attrs['anchor'] )         ? sanitize_html_class( $attrs['anchor'] )    : '';
+
+	if ( ! in_array( $align, array( 'left', 'center', 'right' ), true ) ) {
+		$align = 'center';
+	}
+
+	$wrap_classes = trim( 'reveal ' . $user_class . ( $hide_after ? ' reveal--hide-after' : '' ) );
+
+	$html  = '<div class="' . esc_attr( $wrap_classes ) . '"';
+	if ( $anchor ) {
+		$html .= ' id="' . esc_attr( $anchor ) . '"';
+	}
+	$html .= '>';
+	$html .= $content;
+	$html .= '<div class="reveal-trigger-wrap" style="text-align:' . esc_attr( $align ) . ';">';
+	$html .= '<a href="#" class="reveal-trigger ' . esc_attr( $btn_class ) . '" role="button"';
+	if ( '' !== $close_text ) {
+		$html .= ' data-reveal-close-text="' . esc_attr( $close_text ) . '"';
+	}
+	$html .= '>' . esc_html( $trigger_text ) . '</a>';
+	$html .= '</div>';
+	$html .= '</div>';
+
+	return $html;
+}
+
+/**
+ * Render: ekwa/reveal-hidden.
+ *
+ * Wraps inner blocks in a <div class="reveal-hidden">. Hidden by default on
+ * the front-end via CSS; expanded by ekwa-blocks.js when its parent .reveal
+ * receives an .is-open class.
+ */
+function ekwa_render_reveal_hidden_block( $attrs, $content ) {
+	$user_class = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] )    : '';
+
+	$classes = trim( 'reveal-hidden ' . $user_class );
+
+	$html = '<div class="' . esc_attr( $classes ) . '"';
+	if ( $anchor ) {
+		$html .= ' id="' . esc_attr( $anchor ) . '"';
+	}
+	$html .= '>' . $content . '</div>';
 
 	return $html;
 }

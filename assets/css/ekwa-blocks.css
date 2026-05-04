@@ -1270,3 +1270,31 @@ p.ekwa-inner-banner__heading {
 	outline-offset: 2px;
 	border-radius: 4px;
 }
+
+/* ==========================================================================
+   Reveal — hidden content shown when a .reveal-trigger inside a .reveal
+   wrapper is clicked. JS in assets/js/ekwa-blocks.js drives the toggle.
+   ========================================================================== */
+.reveal-hidden {
+	max-height: 0;
+	overflow: hidden;
+	opacity: 0;
+	transition: max-height 0.45s ease, opacity 0.3s ease 0.05s;
+}
+.reveal.is-open .reveal-hidden {
+	opacity: 1;
+}
+.reveal-trigger {
+	cursor: pointer;
+}
+.reveal-trigger-wrap {
+	margin-top: 16px;
+	transition: opacity 0.3s ease, max-height 0.4s ease;
+}
+.reveal.reveal--hide-after.is-open .reveal-trigger-wrap {
+	opacity: 0;
+	max-height: 0;
+	overflow: hidden;
+	margin-top: 0;
+	pointer-events: none;
+}

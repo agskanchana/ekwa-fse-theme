@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/reveal-hidden",
+	"version": "1.0.0",
+	"title": "Ekwa Reveal Hidden",
+	"category": "common",
+	"icon": "hidden",
+	"parent": [ "ekwa/reveal" ],
+	"description": "Marks a region inside an Ekwa Reveal block as hidden until the trigger button is clicked.",
+	"textdomain": "ekwa",
+	"keywords": [ "reveal", "hidden", "collapsible", "toggle" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"reusable": false
+	},
+	"editorScript": "ekwa-reveal-hidden-editor"
+}

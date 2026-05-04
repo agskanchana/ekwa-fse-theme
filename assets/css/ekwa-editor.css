@@ -772,3 +772,35 @@
 	margin-bottom: 8px;
 	background: #fff;
 }
+
+/* --------------------------------------------------------------------------
+   Reveal — make .reveal-hidden visible inside the editor canvas with a
+   subtle "this is hidden by default" hint, so authors can still edit it.
+   The collapse/expand only runs on the front-end.
+   -------------------------------------------------------------------------- */
+.reveal-hidden {
+	max-height: none !important;
+	overflow: visible !important;
+	opacity: 1 !important;
+	transition: none !important;
+	outline: 1px dashed rgba(0, 124, 186, 0.45);
+	outline-offset: 6px;
+	border-radius: 4px;
+	position: relative;
+}
+.reveal-hidden::before {
+	content: 'Reveal — hidden until trigger is clicked';
+	display: block;
+	font-size: 11px;
+	font-weight: 500;
+	color: #007cba;
+	background: #e7f3fa;
+	border: 1px solid rgba(0, 124, 186, 0.25);
+	padding: 3px 10px;
+	border-radius: 999px;
+	margin-bottom: 10px;
+	width: max-content;
+}
+.reveal-trigger {
+	cursor: pointer;
+}
