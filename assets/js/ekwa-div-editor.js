@@ -22,6 +22,7 @@
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
+	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
 
 	var TAG_OPTIONS = [
 		{ label: 'div',         value: 'div' },
@@ -223,6 +224,17 @@
 					bgChildren
 				)
 			);
+
+			// ── Custom HTML Attributes ───────────────────────────────
+			if ( CustomAttrsControl ) {
+				panels.push(
+					el( CustomAttrsControl, {
+						key: 'custom-attrs',
+						attributes: attributes,
+						setAttributes: setAttributes,
+					} )
+				);
+			}
 
 			// ── Editor render ────────────────────────────────────────
 			var tagLabel = tagName !== 'div' || tagName === 'a'

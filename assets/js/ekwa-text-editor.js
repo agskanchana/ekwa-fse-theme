@@ -16,6 +16,7 @@
 	var TextControl        = wp.components.TextControl;
 	var SelectControl      = wp.components.SelectControl;
 	var __                 = wp.i18n.__;
+	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
 
 	var TAG_OPTIONS = [
 		{ label: 'span',   value: 'span' },
@@ -59,7 +60,11 @@
 						__next40pxDefaultSize:  true,
 						__nextHasNoMarginBottom: true,
 					} )
-				)
+				),
+				CustomAttrsControl ? el( CustomAttrsControl, {
+					attributes:    attributes,
+					setAttributes: setAttributes,
+				} ) : null
 			),
 
 			el( 'div', blockProps,

@@ -332,6 +332,15 @@ function ekwa_register_blocks() {
 		filemtime( get_template_directory() . '/assets/js/ekwa-link-source-control.js' ),
 		true
 	);
+
+	// Shared custom-HTML-attributes Inspector helper (used by ekwa-div, ekwa-text).
+	wp_register_script(
+		'ekwa-custom-attributes-control',
+		get_template_directory_uri() . '/assets/js/ekwa-custom-attributes-control.js',
+		array( 'wp-element', 'wp-components', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-custom-attributes-control.js' ),
+		true
+	);
 	wp_localize_script(
 		'ekwa-link-source-control',
 		'ekwaBlockData',
@@ -487,8 +496,8 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-text-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-text-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-text-editor.js' ),
 		true
 	);
 
@@ -519,7 +528,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-div-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-div-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-data', 'ekwa-link-source-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-data', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-div-editor.js' ),
 		true
 	);
