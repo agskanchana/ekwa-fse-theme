@@ -11,6 +11,32 @@
 	padding-top: 16px;
 }
 
+/* ---------- Tabs ---------- */
+.ekwa-nav-tabs {
+	margin-top: 16px;
+	margin-bottom: 0;
+	flex-wrap: wrap;
+}
+
+.ekwa-tab-pane {
+	display: none;
+}
+
+.ekwa-tab-pane.active {
+	display: block;
+}
+
+/* When the bulk-pages tab is active, hide the main settings form (and its
+   Save button); when any other tab is active, hide the bulk-pages form. The
+   `ekwa-form-hidden` class is toggled by the tab switcher script. */
+.ekwa-form-hidden {
+	display: none;
+}
+
+.ekwa-main-submit {
+	margin-top: 16px;
+}
+
 /* ---------- Sections ---------- */
 .ekwa-section {
 	background: #fff;

@@ -348,6 +348,104 @@ function ekwa_save_settings() {
 add_action( 'admin_init', 'ekwa_save_settings' );
 
 /**
+ * Handle Bulk Page Creator submission.
+ *
+ * Reads one page title per line from the textarea and creates a published
+ * page for each. Pages whose title already exists (any non-trash status)
+ * are skipped so the operation is idempotent if re-run. Result counts are
+ * surfaced via a transient so the admin notice survives the post-save
+ * redirect that keeps the user on the bulk-pages tab.
+ */
+function ekwa_handle_bulk_create_pages() {
+	if ( ! isset( $_POST['ekwa_bulk_pages_nonce'] ) ) {
+		return;
+	}
+	if ( ! wp_verify_nonce( $_POST['ekwa_bulk_pages_nonce'], 'ekwa_bulk_create_pages' ) ) {
+		return;
+	}
+	if ( ! current_user_can( 'publish_pages' ) ) {
+		return;
+	}
+
+	global $wpdb;
+
+	$raw    = isset( $_POST['ekwa_bulk_pages_titles'] ) ? wp_unslash( $_POST['ekwa_bulk_pages_titles'] ) : '';
+	$lines  = preg_split( '/\r\n|\r|\n/', $raw );
+	$created = array();
+	$skipped = array();
+	$errors  = array();
+
+	foreach ( (array) $lines as $line ) {
+		$title = trim( $line );
+		if ( '' === $title ) {
+			continue;
+		}
+
+		// Look up an existing page with the same title, ignoring trashed ones.
+		$existing = $wpdb->get_var( $wpdb->prepare(
+			"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status <> 'trash' AND post_title = %s LIMIT 1",
+			$title
+		) );
+
+		if ( $existing ) {
+			$skipped[] = $title;
+			continue;
+		}
+
+		$page_id = wp_insert_post( array(
+			'post_type'    => 'page',
+			'post_title'   => $title,
+			'post_status'  => 'publish',
+			'post_content' => '',
+		), true );
+
+		if ( is_wp_error( $page_id ) || ! $page_id ) {
+			$errors[] = $title;
+			continue;
+		}
+
+		$created[] = array(
+			'id'    => (int) $page_id,
+			'title' => $title,
+			'link'  => get_edit_post_link( $page_id, 'raw' ),
+		);
+	}
+
+	set_transient(
+		'ekwa_bulk_pages_result_' . get_current_user_id(),
+		array(
+			'created' => $created,
+			'skipped' => $skipped,
+			'errors'  => $errors,
+		),
+		60
+	);
+
+	wp_safe_redirect( admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=bulk-pages' ) );
+	exit;
+}
+add_action( 'admin_init', 'ekwa_handle_bulk_create_pages' );
+
+/**
+ * Get the list of tabs shown on the settings page.
+ *
+ * @return array<string, string> slug => label
+ */
+function ekwa_settings_tabs() {
+	return array(
+		'general'       => __( 'General', 'ekwa' ),
+		'appointment'   => __( 'Appointment', 'ekwa' ),
+		'branding'      => __( 'Branding', 'ekwa' ),
+		'locations'     => __( 'Locations', 'ekwa' ),
+		'social'        => __( 'Social Media', 'ekwa' ),
+		'related-posts' => __( 'Related Posts', 'ekwa' ),
+		'webp'          => __( 'WebP Images', 'ekwa' ),
+		'ai'            => __( 'AI', 'ekwa' ),
+		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
+	);
+}
+
+/**
  * Render the settings page.
  */
 function ekwa_render_settings_page() {
@@ -391,460 +489,637 @@ function ekwa_render_settings_page() {
 
 	$is_custom_country = ! empty( $country ) && ! array_key_exists( $country, $countries );
 
+	// Determine which tab is active. Prefer ?ekwa_tab=… (set on bulk-pages
+	// redirect) so the user lands back on the correct tab; default to general.
+	$tabs       = ekwa_settings_tabs();
+	$active_tab = isset( $_GET['ekwa_tab'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_tab'] ) ) : 'general';
+	if ( ! array_key_exists( $active_tab, $tabs ) ) {
+		$active_tab = 'general';
+	}
+
+	// Pull and clear bulk-pages result for the result panel.
+	$bulk_result = get_transient( 'ekwa_bulk_pages_result_' . get_current_user_id() );
+	if ( $bulk_result ) {
+		delete_transient( 'ekwa_bulk_pages_result_' . get_current_user_id() );
+	}
+
 	settings_errors( 'ekwa_settings' );
 	?>
 	<div class="wrap ekwa-settings-wrap">
 		<h1><?php esc_html_e( 'Ekwa Theme Settings', 'ekwa' ); ?></h1>
-		<form method="post" action="" class="ekwa-settings-form">
+
+		<h2 class="nav-tab-wrapper ekwa-nav-tabs">
+			<?php foreach ( $tabs as $slug => $label ) : ?>
+				<a href="#<?php echo esc_attr( $slug ); ?>"
+					class="nav-tab <?php echo $active_tab === $slug ? 'nav-tab-active' : ''; ?>"
+					data-tab="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></a>
+			<?php endforeach; ?>
+		</h2>
+
+		<form method="post" action="" class="ekwa-settings-form" id="ekwa-main-settings-form">
 			<?php wp_nonce_field( 'ekwa_save_settings', 'ekwa_settings_nonce' ); ?>
 
-			<!-- ========== BUSINESS INFO ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Business Information', 'ekwa' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><label for="ekwa_client_name"><?php esc_html_e( 'Client Name', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_client_name" name="ekwa_client_name" value="<?php echo esc_attr( $client_name ); ?>" class="regular-text" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_practice_name"><?php esc_html_e( 'Practice Name', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_practice_name" name="ekwa_practice_name" value="<?php echo esc_attr( $practice_name ); ?>" class="regular-text" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_organization_type"><?php esc_html_e( 'Organization Type', 'ekwa' ); ?></label></th>
-						<td>
-							<select id="ekwa_organization_type" name="ekwa_organization_type">
-								<option value=""><?php esc_html_e( '— Select —', 'ekwa' ); ?></option>
-								<?php foreach ( $org_types as $val => $label ) : ?>
-									<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $org_type, $val ); ?>><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_adsense_number"><?php esc_html_e( 'Adsense Number', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_adsense_number" name="ekwa_adsense_number" value="<?php echo esc_attr( $adsense ); ?>" class="regular-text" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_email"><?php esc_html_e( 'Email Address', 'ekwa' ); ?></label></th>
-						<td><input type="email" id="ekwa_email" name="ekwa_email" value="<?php echo esc_attr( $email ); ?>" class="regular-text" /></td>
-					</tr>
-				</table>
-			</div>
+			<!-- ========== GENERAL TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'general' === $active_tab ? 'active' : ''; ?>" data-tab="general">
 
-			<!-- ========== PAGE SELECTIONS ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Page Settings', 'ekwa' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><label for="ekwa_contact_page"><?php esc_html_e( 'Contact Page', 'ekwa' ); ?></label></th>
-						<td>
-							<select id="ekwa_contact_page" name="ekwa_contact_page">
-								<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
-								<?php foreach ( $pages as $p ) : ?>
-									<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $contact_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_author_page"><?php esc_html_e( 'Author Page', 'ekwa' ); ?></label></th>
-						<td>
-							<select id="ekwa_author_page" name="ekwa_author_page">
-								<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
-								<?php foreach ( $pages as $p ) : ?>
-									<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $author_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-				</table>
-			</div>
-
-			<!-- ========== APPOINTMENT ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Appointment Settings', 'ekwa' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><?php esc_html_e( 'Appointment Page Type', 'ekwa' ); ?></th>
-						<td>
-							<fieldset>
-								<label><input type="radio" name="ekwa_appt_type" value="page" <?php checked( $appt_type, 'page' ); ?> class="ekwa-appt-type-radio" /> <?php esc_html_e( 'Select Existing Page', 'ekwa' ); ?></label><br>
-								<label><input type="radio" name="ekwa_appt_type" value="url" <?php checked( $appt_type, 'url' ); ?> class="ekwa-appt-type-radio" /> <?php esc_html_e( 'External URL', 'ekwa' ); ?></label>
-							</fieldset>
-						</td>
-					</tr>
-					<tr class="ekwa-appt-page-row" <?php echo 'url' === $appt_type ? 'style="display:none;"' : ''; ?>>
-						<th><label for="ekwa_appt_page"><?php esc_html_e( 'Appointment Page', 'ekwa' ); ?></label></th>
-						<td>
-							<select id="ekwa_appt_page" name="ekwa_appt_page">
-								<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
-								<?php foreach ( $pages as $p ) : ?>
-									<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $appt_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-					<tr class="ekwa-appt-url-row" <?php echo 'page' === $appt_type ? 'style="display:none;"' : ''; ?>>
-						<th><label for="ekwa_appt_url"><?php esc_html_e( 'Appointment External URL', 'ekwa' ); ?></label></th>
-						<td>
-							<input type="url" id="ekwa_appt_url" name="ekwa_appt_url" value="<?php echo esc_url( $appt_url ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter the full URL including https://', 'ekwa' ); ?>" />
-						</td>
-					</tr>
-				</table>
-			</div>
-
-			<!-- ========== MEDIA ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Media', 'ekwa' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><label><?php esc_html_e( 'Site Logo', 'ekwa' ); ?></label></th>
-						<td>
-							<div class="ekwa-media-field" data-width="300" data-height="100">
-								<input type="hidden" name="ekwa_site_logo" value="<?php echo esc_attr( $site_logo ); ?>" class="ekwa-media-id" />
-								<div class="ekwa-media-preview">
-									<?php if ( $site_logo ) : ?>
-										<?php echo wp_get_attachment_image( $site_logo, array( 150, 50 ) ); ?>
-									<?php else : ?>
-										<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
-									<?php endif; ?>
-								</div>
-								<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
-								<button type="button" class="button ekwa-media-remove" <?php echo ! $site_logo ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
-								<p class="description"><?php esc_html_e( 'This sets the site logo used by the core Site Logo block.', 'ekwa' ); ?></p>
-							</div>
-						</td>
-					</tr>
-					<tr>
-						<th><label><?php esc_html_e( 'Publisher Logo', 'ekwa' ); ?></label></th>
-						<td>
-							<div class="ekwa-media-field" data-width="600" data-height="60">
-								<input type="hidden" name="ekwa_publisher_logo" value="<?php echo esc_attr( $pub_logo ); ?>" class="ekwa-media-id" />
-								<div class="ekwa-media-preview">
-									<?php if ( $pub_logo ) : ?>
-										<?php echo wp_get_attachment_image( $pub_logo, array( 300, 30 ) ); ?>
-									<?php else : ?>
-										<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
-									<?php endif; ?>
-								</div>
-								<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
-								<button type="button" class="button ekwa-media-remove" <?php echo ! $pub_logo ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
-								<p class="description"><?php esc_html_e( 'Recommended: 600px × 60px', 'ekwa' ); ?></p>
-							</div>
-						</td>
-					</tr>
-					<tr>
-						<th><label><?php esc_html_e( 'Share Image', 'ekwa' ); ?></label></th>
-						<td>
-							<div class="ekwa-media-field" data-width="350" data-height="350">
-								<input type="hidden" name="ekwa_share_image" value="<?php echo esc_attr( $share_img ); ?>" class="ekwa-media-id" />
-								<div class="ekwa-media-preview">
-									<?php if ( $share_img ) : ?>
-										<?php echo wp_get_attachment_image( $share_img, array( 175, 175 ) ); ?>
-									<?php else : ?>
-										<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
-									<?php endif; ?>
-								</div>
-								<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
-								<button type="button" class="button ekwa-media-remove" <?php echo ! $share_img ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
-								<p class="description"><?php esc_html_e( 'Recommended: 350px × 350px', 'ekwa' ); ?></p>
-							</div>
-						</td>
-					</tr>
-				</table>
-			</div>
-
-			<!-- ========== COUNTRY ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Country', 'ekwa' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><label for="ekwa_country"><?php esc_html_e( 'Country', 'ekwa' ); ?></label></th>
-						<td>
-							<select id="ekwa_country" name="ekwa_country">
-								<option value=""><?php esc_html_e( '— Select —', 'ekwa' ); ?></option>
-								<?php foreach ( $countries as $val => $label ) : ?>
-									<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $country, $val ); ?>><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-								<option value="custom" <?php echo $is_custom_country ? 'selected' : ''; ?>><?php esc_html_e( 'Enter Manually', 'ekwa' ); ?></option>
-							</select>
-							<input type="text" id="ekwa_country_custom" name="ekwa_country_custom" value="<?php echo $is_custom_country ? esc_attr( $country ) : ''; ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter country name', 'ekwa' ); ?>" <?php echo ! $is_custom_country ? 'style="display:none;"' : ''; ?> />
-						</td>
-					</tr>
-				</table>
-			</div>
-
-			<!-- ========== MOBILE MENU COLORS ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Mobile Menu Colors', 'ekwa' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Overrides the off-canvas mobile menu (mmenu) colors. Leave a field empty to use the theme palette default.', 'ekwa' ); ?></p>
-				<table class="form-table">
-					<tr>
-						<th><label for="ekwa_mmenu_bg"><?php esc_html_e( 'Panel Background', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_bg" name="ekwa_mmenu_bg" value="<?php echo esc_attr( $mmenu_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_mmenu_text"><?php esc_html_e( 'Menu Item Text', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_text" name="ekwa_mmenu_text" value="<?php echo esc_attr( $mmenu_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_mmenu_icon"><?php esc_html_e( 'Menu Item Icon', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_icon" name="ekwa_mmenu_icon" value="<?php echo esc_attr( $mmenu_icon ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_mmenu_divider"><?php esc_html_e( 'Item Divider', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_divider" name="ekwa_mmenu_divider" value="<?php echo esc_attr( $mmenu_divider ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_mmenu_navbar_bg"><?php esc_html_e( 'Sub-page Header Background', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_navbar_bg" name="ekwa_mmenu_navbar_bg" value="<?php echo esc_attr( $mmenu_navbar_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_mmenu_navbar_text"><?php esc_html_e( 'Sub-page Header Text', 'ekwa' ); ?></label></th>
-						<td><input type="text" id="ekwa_mmenu_navbar_text" name="ekwa_mmenu_navbar_text" value="<?php echo esc_attr( $mmenu_navbar_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
-					</tr>
-				</table>
-			</div>
-
-			<!-- ========== LOCATIONS REPEATER ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Locations', 'ekwa' ); ?></h2>
-				<div id="ekwa-locations-repeater">
-					<?php
-					if ( ! empty( $locations ) ) :
-						foreach ( $locations as $li => $loc ) :
-							ekwa_render_location_row( $li, $loc, $days );
-						endforeach;
-					endif;
-					?>
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Business Information', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_client_name"><?php esc_html_e( 'Client Name', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_client_name" name="ekwa_client_name" value="<?php echo esc_attr( $client_name ); ?>" class="regular-text" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_practice_name"><?php esc_html_e( 'Practice Name', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_practice_name" name="ekwa_practice_name" value="<?php echo esc_attr( $practice_name ); ?>" class="regular-text" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_organization_type"><?php esc_html_e( 'Organization Type', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_organization_type" name="ekwa_organization_type">
+									<option value=""><?php esc_html_e( '— Select —', 'ekwa' ); ?></option>
+									<?php foreach ( $org_types as $val => $label ) : ?>
+										<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $org_type, $val ); ?>><?php echo esc_html( $label ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_adsense_number"><?php esc_html_e( 'Adsense Number', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_adsense_number" name="ekwa_adsense_number" value="<?php echo esc_attr( $adsense ); ?>" class="regular-text" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_email"><?php esc_html_e( 'Email Address', 'ekwa' ); ?></label></th>
+							<td><input type="email" id="ekwa_email" name="ekwa_email" value="<?php echo esc_attr( $email ); ?>" class="regular-text" /></td>
+						</tr>
+					</table>
 				</div>
-				<button type="button" class="button button-primary" id="ekwa-add-location"><?php esc_html_e( '+ Add Location', 'ekwa' ); ?></button>
 
-				<!-- Hidden template for JS cloning -->
-				<script type="text/html" id="tmpl-ekwa-location">
-					<?php ekwa_render_location_row( '__LOC_INDEX__', array(), $days ); ?>
-				</script>
-				<script type="text/html" id="tmpl-ekwa-working-hour">
-					<?php ekwa_render_working_hour_row( '__LOC_INDEX__', '__WH_INDEX__', array(), $days ); ?>
-				</script>
-			</div>
-
-			<!-- ========== SOCIAL MEDIA REPEATER ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Social Media Links', 'ekwa' ); ?></h2>
-				<div id="ekwa-social-repeater">
-					<?php
-					if ( ! empty( $social ) ) :
-						foreach ( $social as $si => $item ) :
-							ekwa_render_social_row( $si, $item );
-						endforeach;
-					endif;
-					?>
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Page Settings', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_contact_page"><?php esc_html_e( 'Contact Page', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_contact_page" name="ekwa_contact_page">
+									<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
+									<?php foreach ( $pages as $p ) : ?>
+										<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $contact_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_author_page"><?php esc_html_e( 'Author Page', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_author_page" name="ekwa_author_page">
+									<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
+									<?php foreach ( $pages as $p ) : ?>
+										<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $author_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</td>
+						</tr>
+					</table>
 				</div>
-				<button type="button" class="button button-primary" id="ekwa-add-social"><?php esc_html_e( '+ Add Social Link', 'ekwa' ); ?></button>
 
-				<script type="text/html" id="tmpl-ekwa-social">
-					<?php ekwa_render_social_row( '__SOC_INDEX__', array() ); ?>
-				</script>
-			</div>
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Country', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_country"><?php esc_html_e( 'Country', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_country" name="ekwa_country">
+									<option value=""><?php esc_html_e( '— Select —', 'ekwa' ); ?></option>
+									<?php foreach ( $countries as $val => $label ) : ?>
+										<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $country, $val ); ?>><?php echo esc_html( $label ); ?></option>
+									<?php endforeach; ?>
+									<option value="custom" <?php echo $is_custom_country ? 'selected' : ''; ?>><?php esc_html_e( 'Enter Manually', 'ekwa' ); ?></option>
+								</select>
+								<input type="text" id="ekwa_country_custom" name="ekwa_country_custom" value="<?php echo $is_custom_country ? esc_attr( $country ) : ''; ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter country name', 'ekwa' ); ?>" <?php echo ! $is_custom_country ? 'style="display:none;"' : ''; ?> />
+							</td>
+						</tr>
+					</table>
+				</div>
 
-			<!-- AI Settings -->
-			<h2 class="title" style="margin-top:2em;"><?php esc_html_e( 'AI Settings', 'ekwa' ); ?></h2>
-			<table class="form-table">
-				<tr>
-					<th><label for="ekwa_gemini_api_key"><?php esc_html_e( 'Gemini API Key', 'ekwa' ); ?></label></th>
-					<td>
-						<?php $gemini_key = get_option( 'ekwa_gemini_api_key', '' ); ?>
-						<input type="password" id="ekwa_gemini_api_key" name="ekwa_gemini_api_key" value="<?php echo esc_attr( $gemini_key ); ?>" class="regular-text" autocomplete="off" />
-						<p class="description">
-							<?php
-							if ( defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY ) {
-								esc_html_e( 'API key is set via wp-config.php (EKWA_GEMINI_API_KEY). This field is ignored.', 'ekwa' );
-							} else {
-								printf(
-									/* translators: %s: link to Google AI Studio */
-									esc_html__( 'Get a free API key from %s. Used by the Mockup Converter\'s "Refine with AI" feature.', 'ekwa' ),
-									'<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
-								);
-							}
-							?>
-						</p>
-					</td>
-				</tr>
-			</table>
+			</div><!-- /general -->
 
-			<!-- ========== WEBP IMAGES ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'WebP Images', 'ekwa' ); ?></h2>
-				<p class="description" style="margin-bottom:1em;">
-					<?php esc_html_e( 'Generates smaller .webp companions for every uploaded image and serves them automatically to browsers that support WebP. The original JPG/PNG is delivered unchanged to browsers that don\'t support WebP — no markup or block changes needed.', 'ekwa' ); ?>
-				</p>
-				<table class="form-table">
-					<tr>
-						<th><?php esc_html_e( 'Enable WebP', 'ekwa' ); ?></th>
-						<td>
-							<label>
-								<input type="checkbox" name="ekwa_webp_enabled" value="1" <?php checked( get_option( 'ekwa_webp_enabled', 1 ), 1 ); ?> />
-								<?php esc_html_e( 'Auto-generate WebP on upload and swap image URLs for compatible browsers', 'ekwa' ); ?>
-							</label>
-						</td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_webp_quality"><?php esc_html_e( 'Quality', 'ekwa' ); ?></label></th>
-						<td>
-							<input type="number" id="ekwa_webp_quality" name="ekwa_webp_quality" min="50" max="100" step="1" value="<?php echo esc_attr( get_option( 'ekwa_webp_quality', 82 ) ); ?>" class="small-text" />
-							<p class="description"><?php esc_html_e( '50–100. 82 is a good balance of size and visual quality.', 'ekwa' ); ?></p>
-						</td>
-					</tr>
-					<tr>
-						<th><?php esc_html_e( 'Apply to core/image', 'ekwa' ); ?></th>
-						<td>
-							<label>
-								<input type="checkbox" name="ekwa_webp_apply_core_image" value="1" <?php checked( get_option( 'ekwa_webp_apply_core_image', 1 ), 1 ); ?> />
-								<?php esc_html_e( 'Also swap URLs in core WordPress image blocks (recommended)', 'ekwa' ); ?>
-							</label>
-						</td>
-					</tr>
-					<tr>
-						<th><?php esc_html_e( 'Existing media', 'ekwa' ); ?></th>
-						<td>
-							<button type="button" class="button button-secondary" id="ekwa-webp-regen-btn"><?php esc_html_e( 'Regenerate WebP for All Images', 'ekwa' ); ?></button>
-							<div id="ekwa-webp-regen-status" style="margin-top:8px;"></div>
-							<div id="ekwa-webp-regen-progress" style="margin-top:8px;display:none;background:#eee;border-radius:4px;height:14px;overflow:hidden;max-width:400px;">
-								<div id="ekwa-webp-regen-bar" style="background:#2271b1;height:100%;width:0;transition:width .15s ease;"></div>
-							</div>
-							<p class="description"><?php esc_html_e( 'Run this once to convert images uploaded before WebP was enabled. New uploads convert automatically.', 'ekwa' ); ?></p>
-						</td>
-					</tr>
-				</table>
-			</div>
+			<!-- ========== APPOINTMENT TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'appointment' === $active_tab ? 'active' : ''; ?>" data-tab="appointment">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Appointment Settings', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Appointment Page Type', 'ekwa' ); ?></th>
+							<td>
+								<fieldset>
+									<label><input type="radio" name="ekwa_appt_type" value="page" <?php checked( $appt_type, 'page' ); ?> class="ekwa-appt-type-radio" /> <?php esc_html_e( 'Select Existing Page', 'ekwa' ); ?></label><br>
+									<label><input type="radio" name="ekwa_appt_type" value="url" <?php checked( $appt_type, 'url' ); ?> class="ekwa-appt-type-radio" /> <?php esc_html_e( 'External URL', 'ekwa' ); ?></label>
+								</fieldset>
+							</td>
+						</tr>
+						<tr class="ekwa-appt-page-row" <?php echo 'url' === $appt_type ? 'style="display:none;"' : ''; ?>>
+							<th><label for="ekwa_appt_page"><?php esc_html_e( 'Appointment Page', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_appt_page" name="ekwa_appt_page">
+									<option value="0"><?php esc_html_e( '— Select Page —', 'ekwa' ); ?></option>
+									<?php foreach ( $pages as $p ) : ?>
+										<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $appt_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</td>
+						</tr>
+						<tr class="ekwa-appt-url-row" <?php echo 'page' === $appt_type ? 'style="display:none;"' : ''; ?>>
+							<th><label for="ekwa_appt_url"><?php esc_html_e( 'Appointment External URL', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="url" id="ekwa_appt_url" name="ekwa_appt_url" value="<?php echo esc_url( $appt_url ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter the full URL including https://', 'ekwa' ); ?>" />
+							</td>
+						</tr>
+					</table>
+				</div>
+			</div><!-- /appointment -->
 
-			<!-- ========== RELATED POSTS ========== -->
-			<div class="ekwa-section">
-				<h2><?php esc_html_e( 'Related Posts', 'ekwa' ); ?></h2>
-				<p class="description" style="margin-bottom:1em;">
-					<?php esc_html_e( 'Controls the Ekwa Related Posts block that you place inside the footer template part. The block pulls posts whose category slug matches the current page slug, and falls back to a featured-articles category on the home page.', 'ekwa' ); ?>
-				</p>
-				<table class="form-table">
-					<tr>
-						<th><label for="ekwa_related_posts_template"><?php esc_html_e( 'Post item template', 'ekwa' ); ?></label></th>
-						<td>
-							<textarea
-								id="ekwa_related_posts_template"
-								name="ekwa_related_posts_template"
-								rows="14"
-								class="large-text code"
-								spellcheck="false"
-								style="font-family:Menlo,Consolas,monospace;font-size:12.5px;"
-							><?php echo esc_textarea( $rp_template ); ?></textarea>
-							<input type="hidden" id="ekwa_related_posts_template_b64" name="ekwa_related_posts_template_b64" value="" />
-							<p class="description"><?php esc_html_e( 'Raw HTML rendered once per post. Use the tokens listed below — they are replaced with the post\'s data at render time.', 'ekwa' ); ?></p>
+			<!-- ========== BRANDING TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'branding' === $active_tab ? 'active' : ''; ?>" data-tab="branding">
 
-							<details style="margin-top:10px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:10px 14px;">
-								<summary style="cursor:pointer;font-weight:600;"><?php esc_html_e( 'Available tokens', 'ekwa' ); ?></summary>
-								<table style="width:100%;margin-top:10px;font-size:13px;">
-									<tbody>
-										<tr><td style="padding:4px 8px;width:240px;"><code>{{title}}</code></td><td>The post title (escaped).</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{title_attr}}</code></td><td>The post title, attribute-safe (for <code>title=""</code>).</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{permalink}}</code></td><td>Full URL to the post.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{featured_image}}</code></td><td>Full <code>&lt;img&gt;</code> tag at <em>medium_large</em> size.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{featured_image:size}}</code></td><td>Image at a named size (<code>thumbnail</code>, <code>medium</code>, <code>medium_large</code>, <code>large</code>, <code>full</code>).</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{featured_image_url}}</code></td><td>URL of the featured image (large size).</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{featured_image_url:size}}</code></td><td>URL of the featured image at a named size.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{date}}</code></td><td>Post date using the format below.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{date:F j, Y}}</code></td><td>Post date with a custom <a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a> inline.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{excerpt}}</code></td><td>Trimmed excerpt at the word count below.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{excerpt:30}}</code></td><td>Excerpt trimmed to N words (overrides default).</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{author}}</code></td><td>Author display name.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{author_url}}</code></td><td>Link to the author page.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{categories}}</code></td><td>Comma-separated linked category list.</td></tr>
-										<tr><td style="padding:4px 8px;"><code>{{read_time}}</code></td><td>Estimated read time, e.g. <em>4 min read</em>.</td></tr>
-									</tbody>
-								</table>
-							</details>
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Media', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label><?php esc_html_e( 'Site Logo', 'ekwa' ); ?></label></th>
+							<td>
+								<div class="ekwa-media-field" data-width="300" data-height="100">
+									<input type="hidden" name="ekwa_site_logo" value="<?php echo esc_attr( $site_logo ); ?>" class="ekwa-media-id" />
+									<div class="ekwa-media-preview">
+										<?php if ( $site_logo ) : ?>
+											<?php echo wp_get_attachment_image( $site_logo, array( 150, 50 ) ); ?>
+										<?php else : ?>
+											<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
+										<?php endif; ?>
+									</div>
+									<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
+									<button type="button" class="button ekwa-media-remove" <?php echo ! $site_logo ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
+									<p class="description"><?php esc_html_e( 'This sets the site logo used by the core Site Logo block.', 'ekwa' ); ?></p>
+								</div>
+							</td>
+						</tr>
+						<tr>
+							<th><label><?php esc_html_e( 'Publisher Logo', 'ekwa' ); ?></label></th>
+							<td>
+								<div class="ekwa-media-field" data-width="600" data-height="60">
+									<input type="hidden" name="ekwa_publisher_logo" value="<?php echo esc_attr( $pub_logo ); ?>" class="ekwa-media-id" />
+									<div class="ekwa-media-preview">
+										<?php if ( $pub_logo ) : ?>
+											<?php echo wp_get_attachment_image( $pub_logo, array( 300, 30 ) ); ?>
+										<?php else : ?>
+											<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
+										<?php endif; ?>
+									</div>
+									<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
+									<button type="button" class="button ekwa-media-remove" <?php echo ! $pub_logo ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
+									<p class="description"><?php esc_html_e( 'Recommended: 600px × 60px', 'ekwa' ); ?></p>
+								</div>
+							</td>
+						</tr>
+						<tr>
+							<th><label><?php esc_html_e( 'Share Image', 'ekwa' ); ?></label></th>
+							<td>
+								<div class="ekwa-media-field" data-width="350" data-height="350">
+									<input type="hidden" name="ekwa_share_image" value="<?php echo esc_attr( $share_img ); ?>" class="ekwa-media-id" />
+									<div class="ekwa-media-preview">
+										<?php if ( $share_img ) : ?>
+											<?php echo wp_get_attachment_image( $share_img, array( 175, 175 ) ); ?>
+										<?php else : ?>
+											<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
+										<?php endif; ?>
+									</div>
+									<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
+									<button type="button" class="button ekwa-media-remove" <?php echo ! $share_img ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
+									<p class="description"><?php esc_html_e( 'Recommended: 350px × 350px', 'ekwa' ); ?></p>
+								</div>
+							</td>
+						</tr>
+					</table>
+				</div>
 
-							<p style="margin-top:10px;">
-								<button type="button" class="button" id="ekwa-rp-reset-template"><?php esc_html_e( 'Reset to default', 'ekwa' ); ?></button>
-								<span id="ekwa-rp-reset-msg" style="margin-left:10px;color:#46b450;display:none;">✓ <?php esc_html_e( 'Reset — remember to save.', 'ekwa' ); ?></span>
-							</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_related_posts_date_format"><?php esc_html_e( 'Date format', 'ekwa' ); ?></label></th>
-						<td>
-							<input type="text" id="ekwa_related_posts_date_format" name="ekwa_related_posts_date_format" value="<?php echo esc_attr( $rp_date_fmt ); ?>" class="regular-text" placeholder="M j, Y" />
-							<p class="description">
-								<?php
-								printf(
-									/* translators: %s: PHP date format docs URL. */
-									esc_html__( 'Format used by the %1$s token. Uses %2$s. Examples: %3$s, %4$s, %5$s.', 'ekwa' ),
-									'<code>{{date}}</code>',
-									'<a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a>',
-									'<code>M j, Y</code>',
-									'<code>F j, Y</code>',
-									'<code>j M Y</code>'
-								);
-								?>
-								<br>
-								<?php
-								printf(
-									/* translators: %s: today's date in the configured format. */
-									esc_html__( 'Preview: %s', 'ekwa' ),
-									'<strong>' . esc_html( date_i18n( $rp_date_fmt ?: 'M j, Y' ) ) . '</strong>'
-								);
-								?>
-							</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label for="ekwa_related_posts_excerpt_words"><?php esc_html_e( 'Excerpt word count', 'ekwa' ); ?></label></th>
-						<td>
-							<input type="number" id="ekwa_related_posts_excerpt_words" name="ekwa_related_posts_excerpt_words" value="<?php echo esc_attr( $rp_words ); ?>" min="5" max="100" class="small-text" />
-							<p class="description"><?php esc_html_e( 'Default word count for the {{excerpt}} token. Per-instance override: {{excerpt:30}}.', 'ekwa' ); ?></p>
-						</td>
-					</tr>
-				</table>
-				<script type="text/html" id="tmpl-ekwa-rp-default"><?php echo esc_html( ekwa_related_posts_default_template() ); ?></script>
-				<script>
-					document.addEventListener( 'DOMContentLoaded', function () {
-						var btn  = document.getElementById( 'ekwa-rp-reset-template' );
-						var ta   = document.getElementById( 'ekwa_related_posts_template' );
-						var tpl  = document.getElementById( 'tmpl-ekwa-rp-default' );
-						var msg  = document.getElementById( 'ekwa-rp-reset-msg' );
-						var b64  = document.getElementById( 'ekwa_related_posts_template_b64' );
-						if ( btn && ta && tpl ) {
-							btn.addEventListener( 'click', function () {
-								ta.value = tpl.textContent.trim();
-								if ( msg ) {
-									msg.style.display = 'inline';
-									setTimeout( function () { msg.style.display = 'none'; }, 3000 );
-								}
-							} );
-						}
-						// On submit, ship a base64 copy of the textarea in a hidden
-						// field so WAF / mod_security rules that strip raw HTML from
-						// POST bodies don't silently wipe the template on save.
-						if ( ta && b64 && ta.form ) {
-							ta.form.addEventListener( 'submit', function () {
-								try {
-									var bytes = new TextEncoder().encode( ta.value );
-									var bin   = '';
-									for ( var i = 0; i < bytes.length; i++ ) {
-										bin += String.fromCharCode( bytes[ i ] );
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Mobile Menu Colors', 'ekwa' ); ?></h2>
+					<p class="description"><?php esc_html_e( 'Overrides the off-canvas mobile menu (mmenu) colors. Leave a field empty to use the theme palette default.', 'ekwa' ); ?></p>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_mmenu_bg"><?php esc_html_e( 'Panel Background', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_bg" name="ekwa_mmenu_bg" value="<?php echo esc_attr( $mmenu_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_mmenu_text"><?php esc_html_e( 'Menu Item Text', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_text" name="ekwa_mmenu_text" value="<?php echo esc_attr( $mmenu_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_mmenu_icon"><?php esc_html_e( 'Menu Item Icon', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_icon" name="ekwa_mmenu_icon" value="<?php echo esc_attr( $mmenu_icon ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_mmenu_divider"><?php esc_html_e( 'Item Divider', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_divider" name="ekwa_mmenu_divider" value="<?php echo esc_attr( $mmenu_divider ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_mmenu_navbar_bg"><?php esc_html_e( 'Sub-page Header Background', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_navbar_bg" name="ekwa_mmenu_navbar_bg" value="<?php echo esc_attr( $mmenu_navbar_bg ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_mmenu_navbar_text"><?php esc_html_e( 'Sub-page Header Text', 'ekwa' ); ?></label></th>
+							<td><input type="text" id="ekwa_mmenu_navbar_text" name="ekwa_mmenu_navbar_text" value="<?php echo esc_attr( $mmenu_navbar_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+					</table>
+				</div>
+
+			</div><!-- /branding -->
+
+			<!-- ========== LOCATIONS TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'locations' === $active_tab ? 'active' : ''; ?>" data-tab="locations">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Locations', 'ekwa' ); ?></h2>
+					<div id="ekwa-locations-repeater">
+						<?php
+						if ( ! empty( $locations ) ) :
+							foreach ( $locations as $li => $loc ) :
+								ekwa_render_location_row( $li, $loc, $days );
+							endforeach;
+						endif;
+						?>
+					</div>
+					<button type="button" class="button button-primary" id="ekwa-add-location"><?php esc_html_e( '+ Add Location', 'ekwa' ); ?></button>
+
+					<!-- Hidden template for JS cloning -->
+					<script type="text/html" id="tmpl-ekwa-location">
+						<?php ekwa_render_location_row( '__LOC_INDEX__', array(), $days ); ?>
+					</script>
+					<script type="text/html" id="tmpl-ekwa-working-hour">
+						<?php ekwa_render_working_hour_row( '__LOC_INDEX__', '__WH_INDEX__', array(), $days ); ?>
+					</script>
+				</div>
+			</div><!-- /locations -->
+
+			<!-- ========== SOCIAL MEDIA TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'social' === $active_tab ? 'active' : ''; ?>" data-tab="social">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Social Media Links', 'ekwa' ); ?></h2>
+					<div id="ekwa-social-repeater">
+						<?php
+						if ( ! empty( $social ) ) :
+							foreach ( $social as $si => $item ) :
+								ekwa_render_social_row( $si, $item );
+							endforeach;
+						endif;
+						?>
+					</div>
+					<button type="button" class="button button-primary" id="ekwa-add-social"><?php esc_html_e( '+ Add Social Link', 'ekwa' ); ?></button>
+
+					<script type="text/html" id="tmpl-ekwa-social">
+						<?php ekwa_render_social_row( '__SOC_INDEX__', array() ); ?>
+					</script>
+				</div>
+			</div><!-- /social -->
+
+			<!-- ========== RELATED POSTS TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'related-posts' === $active_tab ? 'active' : ''; ?>" data-tab="related-posts">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Related Posts', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php esc_html_e( 'Controls the Ekwa Related Posts block that you place inside the footer template part. The block pulls posts whose category slug matches the current page slug, and falls back to a featured-articles category on the home page.', 'ekwa' ); ?>
+					</p>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_related_posts_template"><?php esc_html_e( 'Post item template', 'ekwa' ); ?></label></th>
+							<td>
+								<textarea
+									id="ekwa_related_posts_template"
+									name="ekwa_related_posts_template"
+									rows="14"
+									class="large-text code"
+									spellcheck="false"
+									style="font-family:Menlo,Consolas,monospace;font-size:12.5px;"
+								><?php echo esc_textarea( $rp_template ); ?></textarea>
+								<input type="hidden" id="ekwa_related_posts_template_b64" name="ekwa_related_posts_template_b64" value="" />
+								<p class="description"><?php esc_html_e( 'Raw HTML rendered once per post. Use the tokens listed below — they are replaced with the post\'s data at render time.', 'ekwa' ); ?></p>
+
+								<details style="margin-top:10px;background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px;padding:10px 14px;">
+									<summary style="cursor:pointer;font-weight:600;"><?php esc_html_e( 'Available tokens', 'ekwa' ); ?></summary>
+									<table style="width:100%;margin-top:10px;font-size:13px;">
+										<tbody>
+											<tr><td style="padding:4px 8px;width:240px;"><code>{{title}}</code></td><td>The post title (escaped).</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{title_attr}}</code></td><td>The post title, attribute-safe (for <code>title=""</code>).</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{permalink}}</code></td><td>Full URL to the post.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{featured_image}}</code></td><td>Full <code>&lt;img&gt;</code> tag at <em>medium_large</em> size.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{featured_image:size}}</code></td><td>Image at a named size (<code>thumbnail</code>, <code>medium</code>, <code>medium_large</code>, <code>large</code>, <code>full</code>).</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{featured_image_url}}</code></td><td>URL of the featured image (large size).</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{featured_image_url:size}}</code></td><td>URL of the featured image at a named size.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{date}}</code></td><td>Post date using the format below.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{date:F j, Y}}</code></td><td>Post date with a custom <a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a> inline.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{excerpt}}</code></td><td>Trimmed excerpt at the word count below.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{excerpt:30}}</code></td><td>Excerpt trimmed to N words (overrides default).</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{author}}</code></td><td>Author display name.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{author_url}}</code></td><td>Link to the author page.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{categories}}</code></td><td>Comma-separated linked category list.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{read_time}}</code></td><td>Estimated read time, e.g. <em>4 min read</em>.</td></tr>
+										</tbody>
+									</table>
+								</details>
+
+								<p style="margin-top:10px;">
+									<button type="button" class="button" id="ekwa-rp-reset-template"><?php esc_html_e( 'Reset to default', 'ekwa' ); ?></button>
+									<span id="ekwa-rp-reset-msg" style="margin-left:10px;color:#46b450;display:none;">✓ <?php esc_html_e( 'Reset — remember to save.', 'ekwa' ); ?></span>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_related_posts_date_format"><?php esc_html_e( 'Date format', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="text" id="ekwa_related_posts_date_format" name="ekwa_related_posts_date_format" value="<?php echo esc_attr( $rp_date_fmt ); ?>" class="regular-text" placeholder="M j, Y" />
+								<p class="description">
+									<?php
+									printf(
+										/* translators: %s: PHP date format docs URL. */
+										esc_html__( 'Format used by the %1$s token. Uses %2$s. Examples: %3$s, %4$s, %5$s.', 'ekwa' ),
+										'<code>{{date}}</code>',
+										'<a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">PHP date format</a>',
+										'<code>M j, Y</code>',
+										'<code>F j, Y</code>',
+										'<code>j M Y</code>'
+									);
+									?>
+									<br>
+									<?php
+									printf(
+										/* translators: %s: today's date in the configured format. */
+										esc_html__( 'Preview: %s', 'ekwa' ),
+										'<strong>' . esc_html( date_i18n( $rp_date_fmt ?: 'M j, Y' ) ) . '</strong>'
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_related_posts_excerpt_words"><?php esc_html_e( 'Excerpt word count', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="number" id="ekwa_related_posts_excerpt_words" name="ekwa_related_posts_excerpt_words" value="<?php echo esc_attr( $rp_words ); ?>" min="5" max="100" class="small-text" />
+								<p class="description"><?php esc_html_e( 'Default word count for the {{excerpt}} token. Per-instance override: {{excerpt:30}}.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+					</table>
+					<script type="text/html" id="tmpl-ekwa-rp-default"><?php echo esc_html( ekwa_related_posts_default_template() ); ?></script>
+					<script>
+						document.addEventListener( 'DOMContentLoaded', function () {
+							var btn  = document.getElementById( 'ekwa-rp-reset-template' );
+							var ta   = document.getElementById( 'ekwa_related_posts_template' );
+							var tpl  = document.getElementById( 'tmpl-ekwa-rp-default' );
+							var msg  = document.getElementById( 'ekwa-rp-reset-msg' );
+							var b64  = document.getElementById( 'ekwa_related_posts_template_b64' );
+							if ( btn && ta && tpl ) {
+								btn.addEventListener( 'click', function () {
+									ta.value = tpl.textContent.trim();
+									if ( msg ) {
+										msg.style.display = 'inline';
+										setTimeout( function () { msg.style.display = 'none'; }, 3000 );
 									}
-									b64.value = btoa( bin );
-								} catch ( e ) {
-									b64.value = '';
-								}
-							} );
+								} );
+							}
+							// On submit, ship a base64 copy of the textarea in a hidden
+							// field so WAF / mod_security rules that strip raw HTML from
+							// POST bodies don't silently wipe the template on save.
+							if ( ta && b64 && ta.form ) {
+								ta.form.addEventListener( 'submit', function () {
+									try {
+										var bytes = new TextEncoder().encode( ta.value );
+										var bin   = '';
+										for ( var i = 0; i < bytes.length; i++ ) {
+											bin += String.fromCharCode( bytes[ i ] );
+										}
+										b64.value = btoa( bin );
+									} catch ( e ) {
+										b64.value = '';
+									}
+								} );
+							}
+						} );
+					</script>
+				</div>
+			</div><!-- /related-posts -->
+
+			<!-- ========== WEBP TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'webp' === $active_tab ? 'active' : ''; ?>" data-tab="webp">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'WebP Images', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php esc_html_e( 'Generates smaller .webp companions for every uploaded image and serves them automatically to browsers that support WebP. The original JPG/PNG is delivered unchanged to browsers that don\'t support WebP — no markup or block changes needed.', 'ekwa' ); ?>
+					</p>
+					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Enable WebP', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_webp_enabled" value="1" <?php checked( get_option( 'ekwa_webp_enabled', 1 ), 1 ); ?> />
+									<?php esc_html_e( 'Auto-generate WebP on upload and swap image URLs for compatible browsers', 'ekwa' ); ?>
+								</label>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_webp_quality"><?php esc_html_e( 'Quality', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="number" id="ekwa_webp_quality" name="ekwa_webp_quality" min="50" max="100" step="1" value="<?php echo esc_attr( get_option( 'ekwa_webp_quality', 82 ) ); ?>" class="small-text" />
+								<p class="description"><?php esc_html_e( '50–100. 82 is a good balance of size and visual quality.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Apply to core/image', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_webp_apply_core_image" value="1" <?php checked( get_option( 'ekwa_webp_apply_core_image', 1 ), 1 ); ?> />
+									<?php esc_html_e( 'Also swap URLs in core WordPress image blocks (recommended)', 'ekwa' ); ?>
+								</label>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Existing media', 'ekwa' ); ?></th>
+							<td>
+								<button type="button" class="button button-secondary" id="ekwa-webp-regen-btn"><?php esc_html_e( 'Regenerate WebP for All Images', 'ekwa' ); ?></button>
+								<div id="ekwa-webp-regen-status" style="margin-top:8px;"></div>
+								<div id="ekwa-webp-regen-progress" style="margin-top:8px;display:none;background:#eee;border-radius:4px;height:14px;overflow:hidden;max-width:400px;">
+									<div id="ekwa-webp-regen-bar" style="background:#2271b1;height:100%;width:0;transition:width .15s ease;"></div>
+								</div>
+								<p class="description"><?php esc_html_e( 'Run this once to convert images uploaded before WebP was enabled. New uploads convert automatically.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+					</table>
+				</div>
+			</div><!-- /webp -->
+
+			<!-- ========== AI TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'ai' === $active_tab ? 'active' : ''; ?>" data-tab="ai">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'AI Settings', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_gemini_api_key"><?php esc_html_e( 'Gemini API Key', 'ekwa' ); ?></label></th>
+							<td>
+								<?php $gemini_key = get_option( 'ekwa_gemini_api_key', '' ); ?>
+								<input type="password" id="ekwa_gemini_api_key" name="ekwa_gemini_api_key" value="<?php echo esc_attr( $gemini_key ); ?>" class="regular-text" autocomplete="off" />
+								<p class="description">
+									<?php
+									if ( defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY ) {
+										esc_html_e( 'API key is set via wp-config.php (EKWA_GEMINI_API_KEY). This field is ignored.', 'ekwa' );
+									} else {
+										printf(
+											/* translators: %s: link to Google AI Studio */
+											esc_html__( 'Get a free API key from %s. Used by the Mockup Converter\'s "Refine with AI" feature.', 'ekwa' ),
+											'<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
+										);
+									}
+									?>
+								</p>
+							</td>
+						</tr>
+					</table>
+				</div>
+			</div><!-- /ai -->
+
+			<p class="submit ekwa-main-submit">
+				<?php submit_button( __( 'Save Settings', 'ekwa' ), 'primary', 'submit', false ); ?>
+			</p>
+		</form>
+
+		<!-- ========== BULK PAGES TAB (separate form — runs an action, not a save) ========== -->
+		<form method="post" action="" class="ekwa-bulk-pages-form" id="ekwa-bulk-pages-form">
+			<?php wp_nonce_field( 'ekwa_bulk_create_pages', 'ekwa_bulk_pages_nonce' ); ?>
+			<div class="ekwa-tab-pane <?php echo 'bulk-pages' === $active_tab ? 'active' : ''; ?>" data-tab="bulk-pages">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Bulk Page Creator', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php esc_html_e( 'Enter one page title per line. Each will be created as a published, top-level page. Pages whose title already exists are skipped.', 'ekwa' ); ?>
+					</p>
+
+					<?php if ( is_array( $bulk_result ) ) : ?>
+						<div class="ekwa-bulk-result notice notice-info inline" style="padding:12px 14px;margin:0 0 16px;">
+							<p style="margin-top:0;">
+								<strong>
+									<?php
+									printf(
+										/* translators: 1: created count, 2: skipped count, 3: error count */
+										esc_html__( 'Created %1$d, skipped %2$d, errors %3$d.', 'ekwa' ),
+										count( $bulk_result['created'] ),
+										count( $bulk_result['skipped'] ),
+										count( $bulk_result['errors'] )
+									);
+									?>
+								</strong>
+							</p>
+							<?php if ( ! empty( $bulk_result['created'] ) ) : ?>
+								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Created:', 'ekwa' ); ?></strong></p>
+								<ul style="margin:0 0 8px 20px;list-style:disc;">
+									<?php foreach ( $bulk_result['created'] as $row ) : ?>
+										<li>
+											<?php if ( ! empty( $row['link'] ) ) : ?>
+												<a href="<?php echo esc_url( $row['link'] ); ?>"><?php echo esc_html( $row['title'] ); ?></a>
+											<?php else : ?>
+												<?php echo esc_html( $row['title'] ); ?>
+											<?php endif; ?>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+							<?php if ( ! empty( $bulk_result['skipped'] ) ) : ?>
+								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Skipped (already exist):', 'ekwa' ); ?></strong></p>
+								<ul style="margin:0 0 8px 20px;list-style:disc;">
+									<?php foreach ( $bulk_result['skipped'] as $title ) : ?>
+										<li><?php echo esc_html( $title ); ?></li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+							<?php if ( ! empty( $bulk_result['errors'] ) ) : ?>
+								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Errors:', 'ekwa' ); ?></strong></p>
+								<ul style="margin:0 0 8px 20px;list-style:disc;">
+									<?php foreach ( $bulk_result['errors'] as $title ) : ?>
+										<li><?php echo esc_html( $title ); ?></li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+						</div>
+					<?php endif; ?>
+
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_bulk_pages_titles"><?php esc_html_e( 'Page titles', 'ekwa' ); ?></label></th>
+							<td>
+								<textarea
+									id="ekwa_bulk_pages_titles"
+									name="ekwa_bulk_pages_titles"
+									rows="12"
+									class="large-text code"
+									spellcheck="false"
+									placeholder="<?php esc_attr_e( "About Us\nServices\nContact Us\nMeet the Team", 'ekwa' ); ?>"
+								></textarea>
+								<p class="description"><?php esc_html_e( 'One title per line. Empty lines are ignored.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+					</table>
+					<p class="submit">
+						<?php submit_button( __( 'Create Pages', 'ekwa' ), 'primary', 'ekwa_bulk_pages_submit', false ); ?>
+					</p>
+				</div>
+			</div><!-- /bulk-pages -->
+		</form>
+
+		<script>
+			(function () {
+				var tabs  = document.querySelectorAll( '.ekwa-nav-tabs .nav-tab' );
+				var panes = document.querySelectorAll( '.ekwa-tab-pane' );
+				var mainForm = document.getElementById( 'ekwa-main-settings-form' );
+				var bulkForm = document.getElementById( 'ekwa-bulk-pages-form' );
+
+				function activate( slug ) {
+					if ( ! slug ) { return; }
+					var found = false;
+					tabs.forEach( function ( t ) {
+						var match = t.getAttribute( 'data-tab' ) === slug;
+						t.classList.toggle( 'nav-tab-active', match );
+						if ( match ) { found = true; }
+					} );
+					if ( ! found ) { return; }
+					panes.forEach( function ( p ) {
+						p.classList.toggle( 'active', p.getAttribute( 'data-tab' ) === slug );
+					} );
+					// Show only the form whose pane is active.
+					if ( mainForm && bulkForm ) {
+						var inBulk = ( slug === 'bulk-pages' );
+						mainForm.classList.toggle( 'ekwa-form-hidden', inBulk );
+						bulkForm.classList.toggle( 'ekwa-form-hidden', ! inBulk );
+					}
+				}
+
+				tabs.forEach( function ( t ) {
+					t.addEventListener( 'click', function ( e ) {
+						e.preventDefault();
+						var slug = t.getAttribute( 'data-tab' );
+						activate( slug );
+						if ( history.replaceState ) {
+							history.replaceState( null, '', '#' + slug );
+						} else {
+							location.hash = slug;
 						}
 					} );
-				</script>
-			</div>
+				} );
 
-			<?php submit_button( __( 'Save Settings', 'ekwa' ) ); ?>
-		</form>
+				// Honor URL hash on load (overrides server-side default).
+				var hash = ( location.hash || '' ).replace( '#', '' );
+				if ( hash ) {
+					activate( hash );
+				} else {
+					// Make sure form visibility matches the server-rendered active tab.
+					var activePane = document.querySelector( '.ekwa-tab-pane.active' );
+					if ( activePane ) { activate( activePane.getAttribute( 'data-tab' ) ); }
+				}
+			})();
+		</script>
 	</div>
 	<?php
 }
