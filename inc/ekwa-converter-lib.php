@@ -274,6 +274,11 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_video( $node, $depth );
 	}
 
+	// Blockquote → core/quote.
+	if ( $tag === 'blockquote' ) {
+		return ekwa_mc_convert_quote( $node, $depth );
+	}
+
 	// Any other element — render as core/html.
 	return ekwa_mc_convert_raw_html( $node, $depth );
 }
@@ -465,6 +470,77 @@ function ekwa_mc_convert_paragraph( $node, $depth ) {
 	return $indent . '<!-- wp:paragraph' . $attrs_json . ' -->' . "\n" .
 	       $indent . '<p' . $class_attr . '>' . trim( $inner ) . '</p>' . "\n" .
 	       $indent . '<!-- /wp:paragraph -->' . "\n";
+}
+
+/**
+ * Convert <blockquote> to core/quote, preserving any class and lifting
+ * <cite> children to the citation slot.
+ */
+function ekwa_mc_convert_quote( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$class  = trim( $node->getAttribute( 'class' ) );
+
+	// Walk children: separate <cite> from the rest, convert <p> children
+	// through the paragraph converter, and fold any loose text or other
+	// inline content into a single leading paragraph block.
+	$paragraph_blocks = '';
+	$cite_html        = '';
+	$loose_parts      = array();
+
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType === XML_TEXT_NODE ) {
+			$t = trim( $child->textContent );
+			if ( $t !== '' ) {
+				$loose_parts[] = $t;
+			}
+			continue;
+		}
+		if ( $child->nodeType !== XML_ELEMENT_NODE ) {
+			continue;
+		}
+
+		$child_tag = strtolower( $child->nodeName );
+		if ( $child_tag === 'cite' ) {
+			$cite_html = '<cite>' . trim( ekwa_mc_get_inner_html( $child ) ) . '</cite>';
+			continue;
+		}
+		if ( $child_tag === 'p' ) {
+			$paragraph_blocks .= ekwa_mc_convert_paragraph( $child, $depth + 1 );
+			continue;
+		}
+		// Other inline content (br, em, strong, …) — fold into loose text.
+		$loose_parts[] = trim( ekwa_mc_get_outer_html( $child ) );
+	}
+
+	if ( $loose_parts ) {
+		$text         = trim( implode( ' ', $loose_parts ) );
+		$inner_indent = str_repeat( '  ', $depth + 1 );
+		$paragraph_blocks =
+			$inner_indent . '<!-- wp:paragraph -->' . "\n" .
+			$inner_indent . '<p>' . $text . '</p>' . "\n" .
+			$inner_indent . '<!-- /wp:paragraph -->' . "\n" .
+			$paragraph_blocks;
+	}
+
+	// Block attributes — only emit className when there's a source class.
+	$attrs      = array();
+	$class_attr = 'wp-block-quote';
+	if ( $class !== '' ) {
+		$attrs['className'] = $class;
+		$class_attr        .= ' ' . $class;
+	}
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	$inner = $paragraph_blocks;
+	if ( $cite_html !== '' ) {
+		$inner .= str_repeat( '  ', $depth + 1 ) . $cite_html . "\n";
+	}
+
+	return $indent . '<!-- wp:quote' . $attrs_json . ' -->' . "\n" .
+	       $indent . '<blockquote class="' . $class_attr . '">' . "\n" .
+	       $inner .
+	       $indent . '</blockquote>' . "\n" .
+	       $indent . '<!-- /wp:quote -->' . "\n";
 }
 
 /**
