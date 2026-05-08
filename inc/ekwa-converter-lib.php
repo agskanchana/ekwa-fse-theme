@@ -572,6 +572,13 @@ function ekwa_mc_convert_image( $node, $depth ) {
 		if ( ! $alt && ! empty( $media_item['alt'] ) )       { $alt    = $media_item['alt']; }
 		if ( ! $width && ! empty( $media_item['width'] ) )   { $width  = (string) $media_item['width']; }
 		if ( ! $height && ! empty( $media_item['height'] ) ) { $height = (string) $media_item['height']; }
+	} elseif ( $src && ( $lib = ekwa_mc_find_attachment_by_basename( $filename ) ) ) {
+		// Manifest miss — fall back to a basename match in the WP library.
+		$attrs['src']     = $lib['url'];
+		$attrs['mediaId'] = $lib['id'];
+		if ( ! $alt && $lib['alt'] )       { $alt    = $lib['alt']; }
+		if ( ! $width && $lib['width'] )   { $width  = (string) $lib['width']; }
+		if ( ! $height && $lib['height'] ) { $height = (string) $lib['height']; }
 	} else {
 		if ( $src ) {
 			$upload_url = $manifest['upload_url'] ?? '';
@@ -707,13 +714,16 @@ function ekwa_mc_convert_video( $node, $depth ) {
 		}
 	}
 
-	// Resolve video src via manifest.
+	// Resolve video src via manifest, then WP library, then fall back.
 	if ( $src ) {
 		$filename = strtolower( basename( $src ) );
 		if ( ! empty( $media_by_name[ $filename ] ) ) {
 			$media_item = $media_by_name[ $filename ];
 			$attrs['src']     = $media_item['url'];
 			$attrs['mediaId'] = $media_item['id'];
+		} elseif ( $lib = ekwa_mc_find_attachment_by_basename( $filename ) ) {
+			$attrs['src']     = $lib['url'];
+			$attrs['mediaId'] = $lib['id'];
 		} else {
 			$upload_url = $manifest['upload_url'] ?? '';
 			if ( $upload_url ) {
@@ -725,13 +735,16 @@ function ekwa_mc_convert_video( $node, $depth ) {
 		}
 	}
 
-	// Resolve poster via manifest.
+	// Resolve poster via manifest, then WP library.
 	if ( $poster ) {
 		$poster_filename = strtolower( basename( $poster ) );
 		if ( ! empty( $media_by_name[ $poster_filename ] ) ) {
 			$poster_item = $media_by_name[ $poster_filename ];
 			$attrs['poster']   = $poster_item['url'];
 			$attrs['posterId'] = $poster_item['id'];
+		} elseif ( $lib = ekwa_mc_find_attachment_by_basename( $poster_filename ) ) {
+			$attrs['poster']   = $lib['url'];
+			$attrs['posterId'] = $lib['id'];
 		} else {
 			$attrs['poster'] = $poster;
 			ekwa_mc_warn( "No manifest match for poster '$poster_filename' (src: $poster)" );
@@ -948,7 +961,12 @@ function ekwa_mc_resolve_style_urls( $style_string ) {
 				return 'url(' . $media_by_name[ $filename ]['url'] . ')';
 			}
 
-			// No match — try upload_url prefix.
+			// Manifest miss — try the WP media library by basename.
+			$lib = ekwa_mc_find_attachment_by_basename( $filename );
+			if ( $lib ) {
+				return 'url(' . $lib['url'] . ')';
+			}
+
 			$upload_url = $manifest['upload_url'] ?? '';
 			if ( $upload_url ) {
 				ekwa_mc_warn( "No manifest match for style url '$filename' (src: $original)" );
@@ -957,6 +975,79 @@ function ekwa_mc_resolve_style_urls( $style_string ) {
 		},
 		$style_string
 	);
+}
+
+/**
+ * Look up an attachment in the WP media library by file basename.
+ *
+ * Used as a secondary lookup when the supplied manifest doesn't contain a
+ * given filename — so already-uploaded assets resolve to a real attachment
+ * (URL + ID) instead of being left as raw relative paths in the markup.
+ *
+ * Returns null when WordPress isn't loaded (e.g. CLI converter usage) or
+ * when no attachment matches. Results are memoized per-request.
+ *
+ * @param string $filename Lowercased basename, e.g. "hero-banners-1.jpg".
+ * @return array|null { id:int, url:string, alt:string, width:int, height:int } or null.
+ */
+function ekwa_mc_find_attachment_by_basename( $filename ) {
+	static $cache = array();
+
+	$filename = strtolower( trim( (string) $filename ) );
+	if ( '' === $filename ) {
+		return null;
+	}
+	if ( array_key_exists( $filename, $cache ) ) {
+		return $cache[ $filename ];
+	}
+
+	// Bail when running outside a WP context (e.g. CLI converter without WP).
+	if ( ! defined( 'ABSPATH' ) || ! function_exists( 'wp_get_attachment_url' ) ) {
+		$cache[ $filename ] = null;
+		return null;
+	}
+
+	global $wpdb;
+	if ( ! isset( $wpdb ) ) {
+		$cache[ $filename ] = null;
+		return null;
+	}
+
+	// _wp_attached_file values look like "2024/01/hero-banners-1.jpg" — match
+	// by trailing basename (case-insensitive via collation).
+	$like   = '%/' . $wpdb->esc_like( $filename );
+	$att_id = $wpdb->get_var( $wpdb->prepare(
+		"SELECT post_id FROM {$wpdb->postmeta}
+		 WHERE meta_key = '_wp_attached_file'
+		   AND ( meta_value LIKE %s OR meta_value = %s )
+		 ORDER BY post_id DESC
+		 LIMIT 1",
+		$like,
+		$filename
+	) );
+
+	if ( ! $att_id ) {
+		$cache[ $filename ] = null;
+		return null;
+	}
+
+	$url = wp_get_attachment_url( $att_id );
+	if ( ! $url ) {
+		$cache[ $filename ] = null;
+		return null;
+	}
+
+	$meta = function_exists( 'wp_get_attachment_metadata' ) ? wp_get_attachment_metadata( $att_id ) : array();
+	$info = array(
+		'id'     => (int) $att_id,
+		'url'    => $url,
+		'alt'    => (string) get_post_meta( $att_id, '_wp_attachment_image_alt', true ),
+		'width'  => isset( $meta['width'] )  ? (int) $meta['width']  : 0,
+		'height' => isset( $meta['height'] ) ? (int) $meta['height'] : 0,
+	);
+
+	$cache[ $filename ] = $info;
+	return $info;
 }
 
 /**
@@ -983,8 +1074,12 @@ function ekwa_mc_extract_background_image( $style_string ) {
 		if ( ! empty( $media_by_name[ $filename ] ) ) {
 			$result['url']     = $media_by_name[ $filename ]['url'];
 			$result['mediaId'] = $media_by_name[ $filename ]['id'];
+		} elseif ( $lib = ekwa_mc_find_attachment_by_basename( $filename ) ) {
+			// Manifest miss — fall back to a basename match in the WP library.
+			$result['url']     = $lib['url'];
+			$result['mediaId'] = $lib['id'];
 		} else {
-			// No match — keep the original URL.
+			// No match anywhere — keep the original URL.
 			$result['url'] = $original;
 			$upload_url = $manifest['upload_url'] ?? '';
 			if ( $upload_url ) {
