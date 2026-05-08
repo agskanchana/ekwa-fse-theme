@@ -35,8 +35,9 @@
 		}
 	},
 	"attributes": {
-		"tagName": { "type": "string", "default": "span" },
-		"text":    { "type": "string", "default": "" }
+		"tagName":          { "type": "string", "default": "span" },
+		"text":             { "type": "string", "default": "" },
+		"customAttributes": { "type": "object", "default": {} }
 	},
 	"editorScript": "ekwa-text-editor"
 }

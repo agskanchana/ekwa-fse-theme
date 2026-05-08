@@ -318,6 +318,12 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 		}
 	}
 
+	// Forward data-*/aria-* and friends into customAttributes.
+	$custom = ekwa_mc_extract_custom_attributes( $node );
+	if ( ! empty( $custom ) ) {
+		$attrs['customAttributes'] = $custom;
+	}
+
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	// Mixed content (text + elements) or text-only → wrap inner as core/html.
@@ -651,9 +657,43 @@ function ekwa_mc_convert_text( $node, $depth, $tag ) {
 
 	if ( $class ) { $attrs['className'] = $class; }
 
+	$custom = ekwa_mc_extract_custom_attributes( $node );
+	if ( ! empty( $custom ) ) {
+		$attrs['customAttributes'] = $custom;
+	}
+
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/text' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Pull pass-through HTML attributes off a DOM node.
+ *
+ * Used by block converters to forward `data-*`, `aria-*`, and a small set of
+ * static a11y/i18n attributes (role/title/tabindex/lang/dir) into the block's
+ * `customAttributes` map so they survive the conversion. Anything outside the
+ * allowlist (style/onclick/etc.) is intentionally dropped — those are handled
+ * by other attributes (inlineStyle, etc.) or are unsafe to forward verbatim.
+ *
+ * @param DOMElement $node
+ * @return array<string, string>
+ */
+function ekwa_mc_extract_custom_attributes( $node ) {
+	$out = array();
+	if ( ! $node || ! $node->hasAttributes() ) {
+		return $out;
+	}
+	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir' );
+	foreach ( $node->attributes as $attr ) {
+		$name = strtolower( $attr->nodeName );
+		$ok   = preg_match( '/^(?:data|aria)-[a-z0-9_-]+$/', $name )
+		        || in_array( $name, $static_allowed, true );
+		if ( $ok ) {
+			$out[ $name ] = (string) $attr->nodeValue;
+		}
+	}
+	return $out;
 }
 
 /**

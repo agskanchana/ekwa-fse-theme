@@ -25,7 +25,8 @@
 		"rel":               { "type": "string",  "default": "" },
 		"backgroundImage":   { "type": "string",  "default": "" },
 		"backgroundImageId": { "type": "number",  "default": 0 },
-		"inlineStyle":       { "type": "string",  "default": "" }
+		"inlineStyle":       { "type": "string",  "default": "" },
+		"customAttributes":  { "type": "object",  "default": {} }
 	},
 	"editorScript": "ekwa-div-editor"
 }

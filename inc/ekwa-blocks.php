@@ -3087,9 +3087,49 @@ function ekwa_render_text_block( $attrs ) {
 	$html = '<' . $tag;
 	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . esc_html( $text ) . '</' . $tag . '>';
 
 	return $html;
+}
+
+/**
+ * Render the `customAttributes` block attribute as HTML attribute markup.
+ *
+ * Allows blocks to expose passthrough attributes for client-side scripts
+ * (counters, sliders, analytics hooks, ARIA wiring) without baking each
+ * one into block.json. Restricted to a safe allowlist so authors can't
+ * inject `style`, `onclick`, or other risky attributes via the converter.
+ *
+ * @param array $attrs Block attributes.
+ * @return string Leading-space-prefixed attribute markup, or empty string.
+ */
+function ekwa_render_custom_attributes( $attrs ) {
+	if ( empty( $attrs['customAttributes'] ) || ! is_array( $attrs['customAttributes'] ) ) {
+		return '';
+	}
+
+	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir' );
+	$out = '';
+
+	foreach ( $attrs['customAttributes'] as $name => $value ) {
+		$name = strtolower( (string) $name );
+		$ok   = preg_match( '/^(?:data|aria)-[a-z0-9_-]+$/', $name )
+		        || in_array( $name, $static_allowed, true );
+		if ( ! $ok ) {
+			continue;
+		}
+
+		if ( is_bool( $value ) ) {
+			$value = $value ? 'true' : 'false';
+		} elseif ( is_array( $value ) || is_object( $value ) || null === $value ) {
+			continue;
+		}
+
+		$out .= ' ' . $name . '="' . esc_attr( (string) $value ) . '"';
+	}
+
+	return $out;
 }
 
 
@@ -3205,6 +3245,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 		if ( $target ) { $html .= ' target="' . esc_attr( $target ) . '"'; }
 		if ( $rel )    { $html .= ' rel="' . esc_attr( $rel ) . '"'; }
 	}
+	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</' . $tag . '>';
 
 	return $html;
