@@ -604,6 +604,23 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Policy Pages block (fetches a remote policy page from policies.ekwa.com,
+	// substituting practice values from Ekwa Settings).
+	wp_register_script(
+		'ekwa-policy-pages-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-policy-pages-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-policy-pages-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-policy-pages',
+		array(
+			'render_callback' => 'ekwa_render_policy_pages_block',
+		)
+	);
+
 	// ── Blog Blocks ─────────────────────────────────────────────────────────
 
 	$blog_blocks = array(
@@ -2705,6 +2722,95 @@ function ekwa_render_faq_item_block( $attrs, $content ) {
 	$html .= '</summary>';
 	$html .= '<div class="ekwa-faq__a">' . $content . '</div>';
 	$html .= '</details>';
+
+	return $html;
+}
+
+
+/**
+ * Server-side render callback for the ekwa/policy-pages block.
+ *
+ * Outputs a placeholder div + an inline fetch script that pulls a rendered
+ * policy page from the central policies.ekwa.com endpoint, substituting
+ * practice values from the Ekwa Settings page.
+ *
+ * Mapping from the legacy template-parts/default-blocks/policy-pages/block.php:
+ *   - practise_name        → ekwa_practice_name option
+ *   - email_address        → ekwa_email option
+ *   - country              → ekwa_country option
+ *   - adsense_number       → ekwa_adsense_number option (used when ad-tracking)
+ *   - call_tracking_number → first location's `phone_new` (closest equivalent)
+ *   - get_location(*)      → first row of the ekwa_locations option
+ *   - get_field('select-policy-page') → block attribute `policyPageId`
+ *
+ * Phone selection follows the existing ad-tracking convention used elsewhere
+ * in the theme (adward_number cookie or ?ads URL param → adsense number).
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_policy_pages_block( $attrs ) {
+	$policy_id = isset( $attrs['policyPageId'] ) ? sanitize_text_field( $attrs['policyPageId'] ) : '';
+	if ( '' === $policy_id ) {
+		// Authors editing the page see the editor preview; on the front-end,
+		// emit nothing so a half-configured block doesn't ship an empty
+		// fetch to the policies API.
+		if ( current_user_can( 'edit_posts' ) ) {
+			return '<p><em>' . esc_html__( 'Policy Pages: choose a policy in the block sidebar.', 'ekwa' ) . '</em></p>';
+		}
+		return '';
+	}
+
+	$practice_name = (string) get_option( 'ekwa_practice_name', '' );
+	$email         = (string) get_option( 'ekwa_email', '' );
+	$country       = (string) get_option( 'ekwa_country', '' );
+	$adsense       = (string) get_option( 'ekwa_adsense_number', '' );
+	$locations     = get_option( 'ekwa_locations', array() );
+
+	$first = is_array( $locations ) && ! empty( $locations ) ? (array) $locations[0] : array();
+	$first = wp_parse_args( $first, array(
+		'street' => '', 'city' => '', 'state' => '', 'zip' => '',
+		'phone_new' => '', 'phone_existing' => '',
+	) );
+
+	// Ad-tracking override matches phone-dropdown convention.
+	$is_ad = ( isset( $_COOKIE['adward_number'] ) || isset( $_GET['ads'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$phone = ( $is_ad && $adsense ) ? $adsense : $first['phone_new'];
+
+	// Build the upstream URL with proper encoding. Note: param key
+	// `bussiness_name` is a typo in the upstream API contract — keep it.
+	$url = add_query_arg(
+		array(
+			'id'             => $policy_id,
+			'bussiness_name' => $practice_name,
+			'phone'          => $phone,
+			'country'        => $country,
+			'domain'         => home_url(),
+			'address'        => $first['street'],
+			'city'           => $first['city'],
+			'state'          => $first['state'],
+			'zip'            => $first['zip'],
+			'email'          => $email,
+		),
+		'https://policies.ekwa.com/wp-json/ws/v1/policy_page'
+	);
+
+	// Unique container id so multiple instances on a page don't collide.
+	$uid = 'ekwa-policy-' . wp_generate_uuid4();
+
+	$wrapper_attrs = get_block_wrapper_attributes( array( 'class' => 'ekwa-policy-pages' ) );
+
+	$html  = '<div ' . $wrapper_attrs . '>';
+	$html .= '<div id="' . esc_attr( $uid ) . '"></div>';
+	$html .= '<script>(function(){';
+	$html .= 'var c=document.getElementById(' . wp_json_encode( $uid ) . ');';
+	$html .= 'if(!c)return;';
+	$html .= 'fetch(' . wp_json_encode( $url ) . ',{method:"GET",headers:{"Content-Type":"application/json"},redirect:"follow"})';
+	$html .= '.then(function(r){return r.text();})';
+	$html .= '.then(function(t){try{c.innerHTML=JSON.parse(t);}catch(e){c.innerHTML=t;}})';
+	$html .= '.catch(function(e){if(window.console)console.log("ekwa-policy-pages error",e);});';
+	$html .= '})();</script>';
+	$html .= '</div>';
 
 	return $html;
 }

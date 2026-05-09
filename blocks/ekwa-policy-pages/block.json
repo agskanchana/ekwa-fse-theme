@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/policy-pages",
+	"version": "1.0.0",
+	"title": "Policy Pages",
+	"category": "common",
+	"icon": "shield",
+	"description": "Renders a remote policy page from policies.ekwa.com, populated with practice info from Ekwa Settings.",
+	"textdomain": "ekwa",
+	"keywords": [ "policy", "privacy", "terms", "hipaa", "remote" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"policyPageId": { "type": "string", "default": "" }
+	},
+	"editorScript": "ekwa-policy-pages-editor"
+}

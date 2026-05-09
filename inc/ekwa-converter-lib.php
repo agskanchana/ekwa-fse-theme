@@ -223,9 +223,10 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	}
 
 	// Inline elements:
-	//   text-only           → ekwa/text
-	//   element-only kids   → ekwa/div with tagName=<inline tag>  (recurse into kids)
-	//   mixed text+element  → wp:html fallback (can't be split cleanly)
+	//   text-only                      → ekwa/text
+	//   element-only kids              → ekwa/div with tagName=<inline tag>
+	//   mixed text+element (splittable)→ ekwa/div, children split into icon/text blocks
+	//   mixed but not splittable       → wp:html fallback
 	$inline_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
 	if ( in_array( $tag, $inline_tags, true ) ) {
 		$has_elements = ekwa_mc_has_element_children( $node );
@@ -236,7 +237,7 @@ function ekwa_mc_convert_node( $node, $depth ) {
 			}
 			return ekwa_mc_convert_raw_html( $node, $depth );
 		}
-		if ( ! ekwa_mc_has_mixed_content( $node ) ) {
+		if ( ! ekwa_mc_has_mixed_content( $node ) || ekwa_mc_can_inline_split( $node ) ) {
 			return ekwa_mc_convert_div_block( $node, $depth, $tag );
 		}
 		return ekwa_mc_convert_raw_html( $node, $depth );
@@ -326,8 +327,27 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
-	// Mixed content (text + elements) or text-only → wrap inner as core/html.
-	if ( ekwa_mc_has_mixed_content( $node ) || ekwa_mc_has_text_only( $node ) ) {
+	// Mixed content (text + inline elements like <i> or <span>): try to split
+	// into clean blocks (icon + ekwa/text) instead of dumping inner HTML into
+	// a wp:html block. Falls back to wp:html when children include things we
+	// can't safely inline-split.
+	if ( ekwa_mc_has_mixed_content( $node ) ) {
+		if ( ekwa_mc_can_inline_split( $node ) ) {
+			$children = ekwa_mc_convert_inline_mixed_children( $node, $depth + 1 );
+			return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
+			       $children .
+			       $indent . '<!-- /wp:ekwa/div -->' . "\n";
+		}
+		$inner_html = ekwa_mc_get_inner_html( $node );
+		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
+		       $indent . '  <!-- wp:html -->' . "\n" .
+		       $indent . '  ' . trim( $inner_html ) . "\n" .
+		       $indent . '  <!-- /wp:html -->' . "\n" .
+		       $indent . '<!-- /wp:ekwa/div -->' . "\n";
+	}
+
+	// Text-only with no element children → still wp:html (no split needed).
+	if ( ekwa_mc_has_text_only( $node ) ) {
 		$inner_html = ekwa_mc_get_inner_html( $node );
 		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
 		       $indent . '  <!-- wp:html -->' . "\n" .
@@ -900,6 +920,77 @@ function ekwa_mc_has_mixed_content( $node ) {
 	}
 
 	return $has_elements && $has_text;
+}
+
+/**
+ * Decide whether a node with mixed content can be split into clean blocks.
+ *
+ * "Inline-splittable" means every element child is an inline tag we already
+ * have a converter for (icon, text, link, image), so we can pair bare text
+ * nodes with siblings as `ekwa/text` blocks instead of dumping the whole
+ * inner HTML into a `wp:html` fallback. Conservative — anything outside the
+ * allowlist (e.g. a div, ul, table) bails so we don't silently mangle layout.
+ *
+ * @param DOMElement $node
+ * @return bool
+ */
+function ekwa_mc_can_inline_split( $node ) {
+	$allowed = array(
+		'i', 'span', 'small', 'strong', 'em', 'mark', 'time', 'label',
+		'sup', 'sub', 'a', 'button', 'img', 'br',
+	);
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType !== XML_ELEMENT_NODE ) {
+			continue;
+		}
+		$tag = strtolower( $child->nodeName );
+		if ( ! in_array( $tag, $allowed, true ) ) {
+			return false;
+		}
+		// If this child also has mixed content, recurse — every level must be
+		// splittable or we'd still need wp:html somewhere down the tree.
+		if ( ekwa_mc_has_mixed_content( $child ) && ! ekwa_mc_can_inline_split( $child ) ) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Convert mixed inline children (text + inline elements) to a sequence of
+ * blocks. Bare text nodes become `ekwa/text` (tagName=span); element
+ * children dispatch through the normal converter.
+ *
+ * Used when the wrapper would otherwise fall back to `wp:html` — see
+ * ekwa_mc_can_inline_split() for the gate.
+ *
+ * @param DOMElement $node
+ * @param int        $depth Nesting depth for the children blocks (parent depth + 1).
+ * @return string Block markup for the inner content.
+ */
+function ekwa_mc_convert_inline_mixed_children( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$output = '';
+
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType === XML_TEXT_NODE ) {
+			$text = trim( $child->textContent );
+			if ( '' === $text ) {
+				continue;
+			}
+			$attrs = array( 'tagName' => 'span', 'text' => $text );
+			$output .= $indent . '<!-- wp:ekwa/text ' . ekwa_mc_json_encode_block_attrs( $attrs ) . ' /-->' . "\n";
+		} elseif ( $child->nodeType === XML_ELEMENT_NODE ) {
+			// <br> inside mixed content: emit a literal break via a tiny html block.
+			if ( strtolower( $child->nodeName ) === 'br' ) {
+				$output .= $indent . "<!-- wp:html -->\n" . $indent . "<br>\n" . $indent . "<!-- /wp:html -->\n";
+				continue;
+			}
+			$output .= ekwa_mc_convert_node( $child, $depth );
+		}
+	}
+
+	return $output;
 }
 
 /**
