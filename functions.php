@@ -58,6 +58,12 @@ require_once get_template_directory() . '/inc/ekwa-webp.php';
 require_once get_template_directory() . '/inc/ekwa-perf.php';
 
 /**
+ * Load head-level performance hardening (critical CSS, stylesheet deferral,
+ * resource hints, WP core bloat removal).
+ */
+require_once get_template_directory() . '/inc/ekwa-perf-head.php';
+
+/**
  * Load block style variations.
  */
 require_once get_template_directory() . '/inc/ekwa-block-styles.php';

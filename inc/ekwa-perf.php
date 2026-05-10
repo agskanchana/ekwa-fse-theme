@@ -197,6 +197,24 @@ function ekwa_perf_emit_hero_preloads() {
 add_action( 'wp_head', 'ekwa_perf_emit_hero_preloads', 1 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Site logo — never lazy.
+//
+// The custom logo is usually in the header and often the LCP element. Force
+// loading="eager" via the attachment-image attributes filter at priority 5
+// (before WebP at 20 and the lazysizes rewriter at 25). The lazysizes
+// rewriter already skips any tag with loading="eager", so this single check
+// covers both native and lazysizes modes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ekwa_perf_force_eager_for_logo( $attr ) {
+	if ( ! empty( $attr['class'] ) && preg_match( '/\b(custom-logo|site-logo)\b/', $attr['class'] ) ) {
+		$attr['loading'] = 'eager';
+	}
+	return $attr;
+}
+add_filter( 'wp_get_attachment_image_attributes', 'ekwa_perf_force_eager_for_logo', 5 );
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Site-wide lazysizes rewriter — runs only when lazy mode is `lazysizes`.
 //
 // Walks every <img> in rendered HTML and converts:
