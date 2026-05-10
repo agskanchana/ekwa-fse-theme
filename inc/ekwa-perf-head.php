@@ -39,6 +39,28 @@ add_action( 'wp_head', 'ekwa_perf_inline_critical_css', 1 );
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Mobile-only Font Awesome deferral toggle. When enabled, mobile devices
+ * delay the FA download until the first user interaction (scroll/tap/click).
+ * Desktop is unaffected.
+ */
+function ekwa_perf_defer_fa_mobile_enabled() {
+	return (bool) get_option( 'ekwa_perf_defer_fa_mobile', 0 );
+}
+
+/**
+ * Captured inside the style_loader_tag filter so the inline loader script
+ * (printed later in wp_head) knows the resolved Font Awesome URL without
+ * having to re-resolve it from the registered handle.
+ */
+function ekwa_perf_fa_href( $href = null ) {
+	static $cached = null;
+	if ( null !== $href ) {
+		$cached = $href;
+	}
+	return $cached;
+}
+
+/**
  * Theme-owned style handles that should be deferred. Anything not on this list
  * loads synchronously as before — keeps third-party plugin styles untouched.
  */
@@ -63,6 +85,15 @@ function ekwa_perf_defer_stylesheets( $html, $handle, $href, $media ) {
 		return $html;
 	}
 
+	// Special case: FA + mobile-defer toggle on. Suppress the preload tag
+	// entirely; the inline loader (Section 2b) injects the stylesheet on
+	// interaction for mobile, immediately for desktop.
+	if ( 'font-awesome' === $handle && ekwa_perf_defer_fa_mobile_enabled() ) {
+		ekwa_perf_fa_href( $href );
+		// Keep a noscript fallback so JS-disabled clients still get icons.
+		return '<noscript><link rel="stylesheet" href="' . esc_url( $href ) . '" /></noscript>' . "\n";
+	}
+
 	$media_attr = $media && $media !== 'all' ? ' media="' . esc_attr( $media ) . '"' : '';
 
 	return sprintf(
@@ -73,6 +104,52 @@ function ekwa_perf_defer_stylesheets( $html, $handle, $href, $media ) {
 	);
 }
 add_filter( 'style_loader_tag', 'ekwa_perf_defer_stylesheets', 10, 4 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2b. Mobile FA loader — inline script that defers FA on mobile until the
+//     first user interaction. Runs after the style_loader_tag filter has
+//     captured the resolved href via ekwa_perf_fa_href().
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ekwa_perf_emit_fa_mobile_loader() {
+	if ( is_admin() || ! ekwa_perf_defer_fa_mobile_enabled() ) {
+		return;
+	}
+	$href = ekwa_perf_fa_href();
+	if ( ! $href ) {
+		return;
+	}
+	$href_js = wp_json_encode( $href );
+	?>
+<script id="ekwa-fa-mobile-loader">
+(function(){
+	var href = <?php echo $href_js; ?>;
+	function inject(){
+		var l = document.createElement('link');
+		l.rel = 'stylesheet';
+		l.href = href;
+		document.head.appendChild(l);
+	}
+	// Desktop / wide tablets: load immediately.
+	if (!window.matchMedia || !window.matchMedia('(max-width: 768px)').matches) {
+		inject();
+		return;
+	}
+	// Mobile: wait for first scroll / tap / click / key press.
+	var events = ['scroll','touchstart','click','keydown'];
+	var loaded = false;
+	function trigger(){
+		if (loaded) return;
+		loaded = true;
+		inject();
+		events.forEach(function(e){ window.removeEventListener(e, trigger); });
+	}
+	events.forEach(function(e){ window.addEventListener(e, trigger, {passive:true, once:true}); });
+})();
+</script>
+	<?php
+}
+add_action( 'wp_print_footer_scripts', 'ekwa_perf_emit_fa_mobile_loader' );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Resource hints — preconnect + conditional dns-prefetch

@@ -325,6 +325,7 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_srcset', isset( $_POST['ekwa_perf_srcset'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_preload_hero', isset( $_POST['ekwa_perf_preload_hero'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_decoding_async', isset( $_POST['ekwa_perf_decoding_async'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
 
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
@@ -920,6 +921,7 @@ function ekwa_render_settings_page() {
 					$srcset_val      = get_option( 'ekwa_perf_srcset', 1 );
 					$preload_hero_val = get_option( 'ekwa_perf_preload_hero', 1 );
 					$decoding_val    = get_option( 'ekwa_perf_decoding_async', 1 );
+					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
 					?>
 					<table class="form-table">
 						<tr>
@@ -968,6 +970,16 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'Apply decoding="async" to ekwa/image output', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Lets the browser decode images off the main thread.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Defer Font Awesome on mobile', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_defer_fa_mobile" value="1" <?php checked( $defer_fa_mobile_val, 1 ); ?> />
+									<?php esc_html_e( 'On phones (≤ 768px), wait for the first user interaction (scroll/tap/click) before loading Font Awesome', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Saves ~33KB of CSS from the mobile critical path. Icons in the header may flash unstyled briefly until the user scrolls or taps. Desktop is unaffected.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 					</table>
