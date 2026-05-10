@@ -19,6 +19,7 @@
 	var SelectControl      = wp.components.SelectControl;
 	var TextControl        = wp.components.TextControl;
 	var TextareaControl    = wp.components.TextareaControl;
+	var ToggleControl      = wp.components.ToggleControl;
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
@@ -215,6 +216,18 @@
 							if ( val ) { setAttributes( { backgroundImage: val } ); }
 						},
 						style: { marginTop: '8px' },
+					} )
+				);
+			}
+
+			if ( bgImage ) {
+				bgChildren.push(
+					el( ToggleControl, {
+						key:     'lazy-bg',
+						label:   __( 'Lazy load background' ),
+						help:    __( 'Defer painting until the wrapper enters the viewport. Turn off for above-the-fold heroes.' ),
+						checked: attributes.lazyBg !== false,
+						onChange: function ( val ) { setAttributes( { lazyBg: val } ); },
 					} )
 				);
 			}

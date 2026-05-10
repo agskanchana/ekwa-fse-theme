@@ -53,6 +53,11 @@ require_once get_template_directory() . '/inc/ekwa-blocks.php';
 require_once get_template_directory() . '/inc/ekwa-webp.php';
 
 /**
+ * Load image performance helpers (lazy loading, hero preload, srcset).
+ */
+require_once get_template_directory() . '/inc/ekwa-perf.php';
+
+/**
  * Load block style variations.
  */
 require_once get_template_directory() . '/inc/ekwa-block-styles.php';

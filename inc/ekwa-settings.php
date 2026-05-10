@@ -316,6 +316,16 @@ function ekwa_save_settings() {
 	if ( $quality > 100 ) { $quality = 100; }
 	update_option( 'ekwa_webp_quality', $quality );
 
+	// Performance options.
+	$lazy_mode = isset( $_POST['ekwa_perf_lazy_mode'] ) ? sanitize_text_field( wp_unslash( $_POST['ekwa_perf_lazy_mode'] ) ) : 'native';
+	if ( ! in_array( $lazy_mode, array( 'off', 'native', 'lazysizes' ), true ) ) {
+		$lazy_mode = 'native';
+	}
+	update_option( 'ekwa_perf_lazy_mode', $lazy_mode );
+	update_option( 'ekwa_perf_srcset', isset( $_POST['ekwa_perf_srcset'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_preload_hero', isset( $_POST['ekwa_perf_preload_hero'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_decoding_async', isset( $_POST['ekwa_perf_decoding_async'] ) ? 1 : 0 );
+
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
 	if ( 'custom' === $country ) {
@@ -434,12 +444,10 @@ add_action( 'admin_init', 'ekwa_handle_bulk_create_pages' );
 function ekwa_settings_tabs() {
 	return array(
 		'general'       => __( 'General', 'ekwa' ),
-		'appointment'   => __( 'Appointment', 'ekwa' ),
 		'branding'      => __( 'Branding', 'ekwa' ),
 		'locations'     => __( 'Locations', 'ekwa' ),
-		'social'        => __( 'Social Media', 'ekwa' ),
 		'related-posts' => __( 'Related Posts', 'ekwa' ),
-		'webp'          => __( 'WebP Images', 'ekwa' ),
+		'performance'   => __( 'Performance', 'ekwa' ),
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
 	);
@@ -602,10 +610,6 @@ function ekwa_render_settings_page() {
 					</table>
 				</div>
 
-			</div><!-- /general -->
-
-			<!-- ========== APPOINTMENT TAB ========== -->
-			<div class="ekwa-tab-pane <?php echo 'appointment' === $active_tab ? 'active' : ''; ?>" data-tab="appointment">
 				<div class="ekwa-section">
 					<h2><?php esc_html_e( 'Appointment Settings', 'ekwa' ); ?></h2>
 					<table class="form-table">
@@ -637,7 +641,26 @@ function ekwa_render_settings_page() {
 						</tr>
 					</table>
 				</div>
-			</div><!-- /appointment -->
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Social Media Links', 'ekwa' ); ?></h2>
+					<div id="ekwa-social-repeater">
+						<?php
+						if ( ! empty( $social ) ) :
+							foreach ( $social as $si => $item ) :
+								ekwa_render_social_row( $si, $item );
+							endforeach;
+						endif;
+						?>
+					</div>
+					<button type="button" class="button button-primary" id="ekwa-add-social"><?php esc_html_e( '+ Add Social Link', 'ekwa' ); ?></button>
+
+					<script type="text/html" id="tmpl-ekwa-social">
+						<?php ekwa_render_social_row( '__SOC_INDEX__', array() ); ?>
+					</script>
+				</div>
+
+			</div><!-- /general -->
 
 			<!-- ========== BRANDING TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'branding' === $active_tab ? 'active' : ''; ?>" data-tab="branding">
@@ -759,27 +782,6 @@ function ekwa_render_settings_page() {
 					</script>
 				</div>
 			</div><!-- /locations -->
-
-			<!-- ========== SOCIAL MEDIA TAB ========== -->
-			<div class="ekwa-tab-pane <?php echo 'social' === $active_tab ? 'active' : ''; ?>" data-tab="social">
-				<div class="ekwa-section">
-					<h2><?php esc_html_e( 'Social Media Links', 'ekwa' ); ?></h2>
-					<div id="ekwa-social-repeater">
-						<?php
-						if ( ! empty( $social ) ) :
-							foreach ( $social as $si => $item ) :
-								ekwa_render_social_row( $si, $item );
-							endforeach;
-						endif;
-						?>
-					</div>
-					<button type="button" class="button button-primary" id="ekwa-add-social"><?php esc_html_e( '+ Add Social Link', 'ekwa' ); ?></button>
-
-					<script type="text/html" id="tmpl-ekwa-social">
-						<?php ekwa_render_social_row( '__SOC_INDEX__', array() ); ?>
-					</script>
-				</div>
-			</div><!-- /social -->
 
 			<!-- ========== RELATED POSTS TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'related-posts' === $active_tab ? 'active' : ''; ?>" data-tab="related-posts">
@@ -906,8 +908,70 @@ function ekwa_render_settings_page() {
 				</div>
 			</div><!-- /related-posts -->
 
-			<!-- ========== WEBP TAB ========== -->
-			<div class="ekwa-tab-pane <?php echo 'webp' === $active_tab ? 'active' : ''; ?>" data-tab="webp">
+			<!-- ========== PERFORMANCE TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'performance' === $active_tab ? 'active' : ''; ?>" data-tab="performance">
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Performance', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php esc_html_e( 'Image-rendering optimizations applied to the ekwa/image block. WebP conversion lives on its own tab.', 'ekwa' ); ?>
+					</p>
+					<?php
+					$lazy_mode_val   = get_option( 'ekwa_perf_lazy_mode', 'native' );
+					$srcset_val      = get_option( 'ekwa_perf_srcset', 1 );
+					$preload_hero_val = get_option( 'ekwa_perf_preload_hero', 1 );
+					$decoding_val    = get_option( 'ekwa_perf_decoding_async', 1 );
+					?>
+					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Lazy loading mode', 'ekwa' ); ?></th>
+							<td>
+								<label style="display:block;margin-bottom:4px;">
+									<input type="radio" name="ekwa_perf_lazy_mode" value="off" <?php checked( $lazy_mode_val, 'off' ); ?> />
+									<?php esc_html_e( 'Off — emit no loading attribute', 'ekwa' ); ?>
+								</label>
+								<label style="display:block;margin-bottom:4px;">
+									<input type="radio" name="ekwa_perf_lazy_mode" value="native" <?php checked( $lazy_mode_val, 'native' ); ?> />
+									<?php esc_html_e( 'Native — loading="lazy" (default)', 'ekwa' ); ?>
+								</label>
+								<label style="display:block;">
+									<input type="radio" name="ekwa_perf_lazy_mode" value="lazysizes" <?php checked( $lazy_mode_val, 'lazysizes' ); ?> />
+									<?php esc_html_e( 'lazysizes — earlier load threshold + JS lib (~3KB)', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Hero images always bypass lazy loading regardless of mode.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Responsive srcset', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_srcset" value="1" <?php checked( $srcset_val, 1 ); ?> />
+									<?php esc_html_e( 'Auto-generate srcset/sizes from the media library for ekwa/image', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Lets the browser pick the smallest image that fits the viewport.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Hero preload', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_preload_hero" value="1" <?php checked( $preload_hero_val, 1 ); ?> />
+									<?php esc_html_e( 'Emit <link rel="preload" as="image"> in <head> for images marked Hero', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Improves Largest Contentful Paint by starting the hero download before the parser reaches the <img>.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Async decoding', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_decoding_async" value="1" <?php checked( $decoding_val, 1 ); ?> />
+									<?php esc_html_e( 'Apply decoding="async" to ekwa/image output', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Lets the browser decode images off the main thread.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+					</table>
+				</div>
 				<div class="ekwa-section">
 					<h2><?php esc_html_e( 'WebP Images', 'ekwa' ); ?></h2>
 					<p class="description" style="margin-bottom:1em;">
@@ -952,7 +1016,8 @@ function ekwa_render_settings_page() {
 						</tr>
 					</table>
 				</div>
-			</div><!-- /webp -->
+
+			</div><!-- /performance -->
 
 			<!-- ========== AI TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'ai' === $active_tab ? 'active' : ''; ?>" data-tab="ai">

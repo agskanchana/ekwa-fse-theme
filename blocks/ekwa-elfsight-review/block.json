@@ -1,0 +1,22 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/elfsight-review",
+	"version": "1.0.0",
+	"title": "Ekwa Elfsight Review",
+	"category": "embed",
+	"description": "Paste an Elfsight widget embed code; the platform.js script is lazy-loaded via lazysizes.",
+	"textdomain": "ekwa",
+	"icon": "star-filled",
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"attributes": {
+		"embedCode": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"editorScript": "ekwa-elfsight-review-editor"
+}

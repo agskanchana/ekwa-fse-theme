@@ -24,6 +24,10 @@
 		"colorful": {
 			"type": "boolean",
 			"default": true
+		},
+		"lazyLoad": {
+			"type": "boolean",
+			"default": true
 		}
 	},
 	"editorScript": "ekwa-map-editor"

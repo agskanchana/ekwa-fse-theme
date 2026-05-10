@@ -35,7 +35,7 @@ function ekwa_register_blocks() {
 		'ekwa-map-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-map-editor.js',
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-map-editor.js' ),
 		true
 	);
 
@@ -43,6 +43,29 @@ function ekwa_register_blocks() {
 		get_template_directory() . '/blocks/ekwa-map',
 		array(
 			'render_callback' => 'ekwa_render_map_block',
+		)
+	);
+
+	// Elfsight Review block (lazysizes data-script trigger for the platform.js bundle).
+	wp_register_script(
+		'ekwa-elfsight-review-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-elfsight-review-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-elfsight-review-editor.js' ),
+		true
+	);
+	wp_localize_script(
+		'ekwa-elfsight-review-editor',
+		'ekwaElfsightConfig',
+		array(
+			'lazyMode' => function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native',
+		)
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-elfsight-review',
+		array(
+			'render_callback' => 'ekwa_render_elfsight_review_block',
 		)
 	);
 
@@ -545,7 +568,7 @@ function ekwa_register_blocks() {
 		'ekwa-video-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-video-editor.js',
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-video-editor.js' ),
 		true
 	);
 
@@ -859,19 +882,78 @@ function ekwa_render_map_block( $attrs ) {
 		return '';
 	}
 
+	$lazy_map  = isset( $attrs['lazyLoad'] ) ? (bool) $attrs['lazyLoad'] : true;
+	$lazy_mode = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
+
+	// lazysizes mode + per-block toggle on → use data-src so the iframe
+	// doesn't connect to Google until the wrapper enters the viewport.
+	// Native mode → loading="lazy". Off → eager.
+	if ( $lazy_map && $lazy_mode === 'lazysizes' ) {
+		$class_attr   = ' class="lazyload"';
+		$src_attrs    = 'src="about:blank" data-src="' . esc_url( $src ) . '"';
+		$loading_attr = '';
+	} else {
+		$class_attr   = '';
+		$src_attrs    = 'src="' . esc_url( $src ) . '"';
+		$loading_attr = $lazy_map ? ' loading="lazy"' : ' loading="eager"';
+	}
+
 	return sprintf(
 		'<div class="ekwa-map-wrapper" style="width:100%%;overflow:hidden;">' .
-		'<iframe src="%s" width="100%%" height="%d" ' .
+		'<iframe%s %s width="100%%" height="%d" ' .
 		'style="border:0;display:block;width:100%%;filter:%s;-webkit-filter:%s;" ' .
-		'allowfullscreen="" loading="lazy" ' .
+		'allowfullscreen=""%s ' .
 		'referrerpolicy="no-referrer-when-downgrade" ' .
 		'title="%s"></iframe>' .
 		'</div>',
-		$src,
+		$class_attr,
+		$src_attrs,
 		$height,
 		$filter,
 		$filter,
+		$loading_attr,
 		esc_attr__( 'Google Map', 'ekwa' )
+	);
+}
+
+/**
+ * Server-side render callback for the ekwa/elfsight-review block.
+ *
+ * Parses the pasted Elfsight embed code, validates the script src against
+ * an allowlist, and emits the lazysizes data-script trigger so platform.js
+ * is only fetched once the wrapper enters the viewport.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_elfsight_review_block( $attrs ) {
+	$embed = isset( $attrs['embedCode'] ) ? (string) $attrs['embedCode'] : '';
+	if ( '' === trim( $embed ) ) {
+		return '';
+	}
+
+	// Extract the script src from the pasted snippet.
+	if ( ! preg_match( '/<script[^>]+src=["\']([^"\']+)["\']/i', $embed, $script_match ) ) {
+		return '';
+	}
+	$script_src = $script_match[1];
+
+	// Security: only allow scripts from the official Elfsight CDN.
+	if ( ! preg_match( '#^https://elfsightcdn\.com/#', $script_src ) ) {
+		return '';
+	}
+
+	// Extract the elfsight-app-{uuid} class from the widget div.
+	if ( ! preg_match( '/class=["\'](elfsight-app-[a-f0-9-]+)["\']/i', $embed, $app_match ) ) {
+		return '';
+	}
+	$app_class = $app_match[1];
+
+	return sprintf(
+		'<div class="lazyload" data-script="%s"></div>'
+		. '<div class="%s" data-elfsight-app-lazy></div>',
+		esc_url( $script_src ),
+		esc_attr( $app_class )
 	);
 }
 
@@ -3263,6 +3345,8 @@ function ekwa_render_image_block( $attrs ) {
 	$alt         = isset( $attrs['alt'] )        ? esc_attr( $attrs['alt'] ) : '';
 	$width       = isset( $attrs['width'] )      ? esc_attr( $attrs['width'] ) : '';
 	$height      = isset( $attrs['height'] )     ? esc_attr( $attrs['height'] ) : '';
+	$media_id    = isset( $attrs['mediaId'] )    ? (int) $attrs['mediaId'] : 0;
+	$hero        = ! empty( $attrs['hero'] );
 	$loading     = isset( $attrs['loading'] )    ? esc_attr( $attrs['loading'] ) : 'lazy';
 	$object_fit  = isset( $attrs['objectFit'] )  ? esc_attr( $attrs['objectFit'] ) : '';
 	$anchor      = isset( $attrs['anchor'] )     ? sanitize_html_class( $attrs['anchor'] ) : '';
@@ -3274,20 +3358,83 @@ function ekwa_render_image_block( $attrs ) {
 		return '';
 	}
 
+	// Hero overrides loading; otherwise honor the legacy loading attr.
+	if ( $hero ) {
+		$loading = 'eager';
+	}
+
+	// Resolve responsive srcset/sizes from the attached media when enabled.
+	$srcset = '';
+	$sizes  = '';
+	if ( $media_id && function_exists( 'ekwa_perf_srcset_enabled' ) && ekwa_perf_srcset_enabled() ) {
+		$srcset = wp_get_attachment_image_srcset( $media_id, 'full' );
+		if ( $srcset ) {
+			$w_int = (int) $width;
+			$sizes = $w_int > 0
+				? '(max-width: ' . $w_int . 'px) 100vw, ' . $w_int . 'px'
+				: '100vw';
+		}
+	}
+
+	$lazy_mode      = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
+	$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
+	$use_lazysizes  = ( $lazy_mode === 'lazysizes' && ! $hero );
+
 	$style = '';
 	if ( $object_fit ) {
 		$style = 'object-fit:' . $object_fit . ';';
 	}
 
+	// Build the class list — append `lazyload` when lazysizes mode is active.
+	$classes = $class_name;
+	if ( $use_lazysizes ) {
+		$classes = trim( $classes . ' lazyload' );
+	}
+
 	$html = '<img';
-	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
-	$html .= ' src="' . $src . '" alt="' . $alt . '"';
+	if ( $classes ) { $html .= ' class="' . esc_attr( $classes ) . '"'; }
+
+	if ( $use_lazysizes ) {
+		// 1×1 transparent GIF placeholder so the slot renders immediately.
+		$html .= ' src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="';
+		$html .= ' data-src="' . $src . '"';
+		if ( $srcset ) {
+			$html .= ' data-srcset="' . esc_attr( $srcset ) . '"';
+		}
+	} else {
+		$html .= ' src="' . $src . '"';
+		if ( $srcset ) {
+			$html .= ' srcset="' . esc_attr( $srcset ) . '"';
+		}
+	}
+
+	$html .= ' alt="' . $alt . '"';
+	if ( $sizes )   { $html .= ' sizes="' . esc_attr( $sizes ) . '"'; }
 	if ( $width )   { $html .= ' width="' . $width . '"'; }
 	if ( $height )  { $html .= ' height="' . $height . '"'; }
-	if ( $loading ) { $html .= ' loading="' . $loading . '"'; }
-	if ( $style )   { $html .= ' style="' . esc_attr( $style ) . '"'; }
-	if ( $anchor )  { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+
+	// Lazy / loading attribute. lazysizes mode opts out of native lazy entirely.
+	if ( ! $use_lazysizes && $lazy_mode !== 'off' && $loading ) {
+		$html .= ' loading="' . $loading . '"';
+	}
+
+	if ( $decoding_async ) { $html .= ' decoding="async"'; }
+	if ( $hero )           { $html .= ' fetchpriority="high"'; }
+	if ( $style )          { $html .= ' style="' . esc_attr( $style ) . '"'; }
+	if ( $anchor )         { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	$html .= '>';
+
+	// SEO/no-JS fallback so crawlers and JS-disabled clients still see the image.
+	if ( $use_lazysizes ) {
+		$noscript = '<noscript><img src="' . $src . '"';
+		if ( $srcset ) { $noscript .= ' srcset="' . esc_attr( $srcset ) . '"'; }
+		if ( $sizes )  { $noscript .= ' sizes="' . esc_attr( $sizes ) . '"'; }
+		$noscript .= ' alt="' . $alt . '"';
+		if ( $width )  { $noscript .= ' width="' . $width . '"'; }
+		if ( $height ) { $noscript .= ' height="' . $height . '"'; }
+		$noscript .= ' loading="lazy"></noscript>';
+		$html .= $noscript;
+	}
 
 	if ( $link_url ) {
 		$link_html = '<a href="' . $link_url . '"';
@@ -3341,9 +3488,19 @@ function ekwa_render_div_block( $attrs, $content ) {
 		$tag = 'div';
 	}
 
+	// Lazy backgrounds: when the per-block toggle is on (default true) and a
+	// bg image is set, defer the `background-image` declaration to JS via
+	// data-bg + the ekwa-lazy-bg class. Enqueues the IO shim on demand so
+	// pages without lazy-bg divs ship zero extra JS.
+	$lazy_bg_attr = isset( $attrs['lazyBg'] ) ? (bool) $attrs['lazyBg'] : true;
+	$lazy_bg      = $bg_image && $lazy_bg_attr;
+	if ( $lazy_bg ) {
+		wp_enqueue_script( 'ekwa-lazy-bg' );
+	}
+
 	// Build style string from background image + any extra inline styles.
 	$style_parts = array();
-	if ( $bg_image ) {
+	if ( $bg_image && ! $lazy_bg ) {
 		$style_parts[] = "background-image:url('" . $bg_image . "')";
 	}
 	if ( $inline_style ) {
@@ -3351,10 +3508,15 @@ function ekwa_render_div_block( $attrs, $content ) {
 	}
 	$style = implode( ';', $style_parts );
 
+	if ( $lazy_bg ) {
+		$class_name = trim( $class_name . ' ekwa-lazy-bg' );
+	}
+
 	$html = '<' . $tag;
 	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $style )      { $html .= ' style="' . esc_attr( $style ) . '"'; }
+	if ( $lazy_bg )    { $html .= ' data-bg="' . esc_attr( $bg_image ) . '"'; }
 	if ( $tag === 'a' ) {
 		$html .= ' href="' . ( $href ? $href : '#' ) . '"';
 		if ( $target ) { $html .= ' target="' . esc_attr( $target ) . '"'; }
@@ -3391,17 +3553,45 @@ function ekwa_render_video_block( $attrs ) {
 		return '';
 	}
 
+	$lazy           = ! empty( $attrs['lazyLoad'] );
+	$lazy_mode      = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
+	$use_lazysizes  = $lazy && $lazy_mode === 'lazysizes';
+
+	// lazysizes pattern (with unveilhooks) handles autoplay correctly: the
+	// <source src> stays empty until the wrapper enters the viewport, then
+	// gets injected and autoplay fires once the file loads.
+	$classes = $class_name;
+	if ( $use_lazysizes ) {
+		$classes = trim( $classes . ' lazyload' );
+	}
+
 	$html = '<video';
-	if ( $class_name )  { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $classes )     { $html .= ' class="' . esc_attr( $classes ) . '"'; }
 	if ( $anchor )      { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $autoplay )    { $html .= ' autoplay'; }
 	if ( $loop )        { $html .= ' loop'; }
 	if ( $muted )       { $html .= ' muted'; }
 	if ( $playsinline ) { $html .= ' playsinline'; }
 	if ( $controls )    { $html .= ' controls'; }
-	if ( $poster )      { $html .= ' poster="' . $poster . '"'; }
+	if ( $poster ) {
+		// data-poster lets unveilhooks defer the poster image too.
+		$html .= $use_lazysizes
+			? ' data-poster="' . $poster . '"'
+			: ' poster="' . $poster . '"';
+	}
+	if ( $use_lazysizes ) {
+		// unveilhooks injects `src` on the <video> itself when unveiled.
+		// `data-src` on inner <source> is NOT processed, so we put the URL
+		// here and drop the <source> child entirely.
+		$html .= ' data-src="' . $src . '"';
+	} elseif ( $lazy && ! $autoplay ) {
+		// Native lazy fallback: preload="none" only honored when autoplay is off.
+		$html .= ' preload="none"';
+	}
 	$html .= '>';
-	$html .= '<source src="' . $src . '" type="video/mp4">';
+	if ( ! $use_lazysizes ) {
+		$html .= '<source src="' . $src . '" type="video/mp4">';
+	}
 	$html .= '</video>';
 
 	return $html;

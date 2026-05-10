@@ -51,6 +51,7 @@
 		var embedCode = attrs.embedCode || '';
 		var height    = attrs.height    || 450;
 		var colorful  = attrs.colorful !== undefined ? attrs.colorful : true;
+		var lazyLoad  = attrs.lazyLoad !== undefined ? attrs.lazyLoad : true;
 
 		var mapSrc  = extractMapSrc( embedCode );
 		var isValid = mapSrc !== '';
@@ -106,6 +107,15 @@
 						checked: colorful,
 						onChange: function ( value ) {
 							setAttrs( { colorful: value } );
+						},
+					} ),
+
+					el( ToggleControl, {
+						label: __( 'Lazy load iframe', 'ekwa' ),
+						help: __( 'Adds loading="lazy" so the map only connects to Google when the user scrolls near it.', 'ekwa' ),
+						checked: lazyLoad,
+						onChange: function ( value ) {
+							setAttrs( { lazyLoad: value } );
 						},
 					} )
 				)

@@ -120,6 +120,14 @@
 							checked: attributes.controls,
 							onChange: function ( val ) { setAttributes( { controls: val } ); },
 						} )
+					),
+					el( PanelBody, { title: __( 'Performance' ), initialOpen: false },
+						el( ToggleControl, {
+							label: __( 'Lazy load' ),
+							help: __( 'With Performance → Lazy mode = lazysizes, the video file is fetched only when the wrapper enters the viewport (works alongside Autoplay). With Native mode, applies preload="none" — ignored if Autoplay is on.' ),
+							checked: !! attributes.lazyLoad,
+							onChange: function ( val ) { setAttributes( { lazyLoad: val } ); },
+						} )
 					)
 				),
 				el( 'div', blockProps, preview )

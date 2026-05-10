@@ -32,7 +32,7 @@
 			var alt        = attributes.alt        || '';
 			var width      = attributes.width      || '';
 			var height     = attributes.height     || '';
-			var loading    = attributes.loading    || 'lazy';
+			var hero       = !! attributes.hero;
 			var objectFit  = attributes.objectFit  || '';
 			var linkUrl    = attributes.linkUrl    || '';
 			var linkNewTab = !! attributes.linkNewTab;
@@ -103,14 +103,16 @@
 						value: height,
 						onChange: function ( val ) { setAttributes( { height: val } ); },
 					} ),
-					el( SelectControl, {
-						label: __( 'Loading' ),
-						value: loading,
-						options: [
-							{ label: 'Lazy',  value: 'lazy' },
-							{ label: 'Eager', value: 'eager' },
-						],
-						onChange: function ( val ) { setAttributes( { loading: val } ); },
+					el( ToggleControl, {
+						label: __( 'Hero image (above the fold)' ),
+						checked: hero,
+						onChange: function ( val ) {
+							setAttributes( {
+								hero: val,
+								loading: val ? 'eager' : 'lazy',
+							} );
+						},
+						help: __( 'Loads eagerly with high fetch priority and a <link rel=preload> hint. Use for the LCP image only.' ),
 					} ),
 					el( SelectControl, {
 						label: __( 'Object Fit' ),

@@ -23,7 +23,8 @@
 		"loop":        { "type": "boolean", "default": false },
 		"muted":       { "type": "boolean", "default": false },
 		"playsinline": { "type": "boolean", "default": false },
-		"controls":    { "type": "boolean", "default": false }
+		"controls":    { "type": "boolean", "default": false },
+		"lazyLoad":    { "type": "boolean", "default": false }
 	},
 	"editorScript": "ekwa-video-editor"
 }

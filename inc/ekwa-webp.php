@@ -45,6 +45,23 @@ function ekwa_webp_supported_mime( $mime ) {
 }
 
 /**
+ * Companion `.webp` path for a source image: image.jpg → image.webp.
+ * Replaces the extension so the WebP file sits beside the original
+ * with a clean name rather than a doubled `.jpg.webp` suffix.
+ */
+function ekwa_webp_companion_path( $source_path ) {
+	return preg_replace( '/\.(jpe?g|png)$/i', '.webp', $source_path );
+}
+
+/**
+ * Companion `.webp` URL — preserves query string and fragment.
+ * e.g. image.jpg?v=2 → image.webp?v=2
+ */
+function ekwa_webp_companion_url( $url ) {
+	return preg_replace( '/\.(jpe?g|png)(?=$|[?#])/i', '.webp', $url );
+}
+
+/**
  * Direct GD fallback for palette PNGs.
  *
  * GD's imagewebp() rejects palette images with a non-fatal warning. We
@@ -91,7 +108,13 @@ function ekwa_webp_generate_file( $source_path ) {
 		return false;
 	}
 
-	$webp_path = $source_path . '.webp';
+	$webp_path = ekwa_webp_companion_path( $source_path );
+
+	// Sweep the legacy `.jpg.webp` companion left over from older versions.
+	$legacy_path = $source_path . '.webp';
+	if ( $legacy_path !== $webp_path && file_exists( $legacy_path ) ) {
+		@unlink( $legacy_path );
+	}
 
 	// Idempotent: skip when companion is newer than source.
 	if ( file_exists( $webp_path ) && filemtime( $webp_path ) >= filemtime( $source_path ) ) {
@@ -196,9 +219,12 @@ function ekwa_webp_on_delete( $attachment_id ) {
 	}
 
 	foreach ( $candidates as $path ) {
-		$webp = $path . '.webp';
-		if ( file_exists( $webp ) ) {
-			@unlink( $webp );
+		$webp   = ekwa_webp_companion_path( $path );
+		$legacy = $path . '.webp';
+		foreach ( array_unique( array( $webp, $legacy ) ) as $companion ) {
+			if ( file_exists( $companion ) ) {
+				@unlink( $companion );
+			}
 		}
 	}
 }
@@ -228,7 +254,12 @@ function ekwa_webp_url_for( $url ) {
 		return $url;
 	}
 
-	$ext = strtolower( pathinfo( wp_parse_url( $url, PHP_URL_PATH ) ?: '', PATHINFO_EXTENSION ) );
+	$path_only = wp_parse_url( $url, PHP_URL_PATH );
+	if ( ! $path_only ) {
+		return $url;
+	}
+
+	$ext = strtolower( pathinfo( $path_only, PATHINFO_EXTENSION ) );
 	if ( $ext !== 'jpg' && $ext !== 'jpeg' && $ext !== 'png' ) {
 		return $url;
 	}
@@ -240,30 +271,59 @@ function ekwa_webp_url_for( $url ) {
 		return $url;
 	}
 
-	// Normalize protocol so http/https variants both match.
+	// Normalize protocol so http/https variants both match. Trailing slash on
+	// the base prevents prefix collisions like /uploads vs /uploads-staging.
 	$normalized_url      = preg_replace( '#^https?://#i', '//', $url );
-	$normalized_base_url = preg_replace( '#^https?://#i', '//', $base_url );
+	$normalized_base_url = rtrim( preg_replace( '#^https?://#i', '//', $base_url ), '/' ) . '/';
 
 	if ( strpos( $normalized_url, $normalized_base_url ) !== 0 ) {
 		return $url;
 	}
 
-	$relative  = substr( $normalized_url, strlen( $normalized_base_url ) );
+	// Build the filesystem path from the URL path component only — query
+	// strings (?ver=…) were leaking in before and breaking file_exists().
+	$base_url_path = wp_parse_url( $base_url, PHP_URL_PATH );
+	if ( ! $base_url_path ) {
+		return $url;
+	}
+	$relative  = substr( $path_only, strlen( $base_url_path ) );
 	$file_path = $base_dir . $relative;
-	$webp_path = $file_path . '.webp';
+	$webp_path = ekwa_webp_companion_path( $file_path );
 
 	if ( ! file_exists( $webp_path ) ) {
 		return $url;
 	}
 
-	return $url . '.webp';
+	return ekwa_webp_companion_url( $url );
 }
 
 /**
- * Swap every `src="..."` URL inside rendered block HTML to its WebP companion
- * when the browser supports it.
+ * Rewrite every URL in a srcset string to its WebP companion.
+ */
+function ekwa_webp_rewrite_srcset( $srcset ) {
+	if ( ! is_string( $srcset ) || $srcset === '' ) {
+		return $srcset;
+	}
+	$parts = array_map( 'trim', explode( ',', $srcset ) );
+	foreach ( $parts as &$part ) {
+		if ( $part === '' ) {
+			continue;
+		}
+		$bits    = preg_split( '/\s+/', $part, 2 );
+		$bits[0] = ekwa_webp_url_for( $bits[0] );
+		$part    = implode( ' ', $bits );
+	}
+	unset( $part );
+	return implode( ', ', $parts );
+}
+
+/**
+ * Swap every `src="..."` and `srcset="..."` URL inside rendered block HTML.
  *
- * Registered narrowly on render_block so unrelated blocks pay zero cost.
+ * Runs on every block but bails immediately when the HTML has no `<img`,
+ * so non-image blocks pay near-zero cost. Covers core/image, core/cover,
+ * core/gallery, core/media-text, ekwa/image, and any custom block that
+ * outputs an `<img>`.
  */
 function ekwa_webp_filter_block_html( $html, $block ) {
 	if ( ! ekwa_webp_is_enabled() ) {
@@ -272,45 +332,49 @@ function ekwa_webp_filter_block_html( $html, $block ) {
 	if ( ! ekwa_webp_browser_supports() ) {
 		return $html;
 	}
-
-	$name = isset( $block['blockName'] ) ? $block['blockName'] : '';
-	if ( $name !== 'ekwa/image' && ! ( $name === 'core/image' && ekwa_webp_apply_to_core_image() ) ) {
-		return $html;
-	}
-
 	if ( strpos( $html, '<img' ) === false ) {
 		return $html;
 	}
 
 	$replacer = function ( $matches ) {
-		$attr     = $matches[1]; // src or data-src or srcset
-		$quote    = $matches[2];
-		$value    = $matches[3];
+		$attr  = $matches[1];
+		$quote = $matches[2];
+		$value = $matches[3];
 
-		if ( $attr === 'srcset' ) {
-			$parts = array_map( 'trim', explode( ',', $value ) );
-			foreach ( $parts as &$part ) {
-				if ( $part === '' ) {
-					continue;
-				}
-				$bits     = preg_split( '/\s+/', $part, 2 );
-				$bits[0]  = ekwa_webp_url_for( $bits[0] );
-				$part     = implode( ' ', $bits );
-			}
-			unset( $part );
-			$new_value = implode( ', ', $parts );
-		} else {
-			$new_value = ekwa_webp_url_for( $value );
-		}
+		$is_srcset = ( $attr === 'srcset' || $attr === 'data-srcset' );
+		$new_value = $is_srcset
+			? ekwa_webp_rewrite_srcset( $value )
+			: ekwa_webp_url_for( $value );
 
 		return ' ' . $attr . '=' . $quote . $new_value . $quote;
 	};
 
 	return preg_replace_callback(
-		'/\s(src|srcset)=(["\'])([^"\']+)\2/i',
+		'/\s(src|srcset|data-src|data-srcset)=(["\'])([^"\']+)\2/i',
 		$replacer,
 		$html
 	);
+}
+
+/**
+ * Catches images rendered outside the block pipeline:
+ *   - Featured images via the_post_thumbnail() / wp_get_attachment_image()
+ *   - Site logo, custom logo
+ *   - Anything templates emit through get_the_post_thumbnail() etc.
+ *
+ * The render_block filter never sees these, so we hook here directly.
+ */
+function ekwa_webp_filter_attachment_image_attrs( $attr ) {
+	if ( ! ekwa_webp_is_enabled() || ! ekwa_webp_browser_supports() ) {
+		return $attr;
+	}
+	if ( ! empty( $attr['src'] ) ) {
+		$attr['src'] = ekwa_webp_url_for( $attr['src'] );
+	}
+	if ( ! empty( $attr['srcset'] ) ) {
+		$attr['srcset'] = ekwa_webp_rewrite_srcset( $attr['srcset'] );
+	}
+	return $attr;
 }
 
 /**
@@ -422,5 +486,6 @@ function ekwa_webp_rest_status( WP_REST_Request $request ) {
 add_filter( 'wp_generate_attachment_metadata', 'ekwa_webp_on_upload', 10, 2 );
 add_action( 'delete_attachment',               'ekwa_webp_on_delete' );
 add_filter( 'render_block',                    'ekwa_webp_filter_block_html', 20, 2 );
+add_filter( 'wp_get_attachment_image_attributes', 'ekwa_webp_filter_attachment_image_attrs', 20 );
 add_action( 'send_headers',                    'ekwa_webp_send_vary_header' );
 add_action( 'rest_api_init',                   'ekwa_webp_register_rest' );
