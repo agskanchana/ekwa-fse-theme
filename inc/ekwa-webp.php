@@ -440,9 +440,17 @@ function ekwa_webp_rest_regen_batch( WP_REST_Request $request ) {
 	$offset     = max( 0, (int) $request->get_param( 'offset' ) );
 	$batch_size = (int) $request->get_param( 'batch_size' );
 	if ( $batch_size < 1 ) { $batch_size = 1; }
-	if ( $batch_size > 50 ) { $batch_size = 50; }
+	// Cap lowered from 50 → 10. GD/Imagick decode each JPG to a full bitmap,
+	// which blows past memory_limit on shared hosts when batches are large.
+	if ( $batch_size > 10 ) { $batch_size = 10; }
 
-	@set_time_limit( 60 );
+	@set_time_limit( 120 );
+	// Bump memory only if the host's limit is below 512M. Some hosts disable
+	// ini_set; failing silently is fine — we still try.
+	$current_limit = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
+	if ( $current_limit > 0 && $current_limit < ( 512 * 1024 * 1024 ) ) {
+		@ini_set( 'memory_limit', '512M' );
+	}
 
 	// Capture and discard any stray PHP notices/warnings so they can't pollute the JSON body.
 	ob_start();
@@ -469,6 +477,13 @@ function ekwa_webp_rest_regen_batch( WP_REST_Request $request ) {
 					'message'       => $e->getMessage(),
 				);
 				error_log( '[ekwa-webp] attachment ' . $id . ': ' . $e->getMessage() );
+			}
+
+			// Force GC between images so GD/Imagick bitmaps don't accumulate
+			// across the loop. PHP releases the editor handle but the
+			// underlying image resource can linger until the next cycle.
+			if ( function_exists( 'gc_collect_cycles' ) ) {
+				gc_collect_cycles();
 			}
 		}
 	} catch ( Throwable $e ) {

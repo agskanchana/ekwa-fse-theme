@@ -326,8 +326,10 @@
 		var totalProcessed = 0;
 		var totalGenerated = 0;
 		var totalImages    = 0;
+		var totalErrors    = 0;
 		var offset         = 0;
-		var batchSize      = 10;
+		// Smaller batch keeps per-request peak memory down on shared hosts.
+		var batchSize      = 3;
 
 		function tick() {
 			$.ajax({
@@ -341,22 +343,39 @@
 				totalImages     = res.total || totalImages;
 				offset          = res.next_offset || (offset + batchSize);
 
+				if (res.errors && res.errors.length) {
+					totalErrors += res.errors.length;
+					if (window.console) {
+						res.errors.forEach(function (err) {
+							console.warn('WebP regen — attachment ' + err.attachment_id + ': ' + err.message);
+						});
+					}
+				}
+
 				var pct = totalImages ? Math.round((totalProcessed / totalImages) * 100) : 100;
 				$bar.css('width', pct + '%');
 
 				var progressText = (strings.progress || '%1$s of %2$s processed')
 					.replace('%1$s', totalProcessed)
 					.replace('%2$s', totalImages);
+				if (totalErrors) { progressText += ' — ' + totalErrors + ' skipped (see console)'; }
 				$status.text(progressText);
 
 				if (res.done) {
-					$status.text((strings.done || 'Done. %s files generated.').replace('%s', totalGenerated));
+					var doneText = (strings.done || 'Done. %s files generated.').replace('%s', totalGenerated);
+					if (totalErrors) { doneText += ' — ' + totalErrors + ' image(s) failed (see console).'; }
+					$status.text(doneText);
 					$btn.prop('disabled', false);
 				} else {
 					tick();
 				}
 			}).fail(function (xhr) {
-				$status.text(strings.error || 'Error during regeneration.');
+				// Try to surface the actual server error message rather than the generic one.
+				var msg = strings.error || 'Error during regeneration.';
+				if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+					msg += ' — ' + xhr.responseJSON.message;
+				}
+				$status.text(msg);
 				$btn.prop('disabled', false);
 				if (window.console && xhr) { console.error('WebP regen failed:', xhr.responseText); }
 			});
