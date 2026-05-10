@@ -328,8 +328,10 @@
 		var totalImages    = 0;
 		var totalErrors    = 0;
 		var offset         = 0;
-		// Smaller batch keeps per-request peak memory down on shared hosts.
-		var batchSize      = 3;
+		// One image per HTTP request — each request gets fresh PHP memory.
+		// Avoids the "runs a while then OOMs" failure mode on shared hosts
+		// where decoding multiple large JPGs in one process busts memory_limit.
+		var batchSize      = 1;
 
 		function tick() {
 			$.ajax({

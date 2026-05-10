@@ -133,6 +133,14 @@ function ekwa_webp_generate_file( $source_path ) {
 		$ok    = ! is_wp_error( $saved );
 	}
 
+	// Free the underlying GD/Imagick resource immediately. Without this the
+	// raw bitmap (width × height × 4 bytes — easily 50–100MB for a large
+	// JPG) lingers until PHP GC runs, causing OOM after a few iterations.
+	unset( $editor, $saved );
+	if ( function_exists( 'gc_collect_cycles' ) ) {
+		gc_collect_cycles();
+	}
+
 	ob_end_clean();
 
 	// Palette PNG fallback — WP_Image_Editor_GD::save() fails on indexed PNGs.
