@@ -61,17 +61,28 @@ function ekwa_perf_fa_href( $href = null ) {
 }
 
 /**
- * Theme-owned style handles that should be deferred. Anything not on this list
- * loads synchronously as before — keeps third-party plugin styles untouched.
+ * Style handles that should be deferred via the preload→swap pattern.
+ *
+ * Default list covers parent + child theme stylesheets and Ekwa-family
+ * conditional/block stylesheets. Extra handles can be added per-site via
+ * the "Extra stylesheets to defer" textarea on the Performance tab — useful
+ * for plugin-owned CSS where we don't ship a hard-coded handle.
  */
 function ekwa_perf_deferred_handles() {
-	return array(
+	$defaults = array(
 		'ekwa-style',
 		'ekwa-mobile',
 		'ekwa-blocks-css',
 		'ekwa-block-styles',
 		'font-awesome',
+		'ekwa-child-style',
+		'ekwa-blog',
+		'ekwa-header-menu-style',
+		'mmenu-light',
 	);
+	$extra_raw = (string) get_option( 'ekwa_perf_extra_deferred_styles', '' );
+	$extra     = array_filter( array_map( 'trim', preg_split( '/[\r\n,]+/', $extra_raw ) ) );
+	return array_unique( array_merge( $defaults, $extra ) );
 }
 
 function ekwa_perf_defer_stylesheets( $html, $handle, $href, $media ) {

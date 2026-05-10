@@ -326,6 +326,12 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_preload_hero', isset( $_POST['ekwa_perf_preload_hero'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_decoding_async', isset( $_POST['ekwa_perf_decoding_async'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
+	update_option(
+		'ekwa_perf_extra_deferred_styles',
+		isset( $_POST['ekwa_perf_extra_deferred_styles'] )
+			? sanitize_textarea_field( wp_unslash( $_POST['ekwa_perf_extra_deferred_styles'] ) )
+			: ''
+	);
 
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
@@ -922,6 +928,7 @@ function ekwa_render_settings_page() {
 					$preload_hero_val = get_option( 'ekwa_perf_preload_hero', 1 );
 					$decoding_val    = get_option( 'ekwa_perf_decoding_async', 1 );
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
+					$extra_deferred_val  = get_option( 'ekwa_perf_extra_deferred_styles', '' );
 					?>
 					<table class="form-table">
 						<tr>
@@ -980,6 +987,22 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'On phones (≤ 768px), wait for the first user interaction (scroll/tap/click) before loading Font Awesome', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Saves ~33KB of CSS from the mobile critical path. Icons in the header may flash unstyled briefly until the user scrolls or taps. Desktop is unaffected.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_perf_extra_deferred_styles"><?php esc_html_e( 'Extra stylesheets to defer', 'ekwa' ); ?></label></th>
+							<td>
+								<textarea id="ekwa_perf_extra_deferred_styles" name="ekwa_perf_extra_deferred_styles" rows="4" cols="50" class="large-text code"><?php echo esc_textarea( $extra_deferred_val ); ?></textarea>
+								<p class="description">
+									<?php
+									printf(
+										/* translators: %s = code snippet showing the id pattern */
+										esc_html__( 'One handle per line (or comma-separated). Apply the preload→swap pattern to additional stylesheets — typically plugin CSS not covered by the theme defaults. Find a handle by viewing the page source, locating the %s tag, and dropping the trailing %s suffix.', 'ekwa' ),
+										'<code>&lt;link id="…-css"&gt;</code>',
+										'<code>-css</code>'
+									);
+									?>
+								</p>
 							</td>
 						</tr>
 					</table>
