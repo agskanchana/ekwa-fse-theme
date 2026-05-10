@@ -447,26 +447,58 @@ function ekwa_webp_rest_regen_batch( WP_REST_Request $request ) {
 	// Capture and discard any stray PHP notices/warnings so they can't pollute the JSON body.
 	ob_start();
 
-	$result    = ekwa_webp_query_image_ids( $offset, $batch_size );
 	$processed = 0;
 	$generated = 0;
+	$errors    = array();
+	$total     = 0;
 
-	foreach ( $result['ids'] as $id ) {
-		$generated += ekwa_webp_generate_for_attachment( $id );
-		$processed++;
+	try {
+		$result = ekwa_webp_query_image_ids( $offset, $batch_size );
+		$total  = $result['total'];
+
+		foreach ( $result['ids'] as $id ) {
+			$processed++;
+			// Per-image try/catch so one bad attachment (corrupt file, GD
+			// failure, memory hiccup) doesn't kill the whole batch and 500
+			// the endpoint. Throwable covers both Exception and Error in PHP 7+.
+			try {
+				$generated += ekwa_webp_generate_for_attachment( $id );
+			} catch ( Throwable $e ) {
+				$errors[] = array(
+					'attachment_id' => $id,
+					'message'       => $e->getMessage(),
+				);
+				error_log( '[ekwa-webp] attachment ' . $id . ': ' . $e->getMessage() );
+			}
+		}
+	} catch ( Throwable $e ) {
+		ob_end_clean();
+		error_log( '[ekwa-webp] regen batch fatal: ' . $e->getMessage() );
+		return new WP_Error(
+			'ekwa_webp_regen_failed',
+			$e->getMessage(),
+			array(
+				'status'    => 500,
+				'offset'    => $offset,
+				'processed' => $processed,
+				'errors'    => $errors,
+				'trace'     => defined( 'WP_DEBUG' ) && WP_DEBUG ? $e->getTraceAsString() : null,
+			)
+		);
 	}
 
 	ob_end_clean();
 
 	$next_offset = $offset + $processed;
-	$done        = ( $next_offset >= $result['total'] ) || $processed === 0;
+	$done        = ( $next_offset >= $total ) || $processed === 0;
 
 	return rest_ensure_response( array(
-		'processed'    => $processed,
-		'generated'    => $generated,
-		'next_offset'  => $next_offset,
-		'total'        => $result['total'],
-		'done'         => $done,
+		'processed'   => $processed,
+		'generated'   => $generated,
+		'next_offset' => $next_offset,
+		'total'       => $total,
+		'done'        => $done,
+		'errors'      => $errors,
 	) );
 }
 
