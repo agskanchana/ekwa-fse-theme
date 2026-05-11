@@ -74,9 +74,9 @@ require_once get_template_directory() . '/inc/ekwa-block-styles.php';
 require_once get_template_directory() . '/inc/ekwa-converter-api.php';
 
 /**
- * Load AI refinement for mockup converter (Gemini API).
+ * Load AI HTML generator for mockup converter (Gemini multimodal API).
  */
-require_once get_template_directory() . '/inc/ekwa-ai-refine.php';
+require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 
 /**
  * Load blog features (TOC, author link, load more, post cards).
@@ -215,6 +215,39 @@ function ekwa_enqueue_converter_editor_script() {
 		),
 		filemtime( get_template_directory() . '/assets/js/ekwa-converter-editor.js' ),
 		true
+	);
+
+	// AI HTML generator — separate plugin entry point that hands off HTML to the converter.
+	wp_enqueue_script(
+		'ekwa-ai-generate-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-ai-generate-editor.js',
+		array(
+			'ekwa-converter-editor',
+			'wp-plugins',
+			'wp-editor',
+			'wp-components',
+			'wp-element',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		filemtime( get_template_directory() . '/assets/js/ekwa-ai-generate-editor.js' ),
+		true
+	);
+
+	// Expose the active (child) theme stylesheet URL so the preview iframe can
+	// load it — mirrors what the front-end renders so AI-generated HTML that
+	// uses theme classes/variables previews correctly.
+	$child_css_path = get_stylesheet_directory() . '/style.css';
+	$child_css_uri  = get_stylesheet_uri();
+	if ( file_exists( $child_css_path ) ) {
+		$child_css_uri = add_query_arg( 'ver', filemtime( $child_css_path ), $child_css_uri );
+	}
+	wp_localize_script(
+		'ekwa-ai-generate-editor',
+		'ekwaAiGenerate',
+		array(
+			'childStylesheetUrl' => $child_css_uri,
+		)
 	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );

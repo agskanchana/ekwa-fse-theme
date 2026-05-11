@@ -86,25 +86,30 @@ function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() 
 		'detect_dynamic' => $detect_dynamic,
 	) );
 
-	// Parse HTML.
+	// Parse HTML. Wrap the input in a synthetic root so multiple top-level
+	// siblings (e.g. two consecutive <section> elements) are all preserved —
+	// otherwise LIBXML_HTML_NOIMPLIED leaves us with documentElement pointing
+	// at only the first root, silently dropping the rest.
 	$doc = new DOMDocument();
 	libxml_use_internal_errors( true );
-	$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
+	$wrapped = '<?xml encoding="utf-8"?><div data-ekwa-mc-root="1">' . $html . '</div>';
+	$doc->loadHTML( $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
 	libxml_clear_errors();
 
-	$body    = $doc->getElementsByTagName( 'body' )->item( 0 );
-	$html_el = $doc->getElementsByTagName( 'html' )->item( 0 );
-
-	if ( $body ) {
-		$output = ekwa_mc_convert_children( $body, 0 );
-	} elseif ( $html_el ) {
-		$output = ekwa_mc_convert_children( $html_el, 0 );
+	$root   = $doc->documentElement;
+	$output = '';
+	if ( $root && $root->hasAttribute( 'data-ekwa-mc-root' ) ) {
+		$output = ekwa_mc_convert_children( $root, 0 );
 	} else {
-		$root = $doc->documentElement;
-		if ( $root ) {
+		// Defensive fallback if the wrapper didn't survive parsing.
+		$body    = $doc->getElementsByTagName( 'body' )->item( 0 );
+		$html_el = $doc->getElementsByTagName( 'html' )->item( 0 );
+		if ( $body ) {
+			$output = ekwa_mc_convert_children( $body, 0 );
+		} elseif ( $html_el ) {
+			$output = ekwa_mc_convert_children( $html_el, 0 );
+		} elseif ( $root ) {
 			$output = ekwa_mc_convert_node( $root, 0 );
-		} else {
-			$output = '';
 		}
 	}
 

@@ -1048,7 +1048,7 @@ function ekwa_render_settings_page() {
 									} else {
 										printf(
 											/* translators: %s: link to Google AI Studio */
-											esc_html__( 'Get a free API key from %s. Used by the Mockup Converter\'s "Refine with AI" feature.', 'ekwa' ),
+											esc_html__( 'Get a free API key from %s. Used by the editor\'s "Generate with AI" tool to produce HTML from prompts and screenshots.', 'ekwa' ),
 											'<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
 										);
 									}

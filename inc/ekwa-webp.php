@@ -95,6 +95,12 @@ function ekwa_webp_gd_png_fallback( $source_path, $webp_path ) {
 /**
  * Generate a `.webp` companion next to a source image file.
  *
+ * Validates the result on disk — GD/Imagick can return success while writing
+ * a 0-byte file (CMYK JPEGs, exotic color profiles, OOM mid-encode). Without
+ * the size check the URL swap on render would still happen and the browser
+ * would fetch an empty WebP, giving the user a "broken image" with a blank
+ * "open in new tab" preview.
+ *
  * @param string $source_path Absolute path to the source image.
  * @return bool True on success or when up-to-date; false on failure.
  */
@@ -116,8 +122,13 @@ function ekwa_webp_generate_file( $source_path ) {
 		@unlink( $legacy_path );
 	}
 
-	// Idempotent: skip when companion is newer than source.
-	if ( file_exists( $webp_path ) && filemtime( $webp_path ) >= filemtime( $source_path ) ) {
+	// Idempotent: skip when companion is newer than source AND non-empty.
+	// (Pre-safety-net runs may have left zero-byte files behind; re-generate
+	// those even if their mtime says they're current.)
+	if ( file_exists( $webp_path )
+		&& filemtime( $webp_path ) >= filemtime( $source_path )
+		&& filesize( $webp_path ) > 0
+	) {
 		return true;
 	}
 
@@ -146,6 +157,18 @@ function ekwa_webp_generate_file( $source_path ) {
 	// Palette PNG fallback — WP_Image_Editor_GD::save() fails on indexed PNGs.
 	if ( ! $ok && $mime['type'] === 'image/png' ) {
 		$ok = ekwa_webp_gd_png_fallback( $source_path, $webp_path );
+	}
+
+	// Post-write validation. A "success" from the editor that produced 0 bytes
+	// (or fewer than a plausible minimum) means the file is broken; delete it
+	// so the front-end render filter falls back to the original JPG/PNG.
+	if ( $ok ) {
+		$bytes = file_exists( $webp_path ) ? filesize( $webp_path ) : 0;
+		if ( $bytes < 100 ) {
+			@unlink( $webp_path );
+			error_log( '[ekwa-webp] empty/truncated output (' . (int) $bytes . ' bytes) for ' . $source_path . ' — deleted, original will be served' );
+			$ok = false;
+		}
 	}
 
 	return $ok;
@@ -334,34 +357,48 @@ function ekwa_webp_rewrite_srcset( $srcset ) {
  * outputs an `<img>`.
  */
 function ekwa_webp_filter_block_html( $html, $block ) {
-	if ( ! ekwa_webp_is_enabled() ) {
-		return $html;
-	}
-	if ( ! ekwa_webp_browser_supports() ) {
-		return $html;
-	}
+	// Always strip the per-image opt-out marker on the way out, even when WebP
+	// is disabled or unsupported, so it never reaches the browser.
 	if ( strpos( $html, '<img' ) === false ) {
 		return $html;
 	}
 
-	$replacer = function ( $matches ) {
-		$attr  = $matches[1];
-		$quote = $matches[2];
-		$value = $matches[3];
+	$enabled = ekwa_webp_is_enabled() && ekwa_webp_browser_supports();
 
-		$is_srcset = ( $attr === 'srcset' || $attr === 'data-srcset' );
-		$new_value = $is_srcset
-			? ekwa_webp_rewrite_srcset( $value )
-			: ekwa_webp_url_for( $value );
+	// Walk each <img ...> tag in isolation. Per-image `data-ekwa-no-webp="1"`
+	// opts that tag out of the URL swap.
+	$out = preg_replace_callback(
+		'/<img\b[^>]*>/i',
+		function ( $m ) use ( $enabled ) {
+			$tag    = $m[0];
+			$opted  = ( false !== stripos( $tag, 'data-ekwa-no-webp' ) );
 
-		return ' ' . $attr . '=' . $quote . $new_value . $quote;
-	};
+			if ( $enabled && ! $opted ) {
+				$tag = preg_replace_callback(
+					'/\s(src|srcset|data-src|data-srcset)=(["\'])([^"\']+)\2/i',
+					function ( $am ) {
+						$attr  = $am[1];
+						$quote = $am[2];
+						$value = $am[3];
+						$is_srcset = ( $attr === 'srcset' || $attr === 'data-srcset' );
+						$new_value = $is_srcset
+							? ekwa_webp_rewrite_srcset( $value )
+							: ekwa_webp_url_for( $value );
+						return ' ' . $attr . '=' . $quote . $new_value . $quote;
+					},
+					$tag
+				);
+			}
 
-	return preg_replace_callback(
-		'/\s(src|srcset|data-src|data-srcset)=(["\'])([^"\']+)\2/i',
-		$replacer,
+			// Always strip the opt-out marker so it doesn't appear in the DOM.
+			$tag = preg_replace( '/\s+data-ekwa-no-webp=(["\'])[^"\']*\1/i', '', $tag );
+
+			return $tag;
+		},
 		$html
 	);
+
+	return ( $out === null ) ? $html : $out;
 }
 
 /**
@@ -421,6 +458,32 @@ function ekwa_webp_register_rest() {
 		'permission_callback' => function () {
 			return current_user_can( 'manage_options' );
 		},
+	) );
+
+	// Per-attachment regenerate — used by the ekwa/image block's "Regenerate
+	// WebP" inspector button when an individual image is broken.
+	register_rest_route( 'ekwa/v1', '/webp-regen-one', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_webp_rest_regen_one',
+		'permission_callback' => function () {
+			// Editors can fix broken images in their posts — no need to
+			// gate this behind manage_options.
+			return current_user_can( 'edit_posts' );
+		},
+		'args' => array(
+			'attachment_id' => array( 'type' => 'integer', 'required' => true ),
+		),
+	) );
+
+	// Manual WebP replacement — used when GD/Imagick simply cannot encode a
+	// particular source image and the user has converted it offline.
+	register_rest_route( 'ekwa/v1', '/webp-upload-one', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_webp_rest_upload_one',
+		'permission_callback' => function () {
+			return current_user_can( 'upload_files' );
+		},
+		// File comes from $_FILES['file']; we read the attachment id from POST.
 	) );
 }
 
@@ -522,6 +585,158 @@ function ekwa_webp_rest_regen_batch( WP_REST_Request $request ) {
 		'total'       => $total,
 		'done'        => $done,
 		'errors'      => $errors,
+	) );
+}
+
+/**
+ * Force-regenerate the `.webp` companions for one attachment.
+ *
+ * Deletes existing companions first so we never short-circuit on the mtime
+ * check — this is the user explicitly asking for a fresh pass, presumably
+ * because the existing file is empty or visually broken.
+ */
+function ekwa_webp_rest_regen_one( WP_REST_Request $request ) {
+	$attachment_id = (int) $request->get_param( 'attachment_id' );
+	if ( $attachment_id < 1 ) {
+		return new WP_Error( 'bad_attachment', 'attachment_id is required.', array( 'status' => 400 ) );
+	}
+
+	$post = get_post( $attachment_id );
+	if ( ! $post || 'attachment' !== $post->post_type ) {
+		return new WP_Error( 'not_attachment', 'Attachment not found.', array( 'status' => 404 ) );
+	}
+
+	$mime = get_post_mime_type( $attachment_id );
+	if ( ! ekwa_webp_supported_mime( $mime ) ) {
+		return new WP_Error( 'unsupported_mime', 'Only JPEG and PNG can be converted.', array( 'status' => 400 ) );
+	}
+
+	$original = get_attached_file( $attachment_id );
+	if ( ! $original || ! file_exists( $original ) ) {
+		return new WP_Error( 'no_source_file', 'Source file is missing on disk.', array( 'status' => 404 ) );
+	}
+
+	@set_time_limit( 60 );
+
+	// Wipe existing companions (original + every registered size) so the
+	// idempotent mtime check in ekwa_webp_generate_file() can't skip work.
+	$wiped = 0;
+	$candidates = array( $original );
+	$meta = wp_get_attachment_metadata( $attachment_id );
+	if ( ! empty( $meta['sizes'] ) && is_array( $meta['sizes'] ) ) {
+		$dir = trailingslashit( dirname( $original ) );
+		foreach ( $meta['sizes'] as $size ) {
+			if ( ! empty( $size['file'] ) ) {
+				$candidates[] = $dir . $size['file'];
+			}
+		}
+	}
+	foreach ( $candidates as $path ) {
+		$webp   = ekwa_webp_companion_path( $path );
+		$legacy = $path . '.webp';
+		foreach ( array_unique( array( $webp, $legacy ) ) as $companion ) {
+			if ( file_exists( $companion ) ) {
+				@unlink( $companion );
+				$wiped++;
+			}
+		}
+	}
+
+	$generated = 0;
+	try {
+		$generated = ekwa_webp_generate_for_attachment( $attachment_id );
+	} catch ( Throwable $e ) {
+		error_log( '[ekwa-webp] regen-one ' . $attachment_id . ': ' . $e->getMessage() );
+		return new WP_Error( 'regen_failed', $e->getMessage(), array( 'status' => 500 ) );
+	}
+
+	// Verify the primary (original-size) WebP actually wrote successfully.
+	// The safety net inside ekwa_webp_generate_file() will have already
+	// unlinked an empty file, so a missing companion means real failure.
+	$primary_webp = ekwa_webp_companion_path( $original );
+	$primary_ok   = file_exists( $primary_webp ) && filesize( $primary_webp ) > 0;
+
+	return rest_ensure_response( array(
+		'attachment_id'    => $attachment_id,
+		'wiped'            => $wiped,
+		'generated'        => $generated,
+		'primary_ok'       => $primary_ok,
+		'primary_webp_url' => $primary_ok ? ekwa_webp_companion_url( wp_get_attachment_url( $attachment_id ) ) : '',
+	) );
+}
+
+/**
+ * Accept a user-supplied `.webp` file and write it as the primary companion
+ * for an attachment. Used as an escape hatch when server-side conversion
+ * cannot produce a valid WebP for a specific image (e.g. unusual color
+ * profile, GD/Imagick crash) and the user has converted it offline.
+ *
+ * Replaces ONLY the primary companion (matching the original-size file).
+ * The size-specific companions stay as whatever auto-generation produced;
+ * they're less likely to be visually critical and we don't have user-supplied
+ * variants to drop in for each registered size.
+ */
+function ekwa_webp_rest_upload_one( WP_REST_Request $request ) {
+	$attachment_id = (int) $request->get_param( 'attachment_id' );
+	if ( $attachment_id < 1 ) {
+		return new WP_Error( 'bad_attachment', 'attachment_id is required.', array( 'status' => 400 ) );
+	}
+
+	$post = get_post( $attachment_id );
+	if ( ! $post || 'attachment' !== $post->post_type ) {
+		return new WP_Error( 'not_attachment', 'Attachment not found.', array( 'status' => 404 ) );
+	}
+
+	if ( empty( $_FILES['file'] ) || ! is_array( $_FILES['file'] ) ) {
+		return new WP_Error( 'no_file', 'No file uploaded.', array( 'status' => 400 ) );
+	}
+	$file = $_FILES['file'];
+	if ( ! empty( $file['error'] ) ) {
+		return new WP_Error( 'upload_error', 'Upload error code ' . (int) $file['error'], array( 'status' => 400 ) );
+	}
+	if ( empty( $file['tmp_name'] ) || ! is_uploaded_file( $file['tmp_name'] ) ) {
+		return new WP_Error( 'bad_upload', 'Invalid upload.', array( 'status' => 400 ) );
+	}
+
+	// Verify it really is a WebP — refuse anything else so a user can't
+	// drop a renamed .jpg into the slot and break delivery silently.
+	$bytes = file_get_contents( $file['tmp_name'], false, null, 0, 16 );
+	if ( ! $bytes || strlen( $bytes ) < 12 || substr( $bytes, 0, 4 ) !== 'RIFF' || substr( $bytes, 8, 4 ) !== 'WEBP' ) {
+		return new WP_Error( 'not_webp', 'Uploaded file is not a valid WebP image (RIFF/WEBP header missing).', array( 'status' => 400 ) );
+	}
+
+	$original = get_attached_file( $attachment_id );
+	if ( ! $original ) {
+		return new WP_Error( 'no_source_file', 'Source file is missing on disk.', array( 'status' => 404 ) );
+	}
+
+	$dest = ekwa_webp_companion_path( $original );
+	if ( $dest === $original ) {
+		// Means the original extension didn't match jpg/jpeg/png and the
+		// regex didn't change anything — refuse to overwrite the source.
+		return new WP_Error( 'unsupported_source', 'Attachment is not a JPEG or PNG.', array( 'status' => 400 ) );
+	}
+
+	if ( ! @move_uploaded_file( $file['tmp_name'], $dest ) ) {
+		// Fallback: try copy + unlink (some PHP/Windows combos refuse move).
+		if ( ! @copy( $file['tmp_name'], $dest ) ) {
+			return new WP_Error( 'write_failed', 'Could not write file to ' . $dest, array( 'status' => 500 ) );
+		}
+		@unlink( $file['tmp_name'] );
+	}
+
+	// Sanity check the written file.
+	$size = file_exists( $dest ) ? filesize( $dest ) : 0;
+	if ( $size < 100 ) {
+		@unlink( $dest );
+		return new WP_Error( 'empty_result', 'Written file is empty.', array( 'status' => 500 ) );
+	}
+
+	return rest_ensure_response( array(
+		'attachment_id'    => $attachment_id,
+		'bytes_written'    => $size,
+		'primary_ok'       => true,
+		'primary_webp_url' => ekwa_webp_companion_url( wp_get_attachment_url( $attachment_id ) ),
 	) );
 }
 

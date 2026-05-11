@@ -10,6 +10,8 @@
 	var registerBlockType  = wp.blocks.registerBlockType;
 	var el                 = wp.element.createElement;
 	var Fragment           = wp.element.Fragment;
+	var useState           = wp.element.useState;
+	var useRef             = wp.element.useRef;
 	var InspectorControls  = wp.blockEditor.InspectorControls;
 	var MediaUpload        = wp.blockEditor.MediaUpload;
 	var MediaUploadCheck   = wp.blockEditor.MediaUploadCheck;
@@ -19,7 +21,10 @@
 	var SelectControl      = wp.components.SelectControl;
 	var Button             = wp.components.Button;
 	var ToggleControl      = wp.components.ToggleControl;
+	var Notice             = wp.components.Notice;
+	var Spinner            = wp.components.Spinner;
 	var Placeholder        = wp.components.Placeholder;
+	var apiFetch           = wp.apiFetch;
 	var __                 = wp.i18n.__;
 
 	registerBlockType( 'ekwa/image', {
@@ -27,15 +32,77 @@
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 
-			var src        = attributes.src        || '';
-			var mediaId    = attributes.mediaId    || 0;
-			var alt        = attributes.alt        || '';
-			var width      = attributes.width      || '';
-			var height     = attributes.height     || '';
-			var hero       = !! attributes.hero;
-			var objectFit  = attributes.objectFit  || '';
-			var linkUrl    = attributes.linkUrl    || '';
-			var linkNewTab = !! attributes.linkNewTab;
+			var src         = attributes.src         || '';
+			var mediaId     = attributes.mediaId     || 0;
+			var alt         = attributes.alt         || '';
+			var width       = attributes.width       || '';
+			var height      = attributes.height      || '';
+			var hero        = !! attributes.hero;
+			var objectFit   = attributes.objectFit   || '';
+			var linkUrl     = attributes.linkUrl     || '';
+			var linkNewTab  = !! attributes.linkNewTab;
+			var disableWebp = !! attributes.disableWebp;
+
+			// Per-image WebP action state — kept local; not persisted on the block.
+			var wpState = useState( { busy: false, notice: null } );
+			var webp = wpState[0]; var setWebp = wpState[1];
+			var webpFileRef = useRef( null );
+
+			function setWebpNotice( status, message ) {
+				setWebp( { busy: false, notice: { status: status, message: message } } );
+			}
+
+			function handleRegenWebp() {
+				if ( ! mediaId ) {
+					setWebpNotice( 'error', __( 'Pick an image from the media library first.' ) );
+					return;
+				}
+				setWebp( { busy: true, notice: null } );
+				apiFetch( {
+					path: '/ekwa/v1/webp-regen-one',
+					method: 'POST',
+					data: { attachment_id: mediaId },
+				} ).then( function ( res ) {
+					if ( res && res.primary_ok ) {
+						setWebpNotice( 'success', __( 'WebP regenerated.' ) + ' (' + ( res.generated || 0 ) + ' ' + __( 'file(s)' ) + ')' );
+					} else {
+						setWebpNotice( 'warning', __( 'Regeneration finished but the primary WebP is still invalid. The original image will be served.' ) );
+					}
+				} ).catch( function ( err ) {
+					setWebpNotice( 'error', ( err && err.message ) ? err.message : __( 'Regeneration failed.' ) );
+				} );
+			}
+
+			function handleUploadWebp( event ) {
+				var file = event.target.files && event.target.files[0];
+				if ( webpFileRef.current ) webpFileRef.current.value = '';
+				if ( ! file ) return;
+				if ( ! mediaId ) {
+					setWebpNotice( 'error', __( 'Pick an image from the media library first.' ) );
+					return;
+				}
+				if ( file.type && file.type !== 'image/webp' ) {
+					setWebpNotice( 'error', __( 'File must be a .webp image.' ) );
+					return;
+				}
+				var form = new FormData();
+				form.append( 'attachment_id', String( mediaId ) );
+				form.append( 'file', file );
+				setWebp( { busy: true, notice: null } );
+				apiFetch( {
+					path: '/ekwa/v1/webp-upload-one',
+					method: 'POST',
+					body: form,
+				} ).then( function ( res ) {
+					if ( res && res.primary_ok ) {
+						setWebpNotice( 'success', __( 'Replacement WebP installed.' ) + ' (' + ( res.bytes_written || 0 ) + ' bytes)' );
+					} else {
+						setWebpNotice( 'warning', __( 'Upload finished but verification failed.' ) );
+					}
+				} ).catch( function ( err ) {
+					setWebpNotice( 'error', ( err && err.message ) ? err.message : __( 'Upload failed.' ) );
+				} );
+			}
 
 			var blockProps = useBlockProps( {
 				style: {
@@ -138,6 +205,60 @@
 						checked: linkNewTab,
 						onChange: function ( val ) { setAttributes( { linkNewTab: val } ); },
 					} ) : null
+				),
+				el( PanelBody, { title: __( 'WebP' ), initialOpen: false },
+					el( ToggleControl, {
+						label: __( 'Use original image (skip WebP)' ),
+						checked: disableWebp,
+						onChange: function ( val ) { setAttributes( { disableWebp: val } ); },
+						help: __( 'Forces the original JPG/PNG to be served for this image even when WebP mode is on. Use when the WebP version is broken or incorrect.' ),
+					} ),
+					mediaId ? el( 'div', { style: { marginTop: '12px' } },
+						el( Button, {
+							variant: 'secondary',
+							isSmall: true,
+							onClick: handleRegenWebp,
+							disabled: webp.busy,
+						}, webp.busy
+							? el( Fragment, null, el( Spinner, null ), __( ' Working...' ) )
+							: __( 'Regenerate WebP' )
+						),
+						el( 'p', { style: { fontSize: '12px', color: '#6b7280', margin: '6px 0 12px' } },
+							__( 'Deletes existing .webp companions for this image and tries again. Good when the server-side conversion produced an empty or broken file.' )
+						),
+						el( 'label', {
+							style: {
+								display: 'inline-block',
+								padding: '2px 10px',
+								border: '1px solid #757575',
+								borderRadius: '2px',
+								background: '#fff',
+								fontSize: '13px',
+								cursor: webp.busy ? 'not-allowed' : 'pointer',
+								opacity: webp.busy ? 0.6 : 1,
+							},
+						},
+							__( 'Upload replacement .webp' ),
+							el( 'input', {
+								ref: webpFileRef,
+								type: 'file',
+								accept: 'image/webp,.webp',
+								onChange: handleUploadWebp,
+								disabled: webp.busy,
+								style: { display: 'none' },
+							} )
+						),
+						el( 'p', { style: { fontSize: '12px', color: '#6b7280', margin: '6px 0 0' } },
+							__( 'Use this when server conversion just cannot encode the source — convert it offline (Squoosh, cwebp) and drop the .webp here.' )
+						)
+					) : null,
+					webp.notice ? el( 'div', { style: { marginTop: '12px' } },
+						el( Notice, {
+							status: webp.notice.status,
+							isDismissible: true,
+							onRemove: function () { setWebp( { busy: false, notice: null } ); },
+						}, webp.notice.message )
+					) : null
 				)
 			);
 

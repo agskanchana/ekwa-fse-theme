@@ -535,7 +535,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-image-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-image-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
@@ -3353,6 +3353,7 @@ function ekwa_render_image_block( $attrs ) {
 	$class_name  = isset( $attrs['className'] )  ? sanitize_text_field( $attrs['className'] ) : '';
 	$link_url    = isset( $attrs['linkUrl'] )    ? esc_url( $attrs['linkUrl'] ) : '';
 	$link_blank  = ! empty( $attrs['linkNewTab'] );
+	$no_webp     = ! empty( $attrs['disableWebp'] );
 
 	if ( ! $src ) {
 		return '';
@@ -3422,6 +3423,7 @@ function ekwa_render_image_block( $attrs ) {
 	if ( $hero )           { $html .= ' fetchpriority="high"'; }
 	if ( $style )          { $html .= ' style="' . esc_attr( $style ) . '"'; }
 	if ( $anchor )         { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $no_webp )        { $html .= ' data-ekwa-no-webp="1"'; }
 	$html .= '>';
 
 	// SEO/no-JS fallback so crawlers and JS-disabled clients still see the image.
@@ -3432,6 +3434,7 @@ function ekwa_render_image_block( $attrs ) {
 		$noscript .= ' alt="' . $alt . '"';
 		if ( $width )  { $noscript .= ' width="' . $width . '"'; }
 		if ( $height ) { $noscript .= ' height="' . $height . '"'; }
+		if ( $no_webp ) { $noscript .= ' data-ekwa-no-webp="1"'; }
 		$noscript .= ' loading="lazy"></noscript>';
 		$html .= $noscript;
 	}
