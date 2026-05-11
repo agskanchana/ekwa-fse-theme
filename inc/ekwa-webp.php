@@ -325,7 +325,26 @@ function ekwa_webp_url_for( $url ) {
 		return $url;
 	}
 
-	return ekwa_webp_companion_url( $url );
+	// Belt-and-braces: also bail when the file is empty. The safety net in
+	// ekwa_webp_generate_file() should already have unlinked these, but a
+	// pre-fix install may still have zero-byte files on disk.
+	if ( filesize( $webp_path ) < 100 ) {
+		return $url;
+	}
+
+	$webp_url = ekwa_webp_companion_url( $url );
+
+	// Cache-bust by file mtime so regenerated / replaced WebPs are picked up
+	// immediately instead of being served from the browser/CDN cache. The
+	// URL is otherwise identical across writes, which is what made bad WebP
+	// files so sticky on the front-end.
+	$mtime = @filemtime( $webp_path );
+	if ( $mtime ) {
+		$separator = ( strpos( $webp_url, '?' ) === false ) ? '?' : '&';
+		$webp_url .= $separator . 'v=' . $mtime;
+	}
+
+	return $webp_url;
 }
 
 /**
