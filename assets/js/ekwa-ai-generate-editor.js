@@ -14,11 +14,13 @@
 	var Fragment           = wp.element.Fragment;
 	var useState           = wp.element.useState;
 	var useRef             = wp.element.useRef;
+	var createPortal       = wp.element.createPortal;
 	var registerPlugin     = wp.plugins.registerPlugin;
 	var Modal              = wp.components.Modal;
 	var Button             = wp.components.Button;
 	var TextareaControl    = wp.components.TextareaControl;
 	var ToggleControl      = wp.components.ToggleControl;
+	var SelectControl      = wp.components.SelectControl;
 	var Notice             = wp.components.Notice;
 	var Spinner            = wp.components.Spinner;
 	var apiFetch           = wp.apiFetch;
@@ -37,6 +39,18 @@
 	// Localized config from PHP (functions.php → wp_localize_script).
 	var bridgeCfg     = window.ekwaAiGenerate || {};
 	var CHILD_CSS_URL = bridgeCfg.childStylesheetUrl || '';
+	var MODEL_OPTIONS = Array.isArray( bridgeCfg.models ) && bridgeCfg.models.length
+		? bridgeCfg.models
+		: [ { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' } ];
+	var DEFAULT_MODEL = bridgeCfg.defaultModel || MODEL_OPTIONS[0].value;
+
+	// Context drives the BLOCK MARKUP HINTS section of the server-side prompt
+	// so the AI emits detector-friendly patterns for the right scope.
+	var CONTEXT_OPTIONS = [
+		{ value: 'page',   label: __( 'Page section (default)', 'ekwa' ) },
+		{ value: 'header', label: __( 'Site header',            'ekwa' ) },
+		{ value: 'footer', label: __( 'Site footer',            'ekwa' ) },
+	];
 
 	// ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -112,6 +126,9 @@
 		var s12 = useState( true );  var showJs       = s12[0]; var setShowJs       = s12[1];
 		var s13 = useState( [] );    var history      = s13[0]; var setHistory      = s13[1];
 		var s14 = useState( true );  var useChildCss  = s14[0]; var setUseChildCss  = s14[1];
+		var s15 = useState( DEFAULT_MODEL ); var model        = s15[0]; var setModel        = s15[1];
+		var s16 = useState( false );         var isFullscreen = s16[0]; var setIsFullscreen = s16[1];
+		var s17 = useState( 'page' );        var context      = s17[0]; var setContext      = s17[1];
 		// step is derived: 'generate' before HTML, 'preview' after.
 
 		var fileRef = useRef( null );
@@ -226,6 +243,8 @@
 					images:        payloadImages,
 					history:       historyPayload,
 					use_child_css: useChildCss,
+					model:         model,
+					context:       context,
 				},
 			} ).then( function ( res ) {
 				var newHistory = historyPayload.concat( [
@@ -263,6 +282,7 @@
 			setExtractedJs( '' );
 			setHistory( [] );
 			setError( null );
+			setIsFullscreen( false );
 		}
 
 		// ── Handoff to Markup Converter ────────────────────────────────
@@ -323,6 +343,22 @@
 
 			children.push(
 				el( 'div', { key: 'opts', className: 'ekwa-ai-options' },
+					el( SelectControl, {
+						label: __( 'Generating for', 'ekwa' ),
+						help: __( 'Header / footer modes prompt the AI to emit detector-friendly markup for logo, phone, nav, hours, dropdowns, social, copyright, etc.', 'ekwa' ),
+						value: context,
+						options: CONTEXT_OPTIONS,
+						onChange: setContext,
+						className: 'ekwa-ai-context-select',
+					} ),
+					el( SelectControl, {
+						label: __( 'Model', 'ekwa' ),
+						help: __( 'Flash is fast and cheap; Pro gives the best quality for complex layouts.', 'ekwa' ),
+						value: model,
+						options: MODEL_OPTIONS,
+						onChange: setModel,
+						className: 'ekwa-ai-model-select',
+					} ),
 					el( ToggleControl, {
 						label: __( 'Send child theme stylesheet as context', 'ekwa' ),
 						help: __( 'Lets the AI reuse classes and CSS variables from your child theme. Turn off for a fresh, theme-agnostic design.', 'ekwa' ),
@@ -366,24 +402,58 @@
 				)
 			);
 
-			// Sandboxed visual preview.
-			children.push(
-				el( 'div', { key: 'preview', className: 'ekwa-ai-preview' },
-					el( 'div', { className: 'ekwa-ai-preview-label' },
-						el( 'strong', null, __( 'Preview', 'ekwa' ) )
-					),
-					el( 'iframe', {
-						className: 'ekwa-ai-preview-frame',
-						sandbox: '',
-						srcDoc: '<!doctype html><html><head><meta charset="utf-8">'
-							+ '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
-							+ ( CHILD_CSS_URL ? '<link rel="stylesheet" href="' + CHILD_CSS_URL + '">' : '' )
-							+ '<style>body{margin:0;padding:0;}img{max-width:100%;height:auto;}</style>'
-							+ ( extractedCss ? '<style>' + extractedCss + '</style>' : '' )
-							+ '</head><body>' + html + '</body></html>',
-					} )
-				)
+			// Sandboxed visual preview. When fullscreen, render via a portal to
+			// document.body so it isn't trapped inside the Modal's transformed
+			// container (transform ancestors break `position: fixed`).
+			var previewIframe = el( 'iframe', {
+				className: 'ekwa-ai-preview-frame',
+				sandbox: '',
+				srcDoc: '<!doctype html><html><head><meta charset="utf-8">'
+					+ '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
+					+ ( CHILD_CSS_URL ? '<link rel="stylesheet" href="' + CHILD_CSS_URL + '">' : '' )
+					+ '<style>body{margin:0;padding:0;}img{max-width:100%;height:auto;}</style>'
+					+ ( extractedCss ? '<style>' + extractedCss + '</style>' : '' )
+					+ '</head><body>' + html + '</body></html>',
+			} );
+
+			var previewHeader = el( 'div', { className: 'ekwa-ai-preview-label' },
+				el( 'strong', null, __( 'Preview', 'ekwa' ) ),
+				el( Button, {
+					isSmall: true,
+					variant: 'secondary',
+					icon: isFullscreen ? 'editor-contract' : 'editor-expand',
+					onClick: function () { setIsFullscreen( ! isFullscreen ); },
+					className: 'ekwa-ai-preview-fullscreen-btn',
+				}, isFullscreen ? __( 'Exit fullscreen', 'ekwa' ) : __( 'Fullscreen', 'ekwa' ) )
 			);
+
+			if ( isFullscreen && createPortal && typeof document !== 'undefined' ) {
+				children.push(
+					el( 'div', { key: 'preview', className: 'ekwa-ai-preview ekwa-ai-preview--placeholder' },
+						previewHeader,
+						el( 'div', { className: 'ekwa-ai-preview-frame ekwa-ai-preview-frame--placeholder' },
+							el( 'span', null, __( 'Preview is open in fullscreen.', 'ekwa' ) )
+						)
+					)
+				);
+				children.push(
+					createPortal(
+						el( 'div', { className: 'ekwa-ai-preview ekwa-ai-preview--fullscreen' },
+							previewHeader,
+							previewIframe
+						),
+						document.body,
+						'preview-portal'
+					)
+				);
+			} else {
+				children.push(
+					el( 'div', { key: 'preview', className: 'ekwa-ai-preview' },
+						previewHeader,
+						previewIframe
+					)
+				);
+			}
 
 			// Editable HTML.
 			children.push(
@@ -510,6 +580,20 @@
 						el( ImageStrip, { images: images, onRemove: removeImage } )
 					),
 					el( 'div', { className: 'ekwa-ai-options ekwa-ai-options--compact' },
+						el( SelectControl, {
+							label: __( 'Generating for', 'ekwa' ),
+							value: context,
+							options: CONTEXT_OPTIONS,
+							onChange: setContext,
+							className: 'ekwa-ai-context-select',
+						} ),
+						el( SelectControl, {
+							label: __( 'Model', 'ekwa' ),
+							value: model,
+							options: MODEL_OPTIONS,
+							onChange: setModel,
+							className: 'ekwa-ai-model-select',
+						} ),
 						el( ToggleControl, {
 							label: __( 'Send child theme stylesheet as context', 'ekwa' ),
 							checked: useChildCss,

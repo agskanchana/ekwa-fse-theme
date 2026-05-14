@@ -31,6 +31,32 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 
 	$tag = strtolower( $node->nodeName );
 
+	// Container-class detections — must run BEFORE anchor-based phone/address
+	// detectors AND before the inner <nav>/<a>/<i> children get visited so
+	// dropdown wrappers, the search block, and the header menu stay as a
+	// single block instead of being torn apart.
+	if ( $tag === 'div' ) {
+		$result = ekwa_mc_detect_header_menu( $node, $depth );
+		if ( $result !== null ) {
+			return $result;
+		}
+
+		$result = ekwa_mc_detect_phone_dropdown( $node, $depth );
+		if ( $result !== null ) {
+			return $result;
+		}
+
+		$result = ekwa_mc_detect_address_dropdown( $node, $depth );
+		if ( $result !== null ) {
+			return $result;
+		}
+
+		$result = ekwa_mc_detect_search( $node, $depth );
+		if ( $result !== null ) {
+			return $result;
+		}
+	}
+
 	// Anchor-based detections.
 	if ( $tag === 'a' ) {
 		$href = $node->getAttribute( 'href' );
@@ -574,4 +600,188 @@ function ekwa_mc_detect_map_iframe( $node, $depth ) {
 	ekwa_mc_warn( 'Auto-detected Google Maps iframe → ekwa/map' );
 
 	return $indent . '<!-- wp:ekwa/map' . $attrs_json . ' /-->' . "\n";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEARCH → ekwa/search
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect <div class="ekwa-search-block"> → ekwa/search block.
+ * Returns early without descending into children — the inner button/SVG are
+ * rendered by the block at runtime.
+ */
+function ekwa_mc_detect_search( $node, $depth ) {
+	$class = $node->getAttribute( 'class' );
+	if ( ! $class ) {
+		return null;
+	}
+	if ( ! preg_match( '/(^|\s)ekwa-search-block(\s|$)/', $class ) ) {
+		return null;
+	}
+
+	ekwa_mc_warn( 'Auto-detected ekwa-search-block → ekwa/search' );
+
+	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/search /-->' . "\n";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHONE DROPDOWN → ekwa/phone-dropdown
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect <div class="ekwa-phone-dd"> → ekwa/phone-dropdown block.
+ * Reads label and iconClass from the trigger <button>; returns early so the
+ * inner <a href="tel:"> children are NOT picked up by ekwa_mc_detect_phone.
+ */
+function ekwa_mc_detect_phone_dropdown( $node, $depth ) {
+	$class = $node->getAttribute( 'class' );
+	if ( ! $class ) {
+		return null;
+	}
+	if ( ! preg_match( '/(^|\s)ekwa-phone-dd(\s|$)/', $class ) ) {
+		return null;
+	}
+
+	$attrs = ekwa_mc_extract_dropdown_attrs( $node, 'Call Us', 'fa-solid fa-phone' );
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	ekwa_mc_warn( 'Auto-detected ekwa-phone-dd → ekwa/phone-dropdown' );
+
+	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/phone-dropdown' . $attrs_json . ' /-->' . "\n";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADDRESS DROPDOWN → ekwa/address-dropdown
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect <div class="ekwa-addr-dd"> → ekwa/address-dropdown block.
+ * Reads label and iconClass from the trigger <button>; returns early so the
+ * inner <a href="…maps…"> children are NOT picked up by ekwa_mc_detect_address.
+ */
+function ekwa_mc_detect_address_dropdown( $node, $depth ) {
+	$class = $node->getAttribute( 'class' );
+	if ( ! $class ) {
+		return null;
+	}
+	if ( ! preg_match( '/(^|\s)ekwa-addr-dd(\s|$)/', $class ) ) {
+		return null;
+	}
+
+	$attrs = ekwa_mc_extract_dropdown_attrs( $node, 'Directions', 'fa-solid fa-location-dot' );
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	ekwa_mc_warn( 'Auto-detected ekwa-addr-dd → ekwa/address-dropdown' );
+
+	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/address-dropdown' . $attrs_json . ' /-->' . "\n";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HEADER MENU → ekwa/header-menu
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect <div class="ekwa-header-menu-wrap"> → ekwa/header-menu block.
+ * Menu items come from the WP Main Menu admin location, so the detector only
+ * needs to recognise the wrapper and forward its three CSS-variable–driven
+ * attributes. Returns early so the inner <nav>/<ul>/<a> are NOT picked up by
+ * the core/navigation detector or anchor converters.
+ */
+function ekwa_mc_detect_header_menu( $node, $depth ) {
+	$class = $node->getAttribute( 'class' );
+	if ( ! $class ) {
+		return null;
+	}
+	if ( ! preg_match( '/(^|\s)ekwa-header-menu-wrap(\s|$)/', $class ) ) {
+		return null;
+	}
+
+	$attrs = array();
+	$style = ekwa_mc_parse_inline_style( $node->getAttribute( 'style' ) );
+
+	// CSS variables map to block attributes. Only emit non-default values.
+	if ( isset( $style['--ekwa-header-align'] ) ) {
+		$val = trim( $style['--ekwa-header-align'] );
+		if ( $val !== '' && $val !== 'center' ) {
+			$attrs['alignment'] = $val;
+		}
+	}
+	if ( isset( $style['--ekwa-header-gap'] ) ) {
+		$gap = (int) preg_replace( '/[^0-9]/', '', $style['--ekwa-header-gap'] );
+		if ( $gap > 0 && $gap !== 24 ) {
+			$attrs['itemGap'] = $gap;
+		}
+	}
+	if ( isset( $style['--ekwa-submenu-minw'] ) ) {
+		$minw = (int) preg_replace( '/[^0-9]/', '', $style['--ekwa-submenu-minw'] );
+		if ( $minw > 0 && $minw !== 220 ) {
+			$attrs['submenuMinWidth'] = $minw;
+		}
+	}
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	ekwa_mc_warn( 'Auto-detected ekwa-header-menu-wrap → ekwa/header-menu' );
+
+	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/header-menu' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Shared trigger-button parser for phone-dropdown and address-dropdown
+ * detectors. Extracts the label text and icon class from the first <button>
+ * child and returns a block-attributes array containing only non-default
+ * values.
+ *
+ * @param DOMElement $node           The dropdown container.
+ * @param string     $default_label  Block's default label (e.g. "Call Us").
+ * @param string     $default_icon   Block's default iconClass.
+ * @return array<string,mixed>
+ */
+function ekwa_mc_extract_dropdown_attrs( $node, $default_label, $default_icon ) {
+	$attrs = array();
+
+	$btns = $node->getElementsByTagName( 'button' );
+	if ( $btns->length === 0 ) {
+		return $attrs;
+	}
+	$btn = $btns->item( 0 );
+
+	// Icon: look for any <i class="fa-…"> inside the button. No icon → showIcon=false.
+	$icons     = $btn->getElementsByTagName( 'i' );
+	$has_icon  = false;
+	$icon_text = '';
+	if ( $icons->length > 0 ) {
+		$ic = $icons->item( 0 )->getAttribute( 'class' );
+		if ( $ic && preg_match( '/\bfa[srlbd]?\s+fa-[a-z0-9-]+/i', $ic ) ) {
+			$has_icon  = true;
+			$icon_text = trim( $icons->item( 0 )->textContent );
+			if ( $ic !== $default_icon ) {
+				$attrs['iconClass'] = $ic;
+			}
+		}
+	}
+	if ( ! $has_icon ) {
+		$attrs['showIcon'] = false;
+	}
+
+	// Label: prefer text inside <span>, then full button text minus icon text.
+	$label = '';
+	$spans = $btn->getElementsByTagName( 'span' );
+	if ( $spans->length > 0 ) {
+		$label = trim( $spans->item( 0 )->textContent );
+	}
+	if ( '' === $label ) {
+		$label = trim( $btn->textContent );
+		// Trim trailing "(arrow svg text)" or stray whitespace — but textContent
+		// already drops SVG inner text in most cases. Belt-and-braces: collapse runs of whitespace.
+		$label = preg_replace( '/\s+/u', ' ', $label );
+	}
+	if ( $label && $label !== $default_label ) {
+		$attrs['label'] = $label;
+	}
+
+	return $attrs;
 }

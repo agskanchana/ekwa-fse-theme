@@ -76,6 +76,7 @@ require_once get_template_directory() . '/inc/ekwa-converter-api.php';
 /**
  * Load AI HTML generator for mockup converter (Gemini multimodal API).
  */
+require_once get_template_directory() . '/inc/ekwa-ai-hints.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 
 /**
@@ -242,11 +243,21 @@ function ekwa_enqueue_converter_editor_script() {
 	if ( file_exists( $child_css_path ) ) {
 		$child_css_uri = add_query_arg( 'ver', filemtime( $child_css_path ), $child_css_uri );
 	}
+	$ai_models     = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
+	$ai_model_list = array();
+	foreach ( $ai_models as $model_id => $model_label ) {
+		$ai_model_list[] = array(
+			'value' => $model_id,
+			'label' => $model_label,
+		);
+	}
 	wp_localize_script(
 		'ekwa-ai-generate-editor',
 		'ekwaAiGenerate',
 		array(
 			'childStylesheetUrl' => $child_css_uri,
+			'models'             => $ai_model_list,
+			'defaultModel'       => 'gemini-2.5-flash',
 		)
 	);
 }

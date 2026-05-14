@@ -56,8 +56,33 @@ function ekwa_ai_generate_register_routes() {
 				'type'     => 'number',
 				'default'  => 0.4,
 			),
+			'model' => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'gemini-2.5-flash',
+			),
+			'context' => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'page',
+				'enum'     => array( 'header', 'footer', 'page' ),
+			),
 		),
 	) );
+}
+
+/**
+ * Allow-list of Gemini models the front end can request. Anything else
+ * falls back to the default Flash model.
+ *
+ * @return array<string,string> Map of model id → human label.
+ */
+function ekwa_ai_generate_allowed_models() {
+	return array(
+		'gemini-2.5-flash'      => 'Gemini 2.5 Flash (fast, default)',
+		'gemini-2.5-pro'        => 'Gemini 2.5 Pro (best quality)',
+		'gemini-2.5-flash-lite' => 'Gemini 2.5 Flash-Lite (cheapest)',
+	);
 }
 
 /**
@@ -81,6 +106,16 @@ function ekwa_ai_generate_handle_request( $request ) {
 	$history       = (array) $request->get_param( 'history' );
 	$use_child_css = (bool) $request->get_param( 'use_child_css' );
 	$temperature   = (float) $request->get_param( 'temperature' );
+	$model         = (string) $request->get_param( 'model' );
+	$context       = (string) $request->get_param( 'context' );
+	if ( ! in_array( $context, array( 'header', 'footer', 'page' ), true ) ) {
+		$context = 'page';
+	}
+
+	$allowed_models = ekwa_ai_generate_allowed_models();
+	if ( ! isset( $allowed_models[ $model ] ) ) {
+		$model = 'gemini-2.5-flash';
+	}
 
 	if ( '' === $prompt ) {
 		return new WP_Error(
@@ -104,7 +139,7 @@ function ekwa_ai_generate_handle_request( $request ) {
 		return $contents;
 	}
 
-	$system_prompt = ekwa_ai_generate_build_system_prompt();
+	$system_prompt = ekwa_ai_generate_build_system_prompt( $context );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
 	}
@@ -113,7 +148,8 @@ function ekwa_ai_generate_handle_request( $request ) {
 		$system_prompt,
 		$contents,
 		$temperature,
-		$api_key
+		$api_key,
+		$model
 	);
 
 	if ( is_wp_error( $result ) ) {
@@ -141,10 +177,26 @@ function ekwa_ai_generate_handle_request( $request ) {
 /**
  * Build the system prompt that biases Gemini toward converter-friendly HTML.
  *
+ * @param string $context One of: 'header', 'footer', 'page'. Drives the
+ *                        BLOCK MARKUP HINTS section appended to the prompt
+ *                        and a leading context cue for header/footer modes.
  * @return string
  */
-function ekwa_ai_generate_build_system_prompt() {
-	return <<<PROMPT
+function ekwa_ai_generate_build_system_prompt( $context = 'page' ) {
+	$context_cue = '';
+	if ( $context === 'header' ) {
+		$context_cue = "HEADER CONTEXT — strict rules for this generation:\n"
+			. "1. DESKTOP ONLY. The site has a separate mobile header, so this fragment must hide itself below 1200px viewport width. Wrap the header in a class you control and add this CSS to your <style> block: `@media (max-width: 1199.98px) { .your-header-class { display: none !important; } }`.\n"
+			. "2. DO NOT generate any mobile version — no hamburger button, no off-canvas drawer, no mobile menu toggle, no mobile-specific markup. Assume the viewport is ≥ 1200px and design accordingly.\n"
+			. "3. EVERY dynamic element the user mentions (logo, navigation/menu, phone, search, address, dropdowns, social) MUST appear in the output using the signature pattern from the BLOCK MARKUP HINTS section below. If the user said \"menu\" or \"navigation\", you MUST emit a <div class=\"ekwa-header-menu-wrap\">…</div>. Do not silently drop requested elements; they are required, not optional.\n"
+			. "4. Keep markup compact — no full-page hero sections, no body-content shapes. This is a header bar only.\n\n";
+	} elseif ( $context === 'footer' ) {
+		$context_cue = "FOOTER CONTEXT — strict rules for this generation:\n"
+			. "1. EVERY dynamic element the user mentions (address, hours, social, map, copyright, navigation, phone) MUST appear using the signature pattern from the BLOCK MARKUP HINTS section below. Do not silently drop requested elements.\n"
+			. "2. Typical footer content: address, hours, social row, map embed, footer nav, copyright line. Use the BLOCK MARKUP HINTS section for each.\n\n";
+	}
+
+	$prompt = <<<PROMPT
 You are an expert front-end developer producing static HTML for a WordPress block theme. Your output will be split: the HTML is passed to a deterministic HTML→Gutenberg block converter, while any <style> and <script> blocks are extracted and given to the user to paste into their site-wide CSS/JS files.
 
 OUTPUT RULES:
@@ -183,6 +235,12 @@ CONTENT RULES:
 
 Return only the HTML (with any <style>/<script> blocks inside it), nothing else.
 PROMPT;
+
+	if ( function_exists( 'ekwa_ai_build_hints_section' ) ) {
+		$prompt .= ekwa_ai_build_hints_section( $context );
+	}
+
+	return $context_cue . $prompt;
 }
 
 /**
@@ -345,10 +403,11 @@ function ekwa_ai_generate_image_part( $img ) {
  * @param array  $contents      Pre-built `contents` array.
  * @param float  $temperature   Sampling temperature.
  * @param string $api_key       Gemini API key.
+ * @param string $model         Gemini model id (e.g. gemini-2.5-flash).
  * @return array|WP_Error { content: string } or error.
  */
-function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key ) {
-	$url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . urlencode( $api_key );
+function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = 'gemini-2.5-flash' ) {
+	$url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent?key=' . urlencode( $api_key );
 
 	$body = array(
 		'system_instruction' => array(
