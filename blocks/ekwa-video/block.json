@@ -15,16 +15,20 @@
 		"className": true
 	},
 	"attributes": {
-		"src":         { "type": "string",  "default": "" },
-		"poster":      { "type": "string",  "default": "" },
-		"mediaId":     { "type": "number",  "default": 0 },
-		"posterId":    { "type": "number",  "default": 0 },
-		"autoplay":    { "type": "boolean", "default": false },
-		"loop":        { "type": "boolean", "default": false },
-		"muted":       { "type": "boolean", "default": false },
-		"playsinline": { "type": "boolean", "default": false },
-		"controls":    { "type": "boolean", "default": false },
-		"lazyLoad":    { "type": "boolean", "default": false }
+		"src":                 { "type": "string",  "default": "" },
+		"poster":              { "type": "string",  "default": "" },
+		"mediaId":             { "type": "number",  "default": 0 },
+		"posterId":            { "type": "number",  "default": 0 },
+		"autoplay":            { "type": "boolean", "default": false },
+		"loop":                { "type": "boolean", "default": false },
+		"muted":               { "type": "boolean", "default": false },
+		"playsinline":         { "type": "boolean", "default": false },
+		"controls":            { "type": "boolean", "default": false },
+		"lazyLoad":            { "type": "boolean", "default": false },
+		"transcript":          { "type": "string",  "default": "" },
+		"transcriptShowLabel": { "type": "string",  "default": "Video Transcript" },
+		"transcriptHideLabel": { "type": "string",  "default": "Hide Transcript" },
+		"transcriptIcon":      { "type": "string",  "default": "fa-regular fa-file-lines" }
 	},
 	"editorScript": "ekwa-video-editor"
 }

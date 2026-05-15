@@ -17,6 +17,7 @@
 	var PanelBody          = wp.components.PanelBody;
 	var TextControl        = wp.components.TextControl;
 	var ToggleControl      = wp.components.ToggleControl;
+	var TextareaControl    = wp.components.TextareaControl;
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
 
@@ -128,9 +129,56 @@
 							checked: !! attributes.lazyLoad,
 							onChange: function ( val ) { setAttributes( { lazyLoad: val } ); },
 						} )
+					),
+					el( PanelBody, { title: __( 'Transcript' ), initialOpen: false },
+						el( 'p', { style: { marginTop: 0, color: '#666', fontSize: '12px' } },
+							__( 'Leave blank to hide the transcript toggle. Use line breaks for paragraphs.', 'ekwa' )
+						),
+						el( TextareaControl, {
+							label: __( 'Transcript text', 'ekwa' ),
+							help: __( 'One paragraph per blank-line-separated block. Plain text — formatting is added automatically.', 'ekwa' ),
+							value: attributes.transcript || '',
+							onChange: function ( val ) { setAttributes( { transcript: val } ); },
+							rows: 8,
+						} ),
+						el( TextControl, {
+							label: __( 'Show button label', 'ekwa' ),
+							value: attributes.transcriptShowLabel,
+							onChange: function ( val ) { setAttributes( { transcriptShowLabel: val } ); },
+						} ),
+						el( TextControl, {
+							label: __( 'Hide button label', 'ekwa' ),
+							value: attributes.transcriptHideLabel,
+							onChange: function ( val ) { setAttributes( { transcriptHideLabel: val } ); },
+						} ),
+						el( TextControl, {
+							label: __( 'Icon class', 'ekwa' ),
+							help: __( 'Font Awesome class for the button icon. Leave blank for no icon.', 'ekwa' ),
+							value: attributes.transcriptIcon,
+							onChange: function ( val ) { setAttributes( { transcriptIcon: val } ); },
+						} )
 					)
 				),
-				el( 'div', blockProps, preview )
+				el( 'div', blockProps, preview,
+					attributes.transcript
+						? el( 'div', {
+							style: {
+								marginTop: '8px',
+								padding: '6px 8px',
+								borderTop: '1px dashed #ccc',
+								fontSize: '11px',
+								color: '#666',
+								textAlign: 'left',
+							},
+						},
+							el( 'strong', null, __( 'Transcript:', 'ekwa' ) ),
+							' ',
+							attributes.transcript.length > 120
+								? attributes.transcript.substring( 0, 120 ) + '…'
+								: attributes.transcript
+						)
+						: null
+				)
 			);
 		},
 

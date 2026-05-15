@@ -60,6 +60,10 @@
 		var loop             = ds.loop === 'true';
 		var gap              = parseInt( ds.gap, 10 ) || 0;
 		var speed            = parseInt( ds.speed, 10 ) || 350;
+		// Page-snap mode: `current` is a page index, slide translates by 100% per page,
+		// dot count = pages. Item-step mode (default) keeps the legacy behaviour
+		// where `current` is an item index and slide moves one item at a time.
+		var pageMode         = ds.pageMode === 'true';
 
 		// ARIA scaffolding.
 		container.setAttribute( 'role', 'region' );
@@ -105,8 +109,16 @@
 			return mobile;
 		}
 
+		function pageCount() {
+			return Math.max( 1, Math.ceil( total / visible ) );
+		}
+
 		function maxSlide() {
-			return Math.max( 0, total - visible );
+			return pageMode ? ( pageCount() - 1 ) : Math.max( 0, total - visible );
+		}
+
+		function firstVisibleIndex() {
+			return pageMode ? ( current * visible ) : current;
 		}
 
 		function setWidths() {
@@ -128,9 +140,12 @@
 				if ( current > max ) current = max;
 				if ( current < 0 )   current = 0;
 			}
-			var dur = ( animate === false || prefersReducedMotion ) ? 0 : speed;
+			var dur     = ( animate === false || prefersReducedMotion ) ? 0 : speed;
+			// In page mode each "step" is one full page width (100%); in item-step
+			// mode each step is one item width (100/visible %).
+			var offset  = pageMode ? ( current * 100 ) : ( current * ( 100 / visible ) );
 			track.style.transition = dur ? ( 'transform ' + dur + 'ms ease' ) : 'none';
-			track.style.transform  = 'translateX(-' + ( current * ( 100 / visible ) ) + '%)';
+			track.style.transform  = 'translateX(-' + offset + '%)';
 
 			updateArrows();
 			updateDots();
@@ -139,8 +154,9 @@
 		}
 
 		function updateInert() {
+			var firstIn = firstVisibleIndex();
 			items.forEach( function ( item, i ) {
-				var inView = i >= current && i < current + visible;
+				var inView = i >= firstIn && i < firstIn + visible;
 				if ( inView ) {
 					item.removeAttribute( 'aria-hidden' );
 					item.removeAttribute( 'inert' );

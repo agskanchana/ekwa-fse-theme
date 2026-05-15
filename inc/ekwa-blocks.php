@@ -3568,17 +3568,17 @@ function ekwa_render_video_block( $attrs ) {
 		$classes = trim( $classes . ' lazyload' );
 	}
 
-	$html = '<video';
-	if ( $classes )     { $html .= ' class="' . esc_attr( $classes ) . '"'; }
-	if ( $anchor )      { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
-	if ( $autoplay )    { $html .= ' autoplay'; }
-	if ( $loop )        { $html .= ' loop'; }
-	if ( $muted )       { $html .= ' muted'; }
-	if ( $playsinline ) { $html .= ' playsinline'; }
-	if ( $controls )    { $html .= ' controls'; }
+	$video = '<video';
+	if ( $classes )     { $video .= ' class="' . esc_attr( $classes ) . '"'; }
+	if ( $anchor )      { $video .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $autoplay )    { $video .= ' autoplay'; }
+	if ( $loop )        { $video .= ' loop'; }
+	if ( $muted )       { $video .= ' muted'; }
+	if ( $playsinline ) { $video .= ' playsinline'; }
+	if ( $controls )    { $video .= ' controls'; }
 	if ( $poster ) {
 		// data-poster lets unveilhooks defer the poster image too.
-		$html .= $use_lazysizes
+		$video .= $use_lazysizes
 			? ' data-poster="' . $poster . '"'
 			: ' poster="' . $poster . '"';
 	}
@@ -3586,18 +3586,99 @@ function ekwa_render_video_block( $attrs ) {
 		// unveilhooks injects `src` on the <video> itself when unveiled.
 		// `data-src` on inner <source> is NOT processed, so we put the URL
 		// here and drop the <source> child entirely.
-		$html .= ' data-src="' . $src . '"';
+		$video .= ' data-src="' . $src . '"';
 	} elseif ( $lazy && ! $autoplay ) {
 		// Native lazy fallback: preload="none" only honored when autoplay is off.
-		$html .= ' preload="none"';
+		$video .= ' preload="none"';
 	}
-	$html .= '>';
+	$video .= '>';
 	if ( ! $use_lazysizes ) {
-		$html .= '<source src="' . $src . '" type="video/mp4">';
+		$video .= '<source src="' . $src . '" type="video/mp4">';
 	}
-	$html .= '</video>';
+	$video .= '</video>';
 
-	return $html;
+	// No transcript → identical to the legacy output.
+	$transcript = isset( $attrs['transcript'] ) ? trim( (string) $attrs['transcript'] ) : '';
+	if ( '' === $transcript ) {
+		return $video;
+	}
+
+	// Transcript present → wrap with toggle button + collapsible panel.
+	static $vt_counter = 0;
+	$vt_counter++;
+	$panel_id = 'ekwa-vt-' . $vt_counter;
+
+	$show_label = isset( $attrs['transcriptShowLabel'] ) && $attrs['transcriptShowLabel'] !== ''
+		? $attrs['transcriptShowLabel'] : 'Video Transcript';
+	$hide_label = isset( $attrs['transcriptHideLabel'] ) && $attrs['transcriptHideLabel'] !== ''
+		? $attrs['transcriptHideLabel'] : 'Hide Transcript';
+	$icon_class = isset( $attrs['transcriptIcon'] ) ? trim( (string) $attrs['transcriptIcon'] ) : '';
+
+	// Split plain-text transcript into <p> paragraphs on blank lines.
+	$paragraphs = preg_split( '/\n\s*\n/', $transcript );
+	$panel_html = '';
+	foreach ( $paragraphs as $p ) {
+		$p = trim( $p );
+		if ( '' === $p ) { continue; }
+		// Preserve single line breaks within a paragraph.
+		$panel_html .= '<p>' . nl2br( esc_html( $p ) ) . '</p>';
+	}
+
+	$icon_html = $icon_class
+		? '<i class="ekwa-video-transcript-icon ' . esc_attr( $icon_class ) . '" aria-hidden="true"></i>'
+		: '';
+
+	$wrap  = '<div class="ekwa-video-transcript-wrap">';
+	$wrap .= $video;
+	$wrap .= '<button type="button" class="ekwa-video-transcript-toggle"'
+		. ' aria-expanded="false" aria-controls="' . esc_attr( $panel_id ) . '"'
+		. ' data-show-label="' . esc_attr( $show_label ) . '"'
+		. ' data-hide-label="' . esc_attr( $hide_label ) . '">'
+		. '<span class="ekwa-video-transcript-label">' . esc_html( $show_label ) . '</span>'
+		. $icon_html
+		. '</button>';
+	$wrap .= '<div class="ekwa-video-transcript-panel" id="' . esc_attr( $panel_id ) . '" hidden>'
+		. $panel_html . '</div>';
+	$wrap .= '</div>';
+
+	$wrap .= ekwa_video_transcript_assets_once();
+
+	return $wrap;
+}
+
+/**
+ * Emit the shared toggle JS + minimal CSS for the video transcript feature
+ * exactly once per page (the first time a transcript-enabled video renders).
+ *
+ * @return string Script + style markup on first call, empty string after.
+ */
+function ekwa_video_transcript_assets_once() {
+	static $emitted = false;
+	if ( $emitted ) {
+		return '';
+	}
+	$emitted = true;
+
+	$css = '.ekwa-video-transcript-toggle{display:inline-flex;align-items:center;gap:.5em;cursor:pointer;font:inherit;}'
+		. '.ekwa-video-transcript-icon{flex-shrink:0;}'
+		. '.ekwa-video-transcript-panel{max-height:280px;overflow-y:auto;}'
+		. '.ekwa-video-transcript-panel[hidden]{display:none;}';
+
+	$js = '(function(){'
+		. 'document.addEventListener("click",function(e){'
+		. 'var b=e.target.closest(".ekwa-video-transcript-toggle");if(!b)return;'
+		. 'e.preventDefault();'
+		. 'var id=b.getAttribute("aria-controls");var p=id?document.getElementById(id):null;if(!p)return;'
+		. 'var l=b.querySelector(".ekwa-video-transcript-label");'
+		. 'var open=b.getAttribute("aria-expanded")==="true";'
+		. 'b.setAttribute("aria-expanded",open?"false":"true");'
+		. 'if(open){p.setAttribute("hidden","");}else{p.removeAttribute("hidden");}'
+		. 'if(l){l.textContent=open?b.getAttribute("data-show-label"):b.getAttribute("data-hide-label");}'
+		. '});'
+		. '})();';
+
+	return '<style id="ekwa-video-transcript-style">' . $css . '</style>'
+		. '<script id="ekwa-video-transcript-script">' . $js . '</script>';
 }
 
 
@@ -4007,11 +4088,16 @@ function ekwa_render_related_articles_block( $attrs ) {
 		filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
 	);
 
+	// Default gap between items so cards don't visually touch. Filter to override.
+	$item_gap = absint( apply_filters( 'ekwa_related_articles_gap', 20 ) );
+
 	$data_attrs = ' data-desktop-items="' . $desktop . '"'
 	            . ' data-tablet-items="' . $tablet . '"'
 	            . ' data-mobile-items="' . $mobile . '"'
 	            . ' data-show-arrows="' . ( $show_arrows ? 'true' : 'false' ) . '"'
-	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"';
+	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"'
+	            . ' data-gap="' . $item_gap . '"'
+	            . ' data-page-mode="true"';
 
 	$html  = $wrap_open;
 	$html .= $heading_html;

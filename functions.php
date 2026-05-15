@@ -85,6 +85,11 @@ require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 require_once get_template_directory() . '/inc/ekwa-external-links.php';
 
 /**
+ * Cookie consent banner (inline CSS + JS, dismissible, 360-day cookie).
+ */
+require_once get_template_directory() . '/inc/ekwa-cookie-banner.php';
+
+/**
  * Load blog features (TOC, author link, load more, post cards).
  */
 require_once get_template_directory() . '/inc/ekwa-blog.php';
