@@ -80,6 +80,11 @@ require_once get_template_directory() . '/inc/ekwa-ai-hints.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 
 /**
+ * Tag external links with a descriptive title on first user interaction.
+ */
+require_once get_template_directory() . '/inc/ekwa-external-links.php';
+
+/**
  * Load blog features (TOC, author link, load more, post cards).
  */
 require_once get_template_directory() . '/inc/ekwa-blog.php';
