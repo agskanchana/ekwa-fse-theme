@@ -359,13 +359,152 @@ function ekwa_save_settings() {
 add_action( 'admin_init', 'ekwa_save_settings' );
 
 /**
+ * Build a map of phone-number digit strings -> [ekwa_phone] shortcode tags
+ * from the saved locations. Used to swap raw phone numbers found in the
+ * bulk-import CSV's title/description fields for the dynamic shortcode.
+ *
+ * Keys are digits-only (with any leading "1" trimmed) so we can match the
+ * same number written in (xxx) xxx-xxxx / xxx-xxx-xxxx / +1 xxx xxx xxxx
+ * styles indifferently.
+ */
+function ekwa_bulk_pages_phone_map() {
+	$locations = get_option( 'ekwa_locations', array() );
+	$map       = array();
+
+	if ( ! is_array( $locations ) ) {
+		return $map;
+	}
+
+	$normalize = static function ( $raw ) {
+		$digits = preg_replace( '/\D+/', '', (string) $raw );
+		if ( '' === $digits ) {
+			return '';
+		}
+		if ( 11 === strlen( $digits ) && '1' === $digits[0] ) {
+			$digits = substr( $digits, 1 );
+		}
+		return $digits;
+	};
+
+	foreach ( $locations as $i => $loc ) {
+		if ( ! is_array( $loc ) ) {
+			continue;
+		}
+		$loc_num = $i + 1;
+
+		$new = $normalize( $loc['phone_new'] ?? '' );
+		if ( strlen( $new ) >= 7 && ! isset( $map[ $new ] ) ) {
+			$map[ $new ] = sprintf( '[ekwa_phone type="new" location="%d"]', $loc_num );
+		}
+
+		$existing = $normalize( $loc['phone_existing'] ?? '' );
+		if ( strlen( $existing ) >= 7 && ! isset( $map[ $existing ] ) ) {
+			$map[ $existing ] = sprintf( '[ekwa_phone type="existing" location="%d"]', $loc_num );
+		}
+	}
+
+	return $map;
+}
+
+/**
+ * Replace phone numbers in a text blob with the matching [ekwa_phone]
+ * shortcode. Only numbers that match a configured location phone are
+ * swapped — unrelated digit runs are left alone.
+ */
+function ekwa_bulk_pages_replace_phones( $text, $phone_map ) {
+	if ( '' === $text || empty( $phone_map ) ) {
+		return $text;
+	}
+
+	// Matches common US phone formats: optional country code, optional parens
+	// around area code, separators of space / dot / hyphen, e.g.
+	//   (813) 734-7102   813-734-7102   +1 813.734.7102   8137347102
+	$pattern = '/(?:\+?\d{1,3}[\s.\-]*)?\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}/';
+
+	return preg_replace_callback(
+		$pattern,
+		static function ( $matches ) use ( $phone_map ) {
+			$digits = preg_replace( '/\D+/', '', $matches[0] );
+			if ( 11 === strlen( $digits ) && '1' === $digits[0] ) {
+				$digits = substr( $digits, 1 );
+			}
+			return isset( $phone_map[ $digits ] ) ? $phone_map[ $digits ] : $matches[0];
+		},
+		$text
+	);
+}
+
+/**
+ * Parse the uploaded CSV file into a list of associative rows keyed by
+ * the canonical column names: url, slug, title, description, h1, breadcrumb.
+ * Headers are matched case-insensitively; missing columns just yield ''.
+ *
+ * Returns array of rows, or WP_Error on failure.
+ */
+function ekwa_bulk_pages_parse_csv( $tmp_path ) {
+	$handle = @fopen( $tmp_path, 'r' );
+	if ( ! $handle ) {
+		return new WP_Error( 'ekwa_bulk_csv_open', __( 'Could not open the uploaded CSV file.', 'ekwa' ) );
+	}
+
+	$header = fgetcsv( $handle );
+	if ( ! is_array( $header ) ) {
+		fclose( $handle );
+		return new WP_Error( 'ekwa_bulk_csv_empty', __( 'The CSV file is empty.', 'ekwa' ) );
+	}
+
+	// Strip a UTF-8 BOM from the first column header if present.
+	if ( isset( $header[0] ) ) {
+		$header[0] = preg_replace( '/^\xEF\xBB\xBF/', '', (string) $header[0] );
+	}
+
+	$expected = array( 'url', 'slug', 'title', 'description', 'h1', 'breadcrumb' );
+	$index    = array_fill_keys( $expected, -1 );
+	foreach ( $header as $i => $name ) {
+		$key = strtolower( trim( (string) $name ) );
+		if ( isset( $index[ $key ] ) ) {
+			$index[ $key ] = $i;
+		}
+	}
+
+	$rows = array();
+	while ( ( $cols = fgetcsv( $handle ) ) !== false ) {
+		// Skip rows that are completely empty.
+		$all_empty = true;
+		foreach ( $cols as $c ) {
+			if ( '' !== trim( (string) $c ) ) {
+				$all_empty = false;
+				break;
+			}
+		}
+		if ( $all_empty ) {
+			continue;
+		}
+
+		$row = array();
+		foreach ( $expected as $key ) {
+			$i = $index[ $key ];
+			$row[ $key ] = ( $i >= 0 && isset( $cols[ $i ] ) ) ? trim( (string) $cols[ $i ] ) : '';
+		}
+		$rows[] = $row;
+	}
+	fclose( $handle );
+
+	return $rows;
+}
+
+/**
  * Handle Bulk Page Creator submission.
  *
- * Reads one page title per line from the textarea and creates a published
- * page for each. Pages whose title already exists (any non-trash status)
- * are skipped so the operation is idempotent if re-run. Result counts are
- * surfaced via a transient so the admin notice survives the post-save
- * redirect that keeps the user on the bulk-pages tab.
+ * Accepts either a CSV upload (preferred) with columns
+ * url,slug,title,description,h1,breadcrumb, or — for back-compat — a
+ * plain list of titles in the textarea. For CSV rows that match an
+ * existing page by slug, only blank fields on the existing page are
+ * filled in; the slug itself is never changed. Title and description
+ * are scanned for configured location phone numbers and rewritten as
+ * [ekwa_phone] shortcodes so the live pages stay in sync if numbers
+ * change. Result counts are surfaced via a transient so the admin
+ * notice survives the post-action redirect.
  */
 function ekwa_handle_bulk_create_pages() {
 	if ( ! isset( $_POST['ekwa_bulk_pages_nonce'] ) ) {
@@ -378,13 +517,47 @@ function ekwa_handle_bulk_create_pages() {
 		return;
 	}
 
-	global $wpdb;
-
-	$raw    = isset( $_POST['ekwa_bulk_pages_titles'] ) ? wp_unslash( $_POST['ekwa_bulk_pages_titles'] ) : '';
-	$lines  = preg_split( '/\r\n|\r|\n/', $raw );
 	$created = array();
+	$updated = array();
 	$skipped = array();
 	$errors  = array();
+
+	$has_csv = isset( $_FILES['ekwa_bulk_pages_csv'] )
+		&& is_array( $_FILES['ekwa_bulk_pages_csv'] )
+		&& UPLOAD_ERR_NO_FILE !== (int) $_FILES['ekwa_bulk_pages_csv']['error']
+		&& ! empty( $_FILES['ekwa_bulk_pages_csv']['tmp_name'] );
+
+	if ( $has_csv ) {
+		ekwa_handle_bulk_create_pages_csv( $created, $updated, $skipped, $errors );
+	} else {
+		ekwa_handle_bulk_create_pages_titles( $created, $skipped, $errors );
+	}
+
+	set_transient(
+		'ekwa_bulk_pages_result_' . get_current_user_id(),
+		array(
+			'created' => $created,
+			'updated' => $updated,
+			'skipped' => $skipped,
+			'errors'  => $errors,
+		),
+		60
+	);
+
+	wp_safe_redirect( admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=bulk-pages' ) );
+	exit;
+}
+add_action( 'admin_init', 'ekwa_handle_bulk_create_pages' );
+
+/**
+ * Process the textarea fallback: one page title per line, create as
+ * published pages, skip exact-title duplicates.
+ */
+function ekwa_handle_bulk_create_pages_titles( &$created, &$skipped, &$errors ) {
+	global $wpdb;
+
+	$raw   = isset( $_POST['ekwa_bulk_pages_titles'] ) ? wp_unslash( $_POST['ekwa_bulk_pages_titles'] ) : '';
+	$lines = preg_split( '/\r\n|\r|\n/', $raw );
 
 	foreach ( (array) $lines as $line ) {
 		$title = trim( $line );
@@ -392,7 +565,6 @@ function ekwa_handle_bulk_create_pages() {
 			continue;
 		}
 
-		// Look up an existing page with the same title, ignoring trashed ones.
 		$existing = $wpdb->get_var( $wpdb->prepare(
 			"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status <> 'trash' AND post_title = %s LIMIT 1",
 			$title
@@ -421,21 +593,139 @@ function ekwa_handle_bulk_create_pages() {
 			'link'  => get_edit_post_link( $page_id, 'raw' ),
 		);
 	}
-
-	set_transient(
-		'ekwa_bulk_pages_result_' . get_current_user_id(),
-		array(
-			'created' => $created,
-			'skipped' => $skipped,
-			'errors'  => $errors,
-		),
-		60
-	);
-
-	wp_safe_redirect( admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=bulk-pages' ) );
-	exit;
 }
-add_action( 'admin_init', 'ekwa_handle_bulk_create_pages' );
+
+/**
+ * Process an uploaded CSV. Matches pages by slug; for existing pages
+ * fills only empty Yoast/post_title fields, never changes the slug.
+ * Phone numbers in title/description are rewritten to [ekwa_phone].
+ */
+function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$errors ) {
+	global $wpdb;
+
+	$file = $_FILES['ekwa_bulk_pages_csv'];
+
+	if ( UPLOAD_ERR_OK !== (int) $file['error'] ) {
+		$errors[] = __( 'CSV upload failed. Please try again.', 'ekwa' );
+		return;
+	}
+
+	$rows = ekwa_bulk_pages_parse_csv( $file['tmp_name'] );
+	if ( is_wp_error( $rows ) ) {
+		$errors[] = $rows->get_error_message();
+		return;
+	}
+
+	if ( empty( $rows ) ) {
+		$errors[] = __( 'No data rows found in the CSV.', 'ekwa' );
+		return;
+	}
+
+	$phone_map = ekwa_bulk_pages_phone_map();
+
+	foreach ( $rows as $row ) {
+		$slug        = sanitize_title( $row['slug'] );
+		$h1          = sanitize_text_field( $row['h1'] );
+		$title       = ekwa_bulk_pages_replace_phones( $row['title'], $phone_map );
+		$description = ekwa_bulk_pages_replace_phones( $row['description'], $phone_map );
+		$breadcrumb  = sanitize_text_field( $row['breadcrumb'] );
+
+		$label_for_log = $h1 ?: ( $title ?: ( $slug ?: __( '(unnamed row)', 'ekwa' ) ) );
+
+		if ( '' === $slug ) {
+			$skipped[] = sprintf( __( '%s — empty slug, skipped', 'ekwa' ), $label_for_log );
+			continue;
+		}
+
+		// Match an existing page by slug, ignoring trashed ones.
+		$existing_id = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status <> 'trash' AND post_name = %s LIMIT 1",
+			$slug
+		) );
+
+		if ( $existing_id ) {
+			$existing = get_post( $existing_id );
+			$post_update = array( 'ID' => $existing_id );
+
+			// Only fill empty post_title with H1 (slug stays untouched).
+			if ( '' === trim( (string) $existing->post_title ) && '' !== $h1 ) {
+				$post_update['post_title'] = $h1;
+			}
+
+			if ( count( $post_update ) > 1 ) {
+				wp_update_post( $post_update );
+			}
+
+			// Yoast meta — only set when the existing value is empty.
+			$meta_targets = array(
+				'_yoast_wpseo_title'    => $title,
+				'_yoast_wpseo_metadesc' => $description,
+				'_yoast_wpseo_bctitle'  => $breadcrumb,
+			);
+			$meta_changed = false;
+			foreach ( $meta_targets as $meta_key => $new_value ) {
+				if ( '' === $new_value ) {
+					continue;
+				}
+				$current = get_post_meta( $existing_id, $meta_key, true );
+				if ( '' === trim( (string) $current ) ) {
+					update_post_meta( $existing_id, $meta_key, $new_value );
+					$meta_changed = true;
+				}
+			}
+
+			$updated[] = array(
+				'id'    => $existing_id,
+				'title' => $existing->post_title ?: $label_for_log,
+				'slug'  => $slug,
+				'link'  => get_edit_post_link( $existing_id, 'raw' ),
+			);
+			continue;
+		}
+
+		// Create the page. post_title falls back through h1 -> title -> breadcrumb -> humanized slug.
+		$post_title = $h1;
+		if ( '' === $post_title ) {
+			$post_title = $title;
+		}
+		if ( '' === $post_title ) {
+			$post_title = $breadcrumb;
+		}
+		if ( '' === $post_title ) {
+			$post_title = ucwords( str_replace( array( '-', '_' ), ' ', $slug ) );
+		}
+
+		$page_id = wp_insert_post( array(
+			'post_type'    => 'page',
+			'post_title'   => $post_title,
+			'post_name'    => $slug,
+			'post_status'  => 'publish',
+			'post_content' => '',
+		), true );
+
+		if ( is_wp_error( $page_id ) || ! $page_id ) {
+			$errors[] = $label_for_log;
+			continue;
+		}
+
+		if ( '' !== $title ) {
+			update_post_meta( $page_id, '_yoast_wpseo_title', $title );
+		}
+		if ( '' !== $description ) {
+			update_post_meta( $page_id, '_yoast_wpseo_metadesc', $description );
+		}
+		if ( '' !== $breadcrumb ) {
+			update_post_meta( $page_id, '_yoast_wpseo_bctitle', $breadcrumb );
+		}
+
+		$created[] = array(
+			'id'    => (int) $page_id,
+			'title' => $post_title,
+			'slug'  => $slug,
+			'link'  => get_edit_post_link( $page_id, 'raw' ),
+		);
+	}
+}
 
 /**
  * Get the list of tabs shown on the settings page.
@@ -1066,56 +1356,83 @@ function ekwa_render_settings_page() {
 		</form>
 
 		<!-- ========== BULK PAGES TAB (separate form — runs an action, not a save) ========== -->
-		<form method="post" action="" class="ekwa-bulk-pages-form" id="ekwa-bulk-pages-form">
+		<form method="post" action="" class="ekwa-bulk-pages-form" id="ekwa-bulk-pages-form" enctype="multipart/form-data">
 			<?php wp_nonce_field( 'ekwa_bulk_create_pages', 'ekwa_bulk_pages_nonce' ); ?>
 			<div class="ekwa-tab-pane <?php echo 'bulk-pages' === $active_tab ? 'active' : ''; ?>" data-tab="bulk-pages">
 				<div class="ekwa-section">
 					<h2><?php esc_html_e( 'Bulk Page Creator', 'ekwa' ); ?></h2>
 					<p class="description" style="margin-bottom:1em;">
-						<?php esc_html_e( 'Enter one page title per line. Each will be created as a published, top-level page. Pages whose title already exists are skipped.', 'ekwa' ); ?>
+						<?php esc_html_e( 'Upload a CSV to create or update pages in bulk, or fall back to a plain list of titles for quick page creation.', 'ekwa' ); ?>
 					</p>
 
 					<?php if ( is_array( $bulk_result ) ) : ?>
+						<?php
+						$created_rows = isset( $bulk_result['created'] ) ? $bulk_result['created'] : array();
+						$updated_rows = isset( $bulk_result['updated'] ) ? $bulk_result['updated'] : array();
+						$skipped_rows = isset( $bulk_result['skipped'] ) ? $bulk_result['skipped'] : array();
+						$error_rows   = isset( $bulk_result['errors'] )  ? $bulk_result['errors']  : array();
+						?>
 						<div class="ekwa-bulk-result notice notice-info inline" style="padding:12px 14px;margin:0 0 16px;">
 							<p style="margin-top:0;">
 								<strong>
 									<?php
 									printf(
-										/* translators: 1: created count, 2: skipped count, 3: error count */
-										esc_html__( 'Created %1$d, skipped %2$d, errors %3$d.', 'ekwa' ),
-										count( $bulk_result['created'] ),
-										count( $bulk_result['skipped'] ),
-										count( $bulk_result['errors'] )
+										/* translators: 1: created count, 2: updated count, 3: skipped count, 4: error count */
+										esc_html__( 'Created %1$d, updated %2$d, skipped %3$d, errors %4$d.', 'ekwa' ),
+										count( $created_rows ),
+										count( $updated_rows ),
+										count( $skipped_rows ),
+										count( $error_rows )
 									);
 									?>
 								</strong>
 							</p>
-							<?php if ( ! empty( $bulk_result['created'] ) ) : ?>
+							<?php if ( ! empty( $created_rows ) ) : ?>
 								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Created:', 'ekwa' ); ?></strong></p>
 								<ul style="margin:0 0 8px 20px;list-style:disc;">
-									<?php foreach ( $bulk_result['created'] as $row ) : ?>
+									<?php foreach ( $created_rows as $row ) : ?>
 										<li>
 											<?php if ( ! empty( $row['link'] ) ) : ?>
 												<a href="<?php echo esc_url( $row['link'] ); ?>"><?php echo esc_html( $row['title'] ); ?></a>
 											<?php else : ?>
 												<?php echo esc_html( $row['title'] ); ?>
 											<?php endif; ?>
+											<?php if ( ! empty( $row['slug'] ) ) : ?>
+												<code style="margin-left:6px;"><?php echo esc_html( $row['slug'] ); ?></code>
+											<?php endif; ?>
 										</li>
 									<?php endforeach; ?>
 								</ul>
 							<?php endif; ?>
-							<?php if ( ! empty( $bulk_result['skipped'] ) ) : ?>
-								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Skipped (already exist):', 'ekwa' ); ?></strong></p>
+							<?php if ( ! empty( $updated_rows ) ) : ?>
+								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Updated (filled empty fields only):', 'ekwa' ); ?></strong></p>
 								<ul style="margin:0 0 8px 20px;list-style:disc;">
-									<?php foreach ( $bulk_result['skipped'] as $title ) : ?>
+									<?php foreach ( $updated_rows as $row ) : ?>
+										<li>
+											<?php if ( ! empty( $row['link'] ) ) : ?>
+												<a href="<?php echo esc_url( $row['link'] ); ?>"><?php echo esc_html( $row['title'] ); ?></a>
+											<?php else : ?>
+												<?php echo esc_html( $row['title'] ); ?>
+											<?php endif; ?>
+											<?php if ( ! empty( $row['slug'] ) ) : ?>
+												<code style="margin-left:6px;"><?php echo esc_html( $row['slug'] ); ?></code>
+											<?php endif; ?>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+							<?php if ( ! empty( $skipped_rows ) ) : ?>
+								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Skipped:', 'ekwa' ); ?></strong></p>
+								<ul style="margin:0 0 8px 20px;list-style:disc;">
+									<?php foreach ( $skipped_rows as $title ) : ?>
 										<li><?php echo esc_html( $title ); ?></li>
 									<?php endforeach; ?>
 								</ul>
 							<?php endif; ?>
-							<?php if ( ! empty( $bulk_result['errors'] ) ) : ?>
+							<?php if ( ! empty( $error_rows ) ) : ?>
 								<p style="margin:8px 0 4px;"><strong><?php esc_html_e( 'Errors:', 'ekwa' ); ?></strong></p>
 								<ul style="margin:0 0 8px 20px;list-style:disc;">
-									<?php foreach ( $bulk_result['errors'] as $title ) : ?>
+									<?php foreach ( $error_rows as $title ) : ?>
 										<li><?php echo esc_html( $title ); ?></li>
 									<?php endforeach; ?>
 								</ul>
@@ -1125,22 +1442,41 @@ function ekwa_render_settings_page() {
 
 					<table class="form-table">
 						<tr>
-							<th><label for="ekwa_bulk_pages_titles"><?php esc_html_e( 'Page titles', 'ekwa' ); ?></label></th>
+							<th><label for="ekwa_bulk_pages_csv"><?php esc_html_e( 'CSV import', 'ekwa' ); ?></label></th>
+							<td>
+								<input
+									type="file"
+									id="ekwa_bulk_pages_csv"
+									name="ekwa_bulk_pages_csv"
+									accept=".csv,text/csv"
+								/>
+								<p class="description">
+									<?php
+									echo wp_kses(
+										__( 'Expected columns (header row required): <code>url</code>, <code>slug</code>, <code>title</code>, <code>description</code>, <code>h1</code>, <code>breadcrumb</code>. The <code>url</code> column is ignored. Pages are matched by <code>slug</code> — if a page already exists, only empty fields are filled in (the slug itself is never changed). Any phone number in <code>title</code> or <code>description</code> that matches a configured location is replaced with the <code>[ekwa_phone]</code> shortcode.', 'ekwa' ),
+										array( 'code' => array() )
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_bulk_pages_titles"><?php esc_html_e( 'Or page titles', 'ekwa' ); ?></label></th>
 							<td>
 								<textarea
 									id="ekwa_bulk_pages_titles"
 									name="ekwa_bulk_pages_titles"
-									rows="12"
+									rows="8"
 									class="large-text code"
 									spellcheck="false"
 									placeholder="<?php esc_attr_e( "About Us\nServices\nContact Us\nMeet the Team", 'ekwa' ); ?>"
 								></textarea>
-								<p class="description"><?php esc_html_e( 'One title per line. Empty lines are ignored.', 'ekwa' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Used only when no CSV is uploaded. One title per line; pages with duplicate titles are skipped.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 					</table>
 					<p class="submit">
-						<?php submit_button( __( 'Create Pages', 'ekwa' ), 'primary', 'ekwa_bulk_pages_submit', false ); ?>
+						<?php submit_button( __( 'Create / Update Pages', 'ekwa' ), 'primary', 'ekwa_bulk_pages_submit', false ); ?>
 					</p>
 				</div>
 			</div><!-- /bulk-pages -->
