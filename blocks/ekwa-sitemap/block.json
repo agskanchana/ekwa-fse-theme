@@ -15,7 +15,6 @@
 	},
 	"attributes": {
 		"title":           { "type": "string",  "default": "" },
-		"depth":           { "type": "number",  "default": 0 },
 		"columns":         { "type": "number",  "default": 1 },
 		"sortBy":          { "type": "string",  "default": "menu_order" },
 		"sortOrder":       { "type": "string",  "default": "ASC" },
@@ -24,8 +23,8 @@
 		"showDate":        { "type": "boolean", "default": false },
 		"showControls":    { "type": "boolean", "default": true },
 		"startCollapsed":  { "type": "boolean", "default": true },
-		"useMenu":         { "type": "boolean", "default": false },
-		"menuSlug":        { "type": "string",  "default": "site-map" },
+		"useMenu":         { "type": "boolean", "default": true },
+		"menuSlug":        { "type": "string",  "default": "sitemap" },
 		"linkColor":       { "type": "string",  "default": "" },
 		"controlColor":    { "type": "string",  "default": "" }
 	},

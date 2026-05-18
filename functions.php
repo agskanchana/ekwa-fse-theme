@@ -282,6 +282,7 @@ function ekwa_setup() {
 		'primary'         => __( 'Primary Menu', 'ekwa' ),
 		'mobile'          => __( 'Mobile Menu', 'ekwa' ),
 		'mobile_services' => __( 'Mobile Services Menu', 'ekwa' ),
+		'sitemap'         => __( 'Sitemap', 'ekwa' ),
 	) );
 	add_theme_support( 'post-thumbnails' );
 	add_theme_support( 'title-tag' );

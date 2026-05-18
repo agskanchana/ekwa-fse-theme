@@ -1198,7 +1198,6 @@ function ekwa_render_sitemap_block( $attrs ) {
 
 	/* ---- Attribute parsing ---- */
 	$title           = sanitize_text_field( $attrs['title']           ?? '' );
-	$depth           = absint( $attrs['depth']                        ?? 0 );
 	$columns         = max( 1, min( 4, absint( $attrs['columns']      ?? 1 ) ) );
 	$sort_by         = sanitize_key( $attrs['sortBy']                 ?? 'menu_order' );
 	$sort_order      = strtoupper( $attrs['sortOrder']                ?? 'ASC' );
@@ -1207,8 +1206,8 @@ function ekwa_render_sitemap_block( $attrs ) {
 	$show_date       = (bool) ( $attrs['showDate']                    ?? false );
 	$show_controls   = (bool) ( $attrs['showControls']                ?? true );
 	$start_collapsed = (bool) ( $attrs['startCollapsed']              ?? true );
-	$use_menu        = (bool) ( $attrs['useMenu']                     ?? false );
-	$menu_slug       = sanitize_text_field( $attrs['menuSlug']        ?? 'site-map' );
+	$use_menu        = (bool) ( $attrs['useMenu']                     ?? true );
+	$menu_slug       = sanitize_text_field( $attrs['menuSlug']        ?? 'sitemap' );
 	$link_color      = sanitize_hex_color( $attrs['linkColor']        ?? '' );
 	$ctrl_color      = sanitize_hex_color( $attrs['controlColor']     ?? '' );
 	$anchor          = sanitize_html_class( $attrs['anchor']          ?? '' );
@@ -1234,29 +1233,54 @@ function ekwa_render_sitemap_block( $attrs ) {
 	if ( empty( $ekwa_sitemap_css_done ) ) {
 		$ekwa_sitemap_css_done = true;
 		$out .= '<style id="ekwa-sitemap-css">'
+			/* Controls (Collapse All | Expand All) */
 			. '.ekwa-sitemap__controls{margin-bottom:12px;font-weight:700}'
 			. '.ekwa-sitemap__controls a{'
-			. 'color:var(--ekwa-sm-ctrl,var(--ekwa-sm-link,unset));'
+			. 'color:var(--ekwa-sm-ctrl,var(--ekwa-sm-link,inherit));'
 			. 'text-decoration:none;cursor:pointer}'
 			. '.ekwa-sitemap__controls a:hover{text-decoration:underline}'
 			. '.ekwa-sitemap__title{margin-bottom:16px}'
+			/* Lists — dotted vertical line via background-image (border-left is unreliable across themes) */
 			. '.ekwa-sitemap__list,.ekwa-sitemap__children{'
-			. 'list-style:none!important;margin:0;padding:0}'
-			. '.ekwa-sitemap__children{padding-left:20px}'
-			. '.ekwa-sitemap__item{padding:2px 0;line-height:1.8}'
+			. 'list-style:none!important;margin:0;'
+			. 'margin-left:8px;padding-left:18px;position:relative;'
+			. 'background-image:linear-gradient(to bottom,#888 50%,transparent 50%);'
+			. 'background-size:1px 4px;'
+			. 'background-repeat:repeat-y;'
+			. 'background-position:0 0}'
+			/* Item row */
+			. '.ekwa-sitemap__item{'
+			. 'position:relative;padding:2px 0;line-height:1.8}'
+			/* Horizontal dotted connector from the vertical line to the row */
+			. '.ekwa-sitemap__list>.ekwa-sitemap__item::before,'
+			. '.ekwa-sitemap__children>.ekwa-sitemap__item::before{'
+			. 'content:"";position:absolute;left:-18px;top:.95em;'
+			. 'width:18px;height:1px;'
+			. 'background-image:linear-gradient(to right,#888 50%,transparent 50%);'
+			. 'background-size:4px 1px;background-repeat:repeat-x}'
+			/* Mask the trailing piece of vertical line below the last item\'s centre */
+			. '.ekwa-sitemap__list>.ekwa-sitemap__item:last-child::after,'
+			. '.ekwa-sitemap__children>.ekwa-sitemap__item:last-child::after{'
+			. 'content:"";position:absolute;left:-19px;top:calc(.95em + 1px);bottom:0;'
+			. 'width:3px;background:#fff;z-index:1}'
+			/* Inner row: toggle (or spacer) + link */
 			. '.ekwa-sitemap__item-inner{'
-			. 'display:flex;align-items:center;gap:4px}'
+			. 'display:inline-flex;align-items:center;gap:4px;'
+			. 'padding-right:2px;position:relative}'
+			/* +/- toggle box (classic treeview look) */
 			. '.ekwa-sitemap__toggle{'
 			. 'display:inline-flex;align-items:center;justify-content:center;'
-			. 'width:15px;height:15px;min-width:15px;'
-			. 'border:1px solid #888;background:#fff;color:#444;'
+			. 'width:13px;height:13px;min-width:13px;'
+			. 'border:1px solid #888;background:#fff;color:#333;'
 			. 'font-size:11px;line-height:1;cursor:pointer;padding:0;'
 			. 'font-family:monospace;font-weight:700;flex-shrink:0;'
-			. 'border-radius:0}'
+			. 'border-radius:0;margin-right:4px}'
 			. '.ekwa-sitemap__toggle:hover{background:#f0f0f0}'
+			/* Link styling */
 			. '.ekwa-sitemap__link{'
-			. 'color:var(--ekwa-sm-link,unset);text-decoration:none}'
+			. 'color:var(--ekwa-sm-link,inherit);text-decoration:none}'
 			. '.ekwa-sitemap__link:hover{text-decoration:underline}'
+			/* Description / date */
 			. '.ekwa-sitemap__desc{'
 			. 'font-size:.85em;color:#666;margin:0 0 2px 19px;'
 			. 'padding:0;line-height:1.4}'
@@ -1304,9 +1328,9 @@ function ekwa_render_sitemap_block( $attrs ) {
 			. '</div>';
 	}
 
-	/* ---- Recursive renderer ---- */
+	/* ---- Recursive renderer (unlimited depth) ---- */
 	$render = null;
-	$render = function ( $nodes, $cur ) use ( &$render, $depth, $show_desc, $show_date ) {
+	$render = function ( $nodes ) use ( &$render, $show_desc, $show_date ) {
 		$html = '';
 		foreach ( $nodes as $node ) {
 			$has_kids = ! empty( $node['children'] );
@@ -1336,10 +1360,9 @@ function ekwa_render_sitemap_block( $attrs ) {
 					. '</p>';
 			}
 
-			/* Recurse */
-			if ( $has_kids && ( 0 === $depth || $cur < $depth ) ) {
+			if ( $has_kids ) {
 				$html .= '<ul class="ekwa-sitemap__children">';
-				$html .= $render( $node['children'], $cur + 1 );
+				$html .= $render( $node['children'] );
 				$html .= '</ul>';
 			}
 
@@ -1349,7 +1372,7 @@ function ekwa_render_sitemap_block( $attrs ) {
 	};
 
 	$out .= '<ul class="ekwa-sitemap__list">';
-	$out .= $render( $tree, 1 );
+	$out .= $render( $tree );
 	$out .= '</ul>';
 
 	/* Column styles (scoped to this instance) */
@@ -1508,26 +1531,82 @@ function ekwa_sitemap_menu_tree( $menu_slug ) {
 		return array();
 	}
 
+	// Index items by parent ID up-front so we don't re-scan the list per level.
+	$children_of = array();
+	foreach ( $items as $item ) {
+		$children_of[ (int) $item->menu_item_parent ][] = $item;
+	}
+
 	$build = null;
-	$build = function ( $items, $parent_id ) use ( &$build ) {
+	$build = function ( $parent_id ) use ( &$build, $children_of ) {
+		if ( empty( $children_of[ $parent_id ] ) ) {
+			return array();
+		}
 		$nodes = array();
-		foreach ( $items as $item ) {
-			if ( (int) $item->menu_item_parent !== $parent_id ) {
-				continue;
-			}
-			$nodes[] = array(
+		foreach ( $children_of[ $parent_id ] as $item ) {
+			$node = array(
 				'title'        => $item->title,
 				'url'          => $item->url,
 				'excerpt'      => '',
 				'date_display' => '',
 				'date_iso'     => '',
-				'children'     => $build( $items, $item->ID ),
+				'children'     => $build( (int) $item->ID ),
 			);
+
+			/*
+			 * If the menu item links to a page and has no explicit menu
+			 * children, auto-include that page's child pages so deep page
+			 * trees show up without having to add every page to the menu.
+			 */
+			if ( empty( $node['children'] ) && isset( $item->object ) && 'page' === $item->object ) {
+				$node['children'] = ekwa_sitemap_page_children_recursive( (int) $item->object_id );
+			}
+
+			$nodes[] = $node;
 		}
 		return $nodes;
 	};
 
-	return $build( $items, 0 );
+	return $build( 0 );
+}
+
+/**
+ * Recursively build a child-page tree for a given parent page ID.
+ *
+ * Used by the menu tree to auto-populate descendants when a menu item points
+ * to a page that has child pages but those children aren't in the nav menu.
+ *
+ * @param int $parent_id Parent page ID.
+ * @return array
+ */
+function ekwa_sitemap_page_children_recursive( $parent_id ) {
+	if ( $parent_id <= 0 ) {
+		return array();
+	}
+
+	$children = get_pages( array(
+		'parent'      => $parent_id,
+		'sort_column' => 'menu_order,post_title',
+		'sort_order'  => 'ASC',
+		'post_status' => 'publish',
+	) );
+
+	if ( empty( $children ) ) {
+		return array();
+	}
+
+	$nodes = array();
+	foreach ( $children as $child ) {
+		$nodes[] = array(
+			'title'        => $child->post_title,
+			'url'          => get_permalink( $child->ID ),
+			'excerpt'      => '',
+			'date_display' => '',
+			'date_iso'     => '',
+			'children'     => ekwa_sitemap_page_children_recursive( $child->ID ),
+		);
+	}
+	return $nodes;
 }
 
 /**

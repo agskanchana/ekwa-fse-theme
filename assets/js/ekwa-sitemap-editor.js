@@ -72,15 +72,6 @@
 						min:      1,
 						max:      4,
 						onChange: function ( v ) { setAttrs( { columns: v } ); },
-					} ),
-
-					el( RangeControl, {
-						label:    __( 'Depth', 'ekwa' ),
-						help:     __( '0 = unlimited levels. 1 = top-level only. 2 = top + one child level, etc.', 'ekwa' ),
-						value:    attrs.depth,
-						min:      0,
-						max:      5,
-						onChange: function ( v ) { setAttrs( { depth: v } ); },
 					} )
 				),
 
@@ -118,15 +109,15 @@
 					el( ToggleControl, {
 						label:    __( 'Use a nav menu instead of pages', 'ekwa' ),
 						help:     attrs.useMenu
-							? __( 'Displaying items from a WordPress nav menu.', 'ekwa' )
+							? __( 'Displaying items from a WordPress nav menu. Assign a menu under Appearance → Menus → Manage Locations → Sitemap.', 'ekwa' )
 							: __( 'Auto-building from all published pages.', 'ekwa' ),
 						checked:  attrs.useMenu,
 						onChange: function ( v ) { setAttrs( { useMenu: v } ); },
 					} ),
 
 					attrs.useMenu && el( TextControl, {
-						label:    __( 'Menu Slug / Location', 'ekwa' ),
-						help:     __( 'The menu slug (e.g. site-map) as shown in Appearance → Menus.', 'ekwa' ),
+						label:    __( 'Menu Location / Slug', 'ekwa' ),
+						help:     __( 'Default: "sitemap" (the registered theme menu location). You can override with any menu slug shown under Appearance → Menus.', 'ekwa' ),
 						value:    attrs.menuSlug,
 						onChange: function ( v ) { setAttrs( { menuSlug: v } ); },
 					} ),
@@ -206,7 +197,7 @@
 								style:     { fontSize: '36px', width: '36px', height: '36px', color: '#aaa', display: 'block', margin: '0 auto 8px' },
 							} ),
 							attrs.useMenu
-								? __( 'Ekwa Sitemap — no menu found for slug "' + attrs.menuSlug + '".', 'ekwa' )
+								? __( 'Ekwa Sitemap — no menu assigned to location "' + attrs.menuSlug + '". Assign one under Appearance → Menus → Manage Locations.', 'ekwa' )
 								: __( 'Ekwa Sitemap — no published pages found.', 'ekwa' )
 						);
 					},
