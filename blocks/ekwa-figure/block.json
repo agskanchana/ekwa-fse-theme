@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/figure",
+	"version": "1.0.0",
+	"title": "Ekwa Figure",
+	"category": "common",
+	"icon": "format-image",
+	"description": "Clean <figure> wrapper for images + optional figcaption. Accepts any inner blocks (ekwa/image, ekwa/text, etc.).",
+	"textdomain": "ekwa",
+	"keywords": [ "figure", "image", "caption", "figcaption" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"customAttributes": { "type": "object", "default": {} }
+	},
+	"editorScript": "ekwa-figure-editor"
+}

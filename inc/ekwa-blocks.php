@@ -563,6 +563,22 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Figure block (clean <figure> wrapper for image + caption).
+	wp_register_script(
+		'ekwa-figure-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-figure-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-figure-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-figure',
+		array(
+			'render_callback' => 'ekwa_render_figure_block',
+		)
+	);
+
 	// Video block (clean <video> — no figure wrapper).
 	wp_register_script(
 		'ekwa-video-editor',
@@ -3602,6 +3618,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$allowed = array(
 		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',
 		'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub',
+		'figcaption',
 	);
 	if ( ! in_array( $tag, $allowed, true ) ) {
 		$tag = 'div';
@@ -3643,6 +3660,30 @@ function ekwa_render_div_block( $attrs, $content ) {
 	}
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</' . $tag . '>';
+
+	return $html;
+}
+
+/**
+ * Server-side render callback for the ekwa/figure block.
+ *
+ * Outputs <figure class="..." id="..."> wrapping the inner blocks. Pairs
+ * naturally with ekwa/image (the <img>) and ekwa/text with tagName=figcaption
+ * (the caption).
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content InnerBlocks HTML.
+ * @return string
+ */
+function ekwa_render_figure_block( $attrs, $content ) {
+	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] )    : '';
+
+	$html = '<figure';
+	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= ekwa_render_custom_attributes( $attrs );
+	$html .= '>' . $content . '</figure>';
 
 	return $html;
 }

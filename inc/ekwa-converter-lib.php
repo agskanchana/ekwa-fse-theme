@@ -171,9 +171,17 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	}
 
 	// Semantic wrapper tags → ekwa/div with tagName.
-	$semantic_tags = array( 'section', 'header', 'footer', 'main', 'aside', 'article', 'nav' );
+	// (figcaption uses the same treatment so simple text captions work; <figure>
+	// itself gets its own dedicated block below.)
+	$semantic_tags = array( 'section', 'header', 'footer', 'main', 'aside', 'article', 'nav', 'figcaption' );
 	if ( in_array( $tag, $semantic_tags, true ) ) {
 		return ekwa_mc_convert_div_block( $node, $depth, $tag );
+	}
+
+	// <figure> → ekwa/figure (inner <img> becomes ekwa/image, <figcaption>
+	// becomes ekwa/div tagName=figcaption via the semantic-tags path above).
+	if ( $tag === 'figure' ) {
+		return ekwa_mc_convert_figure_block( $node, $depth );
 	}
 
 	// Headings → core/heading.
@@ -633,6 +641,33 @@ function ekwa_mc_convert_image( $node, $depth ) {
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/image' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Convert a <figure> element into the ekwa/figure block, recursively
+ * converting children (so nested <img> becomes ekwa/image and <figcaption>
+ * becomes ekwa/div tagName=figcaption).
+ */
+function ekwa_mc_convert_figure_block( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$class  = $node->getAttribute( 'class' );
+	$attrs  = array();
+
+	if ( $class ) {
+		$attrs['className'] = $class;
+	}
+	$custom = ekwa_mc_extract_custom_attributes( $node );
+	if ( ! empty( $custom ) ) {
+		$attrs['customAttributes'] = $custom;
+	}
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	$children = ekwa_mc_convert_children( $node, $depth + 1 );
+
+	return $indent . '<!-- wp:ekwa/figure' . $attrs_json . ' -->' . "\n" .
+	       $children .
+	       $indent . '<!-- /wp:ekwa/figure -->' . "\n";
 }
 
 /**
