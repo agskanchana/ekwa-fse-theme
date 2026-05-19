@@ -19,10 +19,8 @@
 
 	var ALLOWED  = [ 'ekwa/faq-question', 'ekwa/faq-answer' ];
 	var TEMPLATE = [
-		[ 'ekwa/faq-question', { content: '' } ],
-		[ 'ekwa/faq-answer', {}, [
-			[ 'core/paragraph', { placeholder: 'Write the answer…' } ],
-		] ],
+		[ 'ekwa/faq-question' ],
+		[ 'ekwa/faq-answer' ],
 	];
 
 	function Edit( props ) {
@@ -49,7 +47,7 @@
 				el( InnerBlocks, {
 					allowedBlocks: ALLOWED,
 					template:      TEMPLATE,
-					templateLock:  'all',
+					templateLock:  false,
 					orientation:   'vertical',
 				} )
 			)

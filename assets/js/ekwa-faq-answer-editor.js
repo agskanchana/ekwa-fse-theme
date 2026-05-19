@@ -23,7 +23,7 @@
 	];
 
 	var TEMPLATE = [
-		[ 'core/paragraph', { placeholder: 'Write the answer…' } ],
+		[ 'core/paragraph' ],
 	];
 
 	function Edit() {
