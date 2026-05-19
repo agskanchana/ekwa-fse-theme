@@ -771,6 +771,15 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 		case 'hide_on_pages':
 			if ( is_page() ) { return ''; }
 			break;
+		case 'cornerstone_only':
+			if ( ! is_singular() ) { return ''; }
+			if ( '1' !== (string) get_post_meta( get_the_ID(), '_yoast_wpseo_is_cornerstone', true ) ) { return ''; }
+			break;
+		case 'cornerstone_or_posts':
+			$is_post        = is_singular( 'post' );
+			$is_cornerstone = is_singular() && '1' === (string) get_post_meta( get_the_ID(), '_yoast_wpseo_is_cornerstone', true );
+			if ( ! $is_post && ! $is_cornerstone ) { return ''; }
+			break;
 	}
 
 	/* ------------------------------------------------------------------
@@ -1031,7 +1040,35 @@ function ekwa_render_phone_block( $attrs ) {
 		'icon_class'   => isset( $attrs['iconClass'] )   ? $attrs['iconClass']                                     : 'fa-solid fa-phone',
 		'country_code' => isset( $attrs['countryCode'] ) ? $attrs['countryCode']                                   : '',
 	);
-	return ekwa_phone_shortcode( $shortcode_atts );
+
+	$html = ekwa_phone_shortcode( $shortcode_atts );
+	if ( '' === $html ) {
+		return '';
+	}
+
+	// Merge editor-supplied Additional CSS class(es) and HTML anchor into the wrapper
+	// span. The shortcode itself can't know about them, so we splice them in here.
+	$extra_class = isset( $attrs['className'] ) ? trim( (string) $attrs['className'] ) : '';
+	$anchor      = isset( $attrs['anchor'] )    ? sanitize_html_class( (string) $attrs['anchor'] ) : '';
+
+	if ( '' !== $extra_class ) {
+		$html = preg_replace(
+			'/class="ekwa-phone-number"/',
+			'class="ekwa-phone-number ' . esc_attr( $extra_class ) . '"',
+			$html,
+			1
+		);
+	}
+	if ( '' !== $anchor ) {
+		$html = preg_replace(
+			'/<span class="ekwa-phone-number/',
+			'<span id="' . esc_attr( $anchor ) . '" class="ekwa-phone-number',
+			$html,
+			1
+		);
+	}
+
+	return $html;
 }
 
 /**

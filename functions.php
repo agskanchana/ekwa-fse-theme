@@ -27,6 +27,11 @@ $ekwa_theme_updater = PucFactory::buildUpdateChecker(
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * Load custom fonts registry (Fonts tab + frontend output + theme.json filter).
+ */
+require_once get_template_directory() . '/inc/ekwa-fonts.php';
+
+/**
  * Load schema.org JSON-LD output (uses ekwa-settings data).
  */
 require_once get_template_directory() . '/inc/ekwa-schema.php';

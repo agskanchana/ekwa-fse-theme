@@ -738,6 +738,7 @@ function ekwa_settings_tabs() {
 		'branding'      => __( 'Branding', 'ekwa' ),
 		'locations'     => __( 'Locations', 'ekwa' ),
 		'related-posts' => __( 'Related Posts', 'ekwa' ),
+		'fonts'         => __( 'Fonts', 'ekwa' ),
 		'performance'   => __( 'Performance', 'ekwa' ),
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
@@ -1198,6 +1199,11 @@ function ekwa_render_settings_page() {
 					</script>
 				</div>
 			</div><!-- /related-posts -->
+
+			<!-- ========== FONTS TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'fonts' === $active_tab ? 'active' : ''; ?>" data-tab="fonts">
+				<?php if ( function_exists( 'ekwa_fonts_render_tab' ) ) { ekwa_fonts_render_tab(); } ?>
+			</div><!-- /fonts -->
 
 			<!-- ========== PERFORMANCE TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'performance' === $active_tab ? 'active' : ''; ?>" data-tab="performance">

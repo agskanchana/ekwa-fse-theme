@@ -173,6 +173,8 @@
 							{ label: __( '404 page',           'ekwa' ), value: '404'           },
 							{ label: __( 'Hide on posts',      'ekwa' ), value: 'hide_on_posts' },
 							{ label: __( 'Hide on pages',      'ekwa' ), value: 'hide_on_pages' },
+							{ label: __( 'Cornerstone content only (Yoast)',    'ekwa' ), value: 'cornerstone_only'     },
+							{ label: __( 'Cornerstone content + blog posts',    'ekwa' ), value: 'cornerstone_or_posts' },
 						],
 						onChange : function ( v ) { setAttrs( { contentType: v } ); },
 					} )
