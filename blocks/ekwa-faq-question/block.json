@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/faq-question",
+	"version": "1.0.0",
+	"title": "Ekwa FAQ Question",
+	"category": "design",
+	"icon": "editor-help",
+	"parent": [ "ekwa/faq-container" ],
+	"description": "A question heading inside an Ekwa FAQ Container.",
+	"textdomain": "ekwa",
+	"keywords": [ "faq", "question" ],
+	"supports": {
+		"html": false,
+		"reusable": false,
+		"anchor": true
+	},
+	"attributes": {
+		"content":   { "type": "string", "default": "" },
+		"level":     { "type": "number", "default": 2 },
+		"textAlign": { "type": "string", "default": "" }
+	},
+	"editorScript": "ekwa-faq-question-editor"
+}

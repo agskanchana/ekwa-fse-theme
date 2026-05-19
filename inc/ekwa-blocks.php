@@ -643,6 +643,54 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// FAQ Container block (content-style FAQ: separate question + answer children).
+	wp_register_script(
+		'ekwa-faq-container-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-faq-container-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-faq-container-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-faq-container',
+		array(
+			'render_callback' => 'ekwa_render_faq_container_block',
+		)
+	);
+
+	// FAQ Question child block.
+	wp_register_script(
+		'ekwa-faq-question-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-faq-question-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-faq-question-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-faq-question',
+		array(
+			'render_callback' => 'ekwa_render_faq_question_block',
+		)
+	);
+
+	// FAQ Answer child block.
+	wp_register_script(
+		'ekwa-faq-answer-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-faq-answer-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-faq-answer-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-faq-answer',
+		array(
+			'render_callback' => 'ekwa_render_faq_answer_block',
+		)
+	);
+
 	// Policy Pages block (fetches a remote policy page from policies.ekwa.com,
 	// substituting practice values from Ekwa Settings).
 	wp_register_script(
@@ -4573,4 +4621,184 @@ function ekwa_render_reveal_hidden_block( $attrs, $content ) {
 	$html .= '>' . $content . '</div>';
 
 	return $html;
+}
+
+/**
+ * Collector for FAQPage schema entities across all ekwa/faq-container
+ * blocks rendered during the current request. Aggregated and emitted as
+ * ONE <script type="application/ld+json"> in wp_footer to avoid the
+ * "Duplicate field FAQPage" error when a page contains multiple
+ * containers.
+ *
+ * @param array|null $push  Optional entity to append.
+ * @return array            The current collected entities.
+ */
+function ekwa_faq_container_schema_collector( $push = null ) {
+	static $entities = array();
+	if ( is_array( $push ) ) {
+		$entities[] = $push;
+	}
+	return $entities;
+}
+
+/**
+ * Reduce an answer's rendered HTML to the subset Google supports inside
+ * FAQPage acceptedAnswer.text: paragraphs, lists, links, basic formatting.
+ * Drops images, videos, iframes, scripts, and any layout markup so the
+ * schema text stays clean and the structure (e.g. list bullets) survives.
+ */
+function ekwa_faq_clean_answer_html( $html ) {
+	$allowed = array(
+		'p'      => array(),
+		'br'     => array(),
+		'ul'     => array(),
+		'ol'     => array(),
+		'li'     => array(),
+		'a'      => array(
+			'href'   => true,
+			'rel'    => true,
+			'target' => true,
+		),
+		'strong' => array(),
+		'b'      => array(),
+		'em'     => array(),
+		'i'      => array(),
+		'u'      => array(),
+		'h2'     => array(),
+		'h3'     => array(),
+		'h4'     => array(),
+		'h5'     => array(),
+		'h6'     => array(),
+	);
+
+	$clean = wp_kses( $html, $allowed );
+	$clean = preg_replace( '/[ \t\r\n]+/', ' ', $clean );
+	$clean = preg_replace( '/>\s+</', '><', $clean );
+	return trim( $clean );
+}
+
+/**
+ * Render: ekwa/faq-container.
+ *
+ * Renders the inner question/answer siblings inside a wrapper and, when
+ * enabled, pushes its Q+A pair into the page-level FAQPage collector.
+ * The collector is emitted once in wp_footer.
+ */
+function ekwa_render_faq_container_block( $attrs, $content, $block = null ) {
+	$emit_schema = ! isset( $attrs['emitSchema'] ) || ! empty( $attrs['emitSchema'] );
+
+	$wrapper_attrs = get_block_wrapper_attributes( array( 'class' => 'ekwa-faq-container' ) );
+
+	if ( $emit_schema && $block && ! empty( $block->parsed_block['innerBlocks'] ) ) {
+		$pending_q    = null;
+		$inner_blocks = $block->parsed_block['innerBlocks'];
+
+		foreach ( $inner_blocks as $inner ) {
+			$name = isset( $inner['blockName'] ) ? $inner['blockName'] : '';
+
+			if ( 'ekwa/faq-question' === $name ) {
+				$question_raw = isset( $inner['attrs']['content'] ) ? $inner['attrs']['content'] : '';
+				$question     = trim( html_entity_decode( wp_strip_all_tags( $question_raw ), ENT_QUOTES, 'UTF-8' ) );
+				$pending_q    = '' !== $question ? $question : null;
+				continue;
+			}
+
+			if ( 'ekwa/faq-answer' === $name && null !== $pending_q ) {
+				$answer_html = '';
+				if ( ! empty( $inner['innerBlocks'] ) ) {
+					foreach ( $inner['innerBlocks'] as $child ) {
+						$answer_html .= render_block( $child );
+					}
+				} else {
+					$answer_html = isset( $inner['innerHTML'] ) ? $inner['innerHTML'] : '';
+				}
+
+				$answer_text = ekwa_faq_clean_answer_html( $answer_html );
+
+				if ( '' !== $answer_text ) {
+					ekwa_faq_container_schema_collector( array(
+						'@type'          => 'Question',
+						'name'           => $pending_q,
+						'acceptedAnswer' => array(
+							'@type' => 'Answer',
+							'text'  => $answer_text,
+						),
+					) );
+				}
+
+				$pending_q = null;
+			}
+		}
+	}
+
+	return '<div ' . $wrapper_attrs . '>' . $content . '</div>';
+}
+
+/**
+ * Emit one combined FAQPage JSON-LD <script> in the footer if any
+ * ekwa/faq-container blocks contributed entities this request.
+ */
+function ekwa_emit_faq_container_schema() {
+	$entities = ekwa_faq_container_schema_collector();
+	if ( empty( $entities ) ) {
+		return;
+	}
+
+	$schema = array(
+		'@context'   => 'https://schema.org',
+		'@type'      => 'FAQPage',
+		'mainEntity' => $entities,
+	);
+
+	echo '<script type="application/ld+json">'
+		. wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+		. '</script>';
+}
+add_action( 'wp_footer', 'ekwa_emit_faq_container_schema', 99 );
+
+/**
+ * Render: ekwa/faq-question.
+ *
+ * Outputs the chosen <hN> with optional text-align and bold/italic inline.
+ */
+function ekwa_render_faq_question_block( $attrs, $content ) {
+	$level = isset( $attrs['level'] ) ? (int) $attrs['level'] : 2;
+	if ( $level < 2 || $level > 6 ) {
+		$level = 2;
+	}
+	$tag = 'h' . $level;
+
+	$text_align = isset( $attrs['textAlign'] ) ? $attrs['textAlign'] : '';
+	$allowed_alignments = array( 'left', 'center', 'right' );
+	if ( ! in_array( $text_align, $allowed_alignments, true ) ) {
+		$text_align = '';
+	}
+
+	$question = isset( $attrs['content'] ) ? wp_kses(
+		$attrs['content'],
+		array(
+			'strong' => array(),
+			'b'      => array(),
+			'em'     => array(),
+			'i'      => array(),
+		)
+	) : '';
+
+	$extra = array( 'class' => 'ekwa-faq-container__q' );
+	if ( $text_align ) {
+		$extra['style'] = 'text-align:' . $text_align . ';';
+	}
+	$wrapper_attrs = get_block_wrapper_attributes( $extra );
+
+	return '<' . $tag . ' ' . $wrapper_attrs . '>' . $question . '</' . $tag . '>';
+}
+
+/**
+ * Render: ekwa/faq-answer.
+ *
+ * Wraps the inner answer content in a styled div.
+ */
+function ekwa_render_faq_answer_block( $attrs, $content ) {
+	$wrapper_attrs = get_block_wrapper_attributes( array( 'class' => 'ekwa-faq-container__a' ) );
+	return '<div ' . $wrapper_attrs . '>' . $content . '</div>';
 }

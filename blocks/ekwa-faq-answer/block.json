@@ -1,0 +1,19 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/faq-answer",
+	"version": "1.0.0",
+	"title": "Ekwa FAQ Answer",
+	"category": "design",
+	"icon": "editor-paste-text",
+	"parent": [ "ekwa/faq-container" ],
+	"description": "An answer body (paragraphs, lists, headings, images) inside an Ekwa FAQ Container.",
+	"textdomain": "ekwa",
+	"keywords": [ "faq", "answer" ],
+	"supports": {
+		"html": false,
+		"reusable": false,
+		"anchor": true
+	},
+	"editorScript": "ekwa-faq-answer-editor"
+}
