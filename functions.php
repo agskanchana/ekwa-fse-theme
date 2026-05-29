@@ -115,7 +115,7 @@ require_once get_template_directory() . '/inc/ekwa-header-menu.php';
 function ekwa_enqueue_styles() {
 	wp_enqueue_style(
 		'ekwa-style',
-		get_stylesheet_uri(),
+		get_template_directory_uri() . '/style.css',
 		array(),
 		wp_get_theme()->get( 'Version' )
 	);

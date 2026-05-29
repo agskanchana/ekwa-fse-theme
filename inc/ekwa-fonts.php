@@ -3,7 +3,7 @@
  * Ekwa Custom Fonts.
  *
  * Lets admins add fonts to the theme as either an uploaded font file or a
- * Google Font downloaded server-side into /assets/fonts/. Each font is bound
+ * Google Font downloaded server-side into wp-content/fonts/. Each font is bound
  * to a user-named CSS variable that is emitted in <head> and also registered
  * in theme.json so it appears in the block editor font-family picker.
  *
@@ -19,21 +19,63 @@ if ( ! defined( 'ABSPATH' ) ) {
  * ------------------------------------------------------------------------ */
 
 define( 'EKWA_FONTS_OPTION', 'ekwa_custom_fonts' );
-define( 'EKWA_FONTS_DIR_REL', '/assets/fonts/' );
+define( 'EKWA_FONTS_MIGRATED_OPTION', 'ekwa_fonts_migrated_to_content' );
 
 /**
  * Get the absolute filesystem path to the fonts dir, with trailing slash.
+ * Stored under wp-content/fonts/ so files survive theme updates/switches.
  */
 function ekwa_fonts_dir_path() {
-	return trailingslashit( get_template_directory() . EKWA_FONTS_DIR_REL );
+	return trailingslashit( WP_CONTENT_DIR . '/fonts' );
 }
 
 /**
  * Get the public URL for the fonts dir, with trailing slash.
  */
 function ekwa_fonts_dir_url() {
-	return trailingslashit( get_template_directory_uri() . EKWA_FONTS_DIR_REL );
+	return trailingslashit( content_url( '/fonts' ) );
 }
+
+/**
+ * Legacy location (kept only so we can migrate files out of it once).
+ */
+function ekwa_fonts_legacy_dir_path() {
+	return trailingslashit( get_template_directory() . '/assets/fonts' );
+}
+
+/**
+ * One-time migration: move any font files that were previously saved under the
+ * theme's assets/fonts directory into wp-content/fonts so saved entries keep
+ * resolving after the path change. Safe to call on every request — it short-
+ * circuits once the option flag is set.
+ */
+function ekwa_fonts_maybe_migrate_legacy_dir() {
+	if ( get_option( EKWA_FONTS_MIGRATED_OPTION ) ) {
+		return;
+	}
+	$legacy = ekwa_fonts_legacy_dir_path();
+	if ( ! is_dir( $legacy ) ) {
+		update_option( EKWA_FONTS_MIGRATED_OPTION, 1, false );
+		return;
+	}
+	$target = ekwa_fonts_ensure_dir();
+	if ( is_wp_error( $target ) ) {
+		return; // try again next request
+	}
+	$files = glob( $legacy . 'ekwa-*.{woff2,woff,ttf,otf}', GLOB_BRACE );
+	if ( is_array( $files ) ) {
+		foreach ( $files as $src ) {
+			$dest = $target . basename( $src );
+			if ( file_exists( $dest ) ) {
+				continue;
+			}
+			@rename( $src, $dest ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+	}
+	update_option( EKWA_FONTS_MIGRATED_OPTION, 1, false );
+}
+add_action( 'admin_init', 'ekwa_fonts_maybe_migrate_legacy_dir' );
+add_action( 'init', 'ekwa_fonts_maybe_migrate_legacy_dir' );
 
 /**
  * Allowed font file extensions (lowercased, no dot).
@@ -144,7 +186,7 @@ function ekwa_fonts_admin_enqueue( $hook ) {
 			'uploading'       => __( 'Uploading…', 'ekwa' ),
 			'pickFont'        => __( 'Search Google Fonts…', 'ekwa' ),
 			'noResults'       => __( 'No matching fonts', 'ekwa' ),
-			'confirmRemove'   => __( 'Remove this font entry? Existing files in /assets/fonts will stay on disk.', 'ekwa' ),
+			'confirmRemove'   => __( 'Remove this font entry? Existing files in wp-content/fonts will stay on disk.', 'ekwa' ),
 			'missingFamily'   => __( 'Please choose a Google Font first.', 'ekwa' ),
 			'missingWeights'  => __( 'Please pick at least one weight.', 'ekwa' ),
 			'missingFile'     => __( 'Please choose a font file (.woff2, .woff, .ttf, .otf).', 'ekwa' ),
@@ -753,7 +795,10 @@ function ekwa_fonts_filter_theme_json( $theme_json ) {
 	}
 
 	$current   = $theme_json->get_data();
-	$existing  = $current['settings']['typography']['fontFamilies'] ?? array();
+	// In the theme.json data filter, presets are origin-nested: the theme's own
+	// font families live under the 'theme' key. Reading the bare 'fontFamilies'
+	// would return the origin map and clobber the theme families on merge.
+	$existing  = $current['settings']['typography']['fontFamilies']['theme'] ?? array();
 	$url_base  = ekwa_fonts_dir_url();
 	$dir_base  = ekwa_fonts_dir_path();
 
@@ -792,7 +837,22 @@ function ekwa_fonts_filter_theme_json( $theme_json ) {
 		return $theme_json;
 	}
 
-	$merged = array_merge( $existing, $new_entries );
+	// Append our fonts, but let an existing theme family with the same slug win
+	// (and guard against duplicates if the filter runs more than once).
+	$existing_slugs = array();
+	foreach ( $existing as $entry ) {
+		if ( isset( $entry['slug'] ) ) {
+			$existing_slugs[ $entry['slug'] ] = true;
+		}
+	}
+	$merged = $existing;
+	foreach ( $new_entries as $entry ) {
+		if ( isset( $existing_slugs[ $entry['slug'] ] ) ) {
+			continue;
+		}
+		$merged[] = $entry;
+	}
+
 	return $theme_json->update_with( array(
 		'version'  => $current['version'] ?? 3,
 		'settings' => array(
