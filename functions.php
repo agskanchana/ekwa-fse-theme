@@ -113,11 +113,16 @@ require_once get_template_directory() . '/inc/ekwa-header-menu.php';
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
-	wp_enqueue_style(
+	// The parent theme's style.css contains only the desktop/mobile header
+	// toggle. Inline it (no HTTP request) but keep the 'ekwa-style' handle
+	// registered with src=false so dependent styles (ekwa-mobile, ekwa-blocks-css,
+	// ekwa-block-styles, and the child's ekwa-child-style) still chain to it.
+	wp_register_style( 'ekwa-style', false, array(), wp_get_theme()->get( 'Version' ) );
+	wp_enqueue_style( 'ekwa-style' );
+	wp_add_inline_style(
 		'ekwa-style',
-		get_template_directory_uri() . '/style.css',
-		array(),
-		wp_get_theme()->get( 'Version' )
+		'@media (max-width:1199px){.ekwa-desktop-header{display:none !important}}' .
+		'@media (min-width:1200px){.ekwa-mobile-header{display:none !important}}'
 	);
 	wp_enqueue_style(
 		'font-awesome',
