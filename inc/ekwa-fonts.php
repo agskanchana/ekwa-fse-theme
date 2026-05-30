@@ -768,6 +768,49 @@ function ekwa_fonts_print_head() {
 add_action( 'wp_head', 'ekwa_fonts_print_head', 5 );
 
 /**
+ * Preload critical self-hosted fonts so the browser fetches them early instead
+ * of discovering them inside the inline @font-face block (cuts FOUT / late LCP).
+ *
+ * Opt-in via the Performance settings tab. Emits one tag per configured font for
+ * its 400 weight (falling back to the first available weight) so it never
+ * over-preloads — typical sites run one or two families.
+ */
+function ekwa_fonts_print_preloads() {
+	if ( is_admin() || ! get_option( 'ekwa_perf_preload_fonts', 0 ) ) {
+		return;
+	}
+	$fonts = ekwa_fonts_get_all();
+	if ( empty( $fonts ) ) {
+		return;
+	}
+	$url_base = ekwa_fonts_dir_url();
+	$dir_base = ekwa_fonts_dir_path();
+
+	foreach ( $fonts as $font ) {
+		$weights = ( isset( $font['weights'] ) && is_array( $font['weights'] ) ) ? $font['weights'] : array();
+		if ( empty( $weights ) ) {
+			continue;
+		}
+
+		// Prefer the 400 (regular) weight; otherwise the first available one.
+		$filename = isset( $weights[400] ) ? $weights[400] : reset( $weights );
+		if ( ! $filename || ! file_exists( $dir_base . $filename ) ) {
+			continue;
+		}
+
+		$ext  = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+		$type = 'woff2' === $ext ? 'font/woff2' : ( 'woff' === $ext ? 'font/woff' : ( 'ttf' === $ext ? 'font/ttf' : 'font/otf' ) );
+
+		printf(
+			"<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"%s\" crossorigin>\n",
+			esc_url( $url_base . $filename ),
+			esc_attr( $type )
+		);
+	}
+}
+add_action( 'wp_head', 'ekwa_fonts_print_preloads', 4 );
+
+/**
  * Make the same CSS available inside the block editor iframe so designers
  * see the custom variables when authoring.
  */

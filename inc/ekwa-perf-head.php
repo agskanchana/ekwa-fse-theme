@@ -47,6 +47,10 @@ function ekwa_perf_inline_critical_css() {
 		return;
 	}
 
+	if ( function_exists( 'ekwa_inline_minify_css' ) && get_option( 'ekwa_perf_minify_inline', 0 ) ) {
+		$css = ekwa_inline_minify_css( $css );
+	}
+
 	echo "<style id=\"ekwa-critical-css\">\n" . $css . "\n</style>\n";
 }
 add_action( 'wp_head', 'ekwa_perf_inline_critical_css', 1 );
@@ -260,3 +264,58 @@ function ekwa_perf_remove_wp_bloat() {
 	remove_action( 'template_redirect', 'wp_shortlink_header', 11 );
 }
 add_action( 'after_setup_theme', 'ekwa_perf_remove_wp_bloat' );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4b. Lean head — opt-in removal of heavier WP extras (Performance settings).
+//
+// Off by default because a few of these can matter to some plugins (Heartbeat
+// for live features, jQuery Migrate for legacy scripts). Front-end only — the
+// admin keeps Heartbeat, jQuery Migrate, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ekwa_perf_lean_head_enabled() {
+	return (bool) get_option( 'ekwa_perf_lean_head', 0 );
+}
+
+function ekwa_perf_lean_head() {
+	if ( ! ekwa_perf_lean_head_enabled() ) {
+		return;
+	}
+
+	// REST API discovery <link> (the REST API itself keeps working).
+	remove_action( 'wp_head', 'rest_output_link_wp_head' );
+	remove_action( 'template_redirect', 'rest_output_link_header', 11 );
+
+	// Drop jQuery Migrate from the jquery dependency chain on the front end.
+	add_action( 'wp_default_scripts', 'ekwa_perf_remove_jquery_migrate' );
+
+	// Deregister Heartbeat and wp-embed on the front end.
+	add_action( 'wp_enqueue_scripts', 'ekwa_perf_deregister_extra_scripts', 100 );
+}
+add_action( 'after_setup_theme', 'ekwa_perf_lean_head' );
+
+/**
+ * Strip jquery-migrate from the jquery handle's dependencies (front end only).
+ *
+ * @param WP_Scripts $scripts Core scripts registry.
+ */
+function ekwa_perf_remove_jquery_migrate( $scripts ) {
+	if ( is_admin() ) {
+		return;
+	}
+	$jquery = isset( $scripts->registered['jquery'] ) ? $scripts->registered['jquery'] : null;
+	if ( $jquery && ! empty( $jquery->deps ) ) {
+		$jquery->deps = array_diff( $jquery->deps, array( 'jquery-migrate' ) );
+	}
+}
+
+/**
+ * Deregister Heartbeat and wp-embed on the front end.
+ */
+function ekwa_perf_deregister_extra_scripts() {
+	if ( is_admin() ) {
+		return;
+	}
+	wp_deregister_script( 'heartbeat' );
+	wp_deregister_script( 'wp-embed' );
+}

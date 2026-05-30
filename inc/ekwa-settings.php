@@ -327,6 +327,11 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_decoding_async', isset( $_POST['ekwa_perf_decoding_async'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lazysizes_footer', isset( $_POST['ekwa_perf_lazysizes_footer'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_minify_inline', isset( $_POST['ekwa_perf_minify_inline'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_preload_fonts', isset( $_POST['ekwa_perf_preload_fonts'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_lean_head', isset( $_POST['ekwa_perf_lean_head'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_image_dimensions', isset( $_POST['ekwa_perf_image_dimensions'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_preload_banner', isset( $_POST['ekwa_perf_preload_banner'] ) ? 1 : 0 );
 
 	// Critical CSS — opt-in inline of above-the-fold styles. The pasted code is
 	// stored raw (it's output inside <style>), so neutralise any style/script
@@ -1228,6 +1233,11 @@ function ekwa_render_settings_page() {
 					$decoding_val    = get_option( 'ekwa_perf_decoding_async', 1 );
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
 					$lazysizes_footer_val = get_option( 'ekwa_perf_lazysizes_footer', 0 );
+					$minify_inline_val = get_option( 'ekwa_perf_minify_inline', 0 );
+					$preload_fonts_val = get_option( 'ekwa_perf_preload_fonts', 0 );
+					$lean_head_val     = get_option( 'ekwa_perf_lean_head', 0 );
+					$image_dims_val    = get_option( 'ekwa_perf_image_dimensions', 0 );
+					$preload_banner_val = get_option( 'ekwa_perf_preload_banner', 0 );
 					$critical_css_val  = get_option( 'ekwa_perf_critical_css', 0 );
 					$critical_css_code = (string) get_option( 'ekwa_perf_critical_css_code', '' );
 					?>
@@ -1298,6 +1308,56 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'On phones (≤ 768px), wait for the first user interaction (scroll/tap/click) before loading Font Awesome', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Saves ~33KB of CSS from the mobile critical path. Icons in the header may flash unstyled briefly until the user scrolls or taps. Desktop is unaffected.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Minify inline CSS/JS', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_minify_inline" value="1" <?php checked( $minify_inline_val, 1 ); ?> />
+									<?php esc_html_e( 'Minify all theme CSS/JS that is inlined into the page', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Strips comments and whitespace from inlined block styles/scripts, the blog and carousel assets, and the critical CSS. Already-minified vendor files (*.min.js) are left untouched.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Preload fonts', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_preload_fonts" value="1" <?php checked( $preload_fonts_val, 1 ); ?> />
+									<?php esc_html_e( 'Preload self-hosted fonts in the <head> (one weight per family)', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Adds <link rel="preload" as="font" crossorigin> for each configured font so the browser fetches them earlier — reduces the flash of unstyled text and helps LCP.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Lean head', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_lean_head" value="1" <?php checked( $lean_head_val, 1 ); ?> />
+									<?php esc_html_e( 'Reduce WordPress overhead on the front end', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Removes the REST API discovery link, drops jQuery Migrate from the jQuery chain, and deregisters Heartbeat and wp-embed.js on the front end (the admin keeps them). Leave off if a plugin needs front-end Heartbeat or legacy jQuery.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Image dimensions (CLS)', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_image_dimensions" value="1" <?php checked( $image_dims_val, 1 ); ?> />
+									<?php esc_html_e( 'Add width/height to ekwa/image when missing', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Fills width/height from the attachment metadata so the browser reserves the slot before the image loads — prevents layout shift (CLS).', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Preload banner image', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_preload_banner" value="1" <?php checked( $preload_banner_val, 1 ); ?> />
+									<?php esc_html_e( 'Preload the inner-banner featured image on singular pages', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'The inner banner paints the featured image as a CSS background, which the browser discovers late. This preloads it with fetchpriority="high" — usually the inner-page LCP. Only enable if your templates use the Ekwa inner banner.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 						<tr>

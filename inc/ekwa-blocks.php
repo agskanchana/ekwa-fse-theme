@@ -3514,6 +3514,16 @@ function ekwa_render_image_block( $attrs ) {
 		return '';
 	}
 
+	// Auto width/height from attachment metadata (opt-in) to reserve the slot and
+	// avoid layout shift when the block stored no explicit dimensions.
+	if ( $media_id && ( '' === $width || '' === $height ) && get_option( 'ekwa_perf_image_dimensions', 0 ) ) {
+		$meta = wp_get_attachment_metadata( $media_id );
+		if ( is_array( $meta ) && ! empty( $meta['width'] ) && ! empty( $meta['height'] ) ) {
+			if ( '' === $width )  { $width  = (string) (int) $meta['width']; }
+			if ( '' === $height ) { $height = (string) (int) $meta['height']; }
+		}
+	}
+
 	// Hero overrides loading; otherwise honor the legacy loading attr.
 	if ( $hero ) {
 		$loading = 'eager';

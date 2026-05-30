@@ -102,7 +102,76 @@ function ekwa_inline_core_style_map() {
 }
 
 /**
- * Read a theme file once per request (statically cached).
+ * Whether inlined CSS/JS should be minified (opt-in via Performance settings).
+ *
+ * @return bool
+ */
+function ekwa_inline_minify_enabled() {
+	return (bool) get_option( 'ekwa_perf_minify_inline', 0 );
+}
+
+/**
+ * Conservative CSS minifier — safe for hand-written CSS.
+ *
+ * Strips comments, collapses whitespace, and tightens spacing around braces,
+ * semicolons and commas only. Spacing around `:` `+` `-` `>` `~` is left intact
+ * so calc() expressions and combinators are never broken.
+ *
+ * @param string $css
+ * @return string
+ */
+function ekwa_inline_minify_css( $css ) {
+	$css = preg_replace( '#/\*.*?\*/#s', '', $css );
+	$css = preg_replace( '#\s+#', ' ', $css );
+	$css = preg_replace( '#\s*([{};,])\s*#', '$1', $css );
+	$css = str_replace( ';}', '}', $css );
+	return trim( $css );
+}
+
+/**
+ * Conservative JS minifier — strips block comments, full-line `//` comments,
+ * indentation and blank lines. Existing line breaks are preserved so automatic
+ * semicolon insertion behaves exactly as in the source (no risky single-lining).
+ *
+ * @param string $js
+ * @return string
+ */
+function ekwa_inline_minify_js( $js ) {
+	$js    = preg_replace( '#/\*.*?\*/#s', '', $js );
+	$lines = preg_split( '#\R#', $js );
+	$kept  = array();
+	foreach ( $lines as $line ) {
+		$trimmed = trim( $line );
+		if ( '' === $trimmed || 0 === strpos( $trimmed, '//' ) ) {
+			continue;
+		}
+		$kept[] = $trimmed;
+	}
+	return implode( "\n", $kept );
+}
+
+/**
+ * Minify CSS/JS by file type, skipping already-minified (*.min.*) vendor files.
+ *
+ * @param string $code
+ * @param string $rel  Path (used to detect the type / .min. marker).
+ * @return string
+ */
+function ekwa_inline_minify( $code, $rel ) {
+	if ( '' === $code || preg_match( '#\.min\.(css|js)$#i', $rel ) ) {
+		return $code;
+	}
+	if ( preg_match( '#\.css$#i', $rel ) ) {
+		return ekwa_inline_minify_css( $code );
+	}
+	if ( preg_match( '#\.js$#i', $rel ) ) {
+		return ekwa_inline_minify_js( $code );
+	}
+	return $code;
+}
+
+/**
+ * Read a theme file once per request (statically cached, minified when enabled).
  *
  * @param string $rel Path relative to the theme root.
  * @return string File contents, or '' if missing/empty.
@@ -114,6 +183,9 @@ function ekwa_inline_read( $rel ) {
 	}
 	$path = get_template_directory() . '/' . ltrim( $rel, '/' );
 	$body = is_readable( $path ) ? (string) file_get_contents( $path ) : '';
+	if ( '' !== $body && ekwa_inline_minify_enabled() ) {
+		$body = ekwa_inline_minify( $body, $rel );
+	}
 	$cache[ $rel ] = $body;
 	return $body;
 }

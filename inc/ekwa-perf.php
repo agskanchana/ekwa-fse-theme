@@ -90,30 +90,26 @@ function ekwa_perf_collect_hero_image_blocks( $blocks, &$found ) {
 }
 
 function ekwa_perf_emit_hero_preloads() {
-	if ( ! ekwa_perf_preload_hero_enabled() ) {
-		return;
-	}
-	if ( ! is_singular() ) {
+	$hero_on   = ekwa_perf_preload_hero_enabled();
+	$banner_on = (bool) get_option( 'ekwa_perf_preload_banner', 0 );
+	if ( ( ! $hero_on && ! $banner_on ) || ! is_singular() ) {
 		return;
 	}
 
 	$post = get_post();
-	if ( ! $post || empty( $post->post_content ) ) {
-		return;
-	}
-	if ( ! has_blocks( $post->post_content ) ) {
-		return;
-	}
-
-	$found = array();
-	ekwa_perf_collect_hero_image_blocks( parse_blocks( $post->post_content ), $found );
-	if ( empty( $found ) ) {
+	if ( ! $post ) {
 		return;
 	}
 
 	$webp_supports = function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports();
 	$srcset_on     = ekwa_perf_srcset_enabled();
 	$emitted       = array();
+
+	// Hero ekwa/image blocks declared in the post content.
+	$found = array();
+	if ( $hero_on && ! empty( $post->post_content ) && has_blocks( $post->post_content ) ) {
+		ekwa_perf_collect_hero_image_blocks( parse_blocks( $post->post_content ), $found );
+	}
 
 	foreach ( $found as $attrs ) {
 		$media_id = (int) $attrs['mediaId'];
@@ -157,6 +153,33 @@ function ekwa_perf_emit_hero_preloads() {
 			echo ' href="' . esc_url( $src ) . '"';
 		}
 		echo " fetchpriority=\"high\">\n";
+	}
+
+	// Inner-banner background (the post's featured image) is painted via CSS
+	// background-image and is usually the inner-page LCP — preload it so the
+	// browser fetches it eagerly instead of after stylesheet parse.
+	if ( $banner_on && has_post_thumbnail( $post ) ) {
+		$media_id = (int) get_post_thumbnail_id( $post );
+		if ( $media_id && ! isset( $emitted[ $media_id ] ) ) {
+			$emitted[ $media_id ] = true;
+			$src = wp_get_attachment_image_url( $media_id, 'full' );
+			if ( $src ) {
+				$srcset = $srcset_on ? wp_get_attachment_image_srcset( $media_id, 'full' ) : '';
+				if ( $webp_supports && function_exists( 'ekwa_webp_url_for' ) ) {
+					$src = ekwa_webp_url_for( $src );
+					if ( $srcset && function_exists( 'ekwa_webp_rewrite_srcset' ) ) {
+						$srcset = ekwa_webp_rewrite_srcset( $srcset );
+					}
+				}
+				echo '<link rel="preload" as="image"';
+				if ( $srcset ) {
+					echo ' imagesrcset="' . esc_attr( $srcset ) . '" imagesizes="100vw"';
+				} else {
+					echo ' href="' . esc_url( $src ) . '"';
+				}
+				echo " fetchpriority=\"high\">\n";
+			}
+		}
 	}
 }
 add_action( 'wp_head', 'ekwa_perf_emit_hero_preloads', 1 );
