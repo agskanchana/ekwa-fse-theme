@@ -1,0 +1,20 @@
+/* Card Link block (linked card wrapper) */
+.ekwa-card-link {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.ekwa-card-link:hover {
+	transform: translateY(-2px);
+}
+.ekwa-card-link:focus-visible {
+	outline: 2px solid var(--wp--preset--color--primary, #1a6ef5);
+	outline-offset: 2px;
+}
+/* Reset inherited link colours inside the card. */
+.ekwa-card-link h1, .ekwa-card-link h2, .ekwa-card-link h3,
+.ekwa-card-link h4, .ekwa-card-link h5, .ekwa-card-link h6,
+.ekwa-card-link p, .ekwa-card-link span {
+	color: inherit;
+}

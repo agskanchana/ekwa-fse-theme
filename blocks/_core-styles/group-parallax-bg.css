@@ -1,0 +1,12 @@
+/* core/group -- Parallax Background */
+.wp-block-group.is-style-parallax-bg {
+	background-attachment: fixed;
+	background-size: cover;
+	background-position: center;
+}
+/* iOS does not support background-attachment: fixed. */
+@supports (-webkit-overflow-scrolling: touch) {
+	.wp-block-group.is-style-parallax-bg {
+		background-attachment: scroll;
+	}
+}

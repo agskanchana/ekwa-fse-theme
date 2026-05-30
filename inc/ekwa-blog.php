@@ -270,17 +270,18 @@ add_filter( 'render_block', 'ekwa_inject_query_data', 10, 2 );
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Enqueue blog-specific CSS and JS.
+ * Inline the blog stylesheet in <head> on blog page types.
+ *
+ * The bulk of ekwa-blog.css is template-level (single-post grid, archive cards,
+ * sidebar widgets) and isn't tied to one block, so it inlines on the page types
+ * that use those templates. The same file is also inlined on demand by blog
+ * blocks used elsewhere (see inc/ekwa-inline-assets.php); the shared per-path
+ * dedupe guarantees it prints at most once per request.
  */
-function ekwa_blog_enqueue_assets() {
-	// Load on single posts, archives, search, blog home — NOT on pages or front page.
+function ekwa_blog_inline_assets() {
+	// Single posts, archives, search, blog home — NOT pages or front page.
 	if ( is_singular( 'post' ) || is_archive() || is_search() || is_home() ) {
-		wp_enqueue_style(
-			'ekwa-blog',
-			get_template_directory_uri() . '/assets/css/ekwa-blog.css',
-			array( 'ekwa-style' ),
-			filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
-		);
+		ekwa_inline_print_style( 'assets/css/ekwa-blog.css' );
 	}
 }
-add_action( 'wp_enqueue_scripts', 'ekwa_blog_enqueue_assets' );
+add_action( 'wp_head', 'ekwa_blog_inline_assets', 7 );

@@ -326,6 +326,15 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_preload_hero', isset( $_POST['ekwa_perf_preload_hero'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_decoding_async', isset( $_POST['ekwa_perf_decoding_async'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_lazysizes_footer', isset( $_POST['ekwa_perf_lazysizes_footer'] ) ? 1 : 0 );
+
+	// Critical CSS — opt-in inline of above-the-fold styles. The pasted code is
+	// stored raw (it's output inside <style>), so neutralise any style/script
+	// tags that could break out of the block.
+	update_option( 'ekwa_perf_critical_css', isset( $_POST['ekwa_perf_critical_css'] ) ? 1 : 0 );
+	$critical_code = isset( $_POST['ekwa_perf_critical_css_code'] ) ? (string) wp_unslash( $_POST['ekwa_perf_critical_css_code'] ) : '';
+	$critical_code = preg_replace( '#</?\s*(style|script)[^>]*>#i', '', $critical_code );
+	update_option( 'ekwa_perf_critical_css_code', $critical_code );
 
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
@@ -1218,6 +1227,9 @@ function ekwa_render_settings_page() {
 					$preload_hero_val = get_option( 'ekwa_perf_preload_hero', 1 );
 					$decoding_val    = get_option( 'ekwa_perf_decoding_async', 1 );
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
+					$lazysizes_footer_val = get_option( 'ekwa_perf_lazysizes_footer', 0 );
+					$critical_css_val  = get_option( 'ekwa_perf_critical_css', 0 );
+					$critical_css_code = (string) get_option( 'ekwa_perf_critical_css_code', '' );
 					?>
 					<table class="form-table">
 						<tr>
@@ -1236,6 +1248,16 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'lazysizes — earlier load threshold + JS lib (~3KB)', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Hero images always bypass lazy loading regardless of mode.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'lazysizes position', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_lazysizes_footer" value="1" <?php checked( $lazysizes_footer_val, 1 ); ?> />
+									<?php esc_html_e( 'Load the lazysizes scripts just before </body> instead of in the <head>', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Only applies in lazysizes mode. Footer keeps JS off the critical path; head lets lazy loading initialize earlier. No effect in Off / Native modes.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 						<tr>
@@ -1276,6 +1298,19 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'On phones (≤ 768px), wait for the first user interaction (scroll/tap/click) before loading Font Awesome', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Saves ~33KB of CSS from the mobile critical path. Icons in the header may flash unstyled briefly until the user scrolls or taps. Desktop is unaffected.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Critical CSS', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_critical_css" value="1" <?php checked( $critical_css_val, 1 ); ?> />
+									<?php esc_html_e( 'Inline critical (above-the-fold) CSS in the <head> before any stylesheet', 'ekwa' ); ?>
+								</label>
+								<p style="margin:10px 0 6px;">
+									<textarea name="ekwa_perf_critical_css_code" rows="10" class="large-text code" spellcheck="false" placeholder="<?php esc_attr_e( 'Paste your critical CSS here…', 'ekwa' ); ?>"><?php echo esc_textarea( $critical_css_code ); ?></textarea>
+								</p>
+								<p class="description"><?php esc_html_e( 'Inlined first thing in <head> so first paint isn\'t blocked. If this box is empty, the theme falls back to the child theme\'s assets/css/critical.css file (if present).', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 					</table>

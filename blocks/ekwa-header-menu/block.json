@@ -40,7 +40,5 @@
 			"default": 220
 		}
 	},
-	"editorScript": "ekwa-header-menu-editor",
-	"viewScript":   "ekwa-header-menu-view",
-	"style":        "ekwa-header-menu-style"
+	"editorScript": "ekwa-header-menu-editor"
 }

@@ -32,7 +32,5 @@
 		"speed":            { "type": "number",  "default": 350 },
 		"ariaLabel":        { "type": "string",  "default": "" }
 	},
-	"editorScript": "ekwa-carousel-editor",
-	"viewScript":   "ekwa-carousel-view",
-	"style":        "ekwa-carousel-style"
+	"editorScript": "ekwa-carousel-editor"
 }

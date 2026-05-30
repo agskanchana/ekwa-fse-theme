@@ -1,0 +1,13 @@
+/* Grid block — responsive breakpoints */
+.ekwa-grid { display: grid; }
+.ekwa-grid > * { min-width: 0; }
+
+@media (max-width: 1199px) {
+	.ekwa-grid[data-tablet-cols="1"] { grid-template-columns: 1fr !important; }
+	.ekwa-grid[data-tablet-cols="2"] { grid-template-columns: repeat(2, 1fr) !important; }
+	.ekwa-grid[data-tablet-cols="3"] { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 599px) {
+	.ekwa-grid[data-mobile-cols="1"] { grid-template-columns: 1fr !important; }
+	.ekwa-grid[data-mobile-cols="2"] { grid-template-columns: repeat(2, 1fr) !important; }
+}

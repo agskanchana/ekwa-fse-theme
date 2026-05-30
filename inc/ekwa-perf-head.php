@@ -16,20 +16,37 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Critical CSS — inline above-the-fold styles before any <link>
+//
+// Sourced from the active (child) theme at assets/css/critical.css so per-site
+// critical CSS lives in the child and survives parent theme auto-updates. If the
+// file is absent, no critical CSS is inlined (graceful bail below).
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ekwa_perf_inline_critical_css() {
 	if ( is_admin() ) {
 		return;
 	}
-	$path = get_template_directory() . '/assets/css/critical.css';
-	if ( ! file_exists( $path ) ) {
+
+	// Opt-in: off unless explicitly enabled on the Performance settings tab.
+	if ( ! get_option( 'ekwa_perf_critical_css', 0 ) ) {
 		return;
 	}
-	$css = file_get_contents( $path );
-	if ( false === $css ) {
+
+	// Prefer CSS pasted into settings; fall back to the child theme's
+	// assets/css/critical.css so existing file-based setups keep working.
+	$css = (string) get_option( 'ekwa_perf_critical_css_code', '' );
+	if ( '' === trim( $css ) ) {
+		$path = get_stylesheet_directory() . '/assets/css/critical.css';
+		if ( ! file_exists( $path ) ) {
+			return;
+		}
+		$css = (string) file_get_contents( $path );
+	}
+
+	if ( '' === trim( $css ) ) {
 		return;
 	}
+
 	echo "<style id=\"ekwa-critical-css\">\n" . $css . "\n</style>\n";
 }
 add_action( 'wp_head', 'ekwa_perf_inline_critical_css', 1 );
@@ -67,9 +84,6 @@ function ekwa_perf_fa_href( $href = null ) {
 function ekwa_perf_deferred_handles() {
 	return array(
 		'ekwa-style',
-		'ekwa-mobile',
-		'ekwa-blocks-css',
-		'ekwa-block-styles',
 		'font-awesome',
 	);
 }

@@ -1,132 +1,75 @@
-/**
- * Block style variations CSS.
- *
- * Styles for registered block style variations (outline, ghost, size-sm,
- * size-lg, service-card, parallax-bg, has-overlay, card).
- *
- * @package ekwa
- */
-
-/* ==========================================================================
-   core/button -- Outline (WP built-in style, theme-level refinements)
-   ========================================================================== */
-
-.wp-block-button.is-style-outline .wp-block-button__link {
-	background-color: transparent !important;
-	border: 2px solid currentColor;
-	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+/* ================================================================
+   FAQ block — base styles
+   ================================================================ */
+.ekwa-faq {
+	--ekwa-faq-accent: #1a6ef5;
+	--ekwa-faq-q-color: inherit;
+	--ekwa-faq-a-color: inherit;
+	--ekwa-faq-item-bg: transparent;
+	display: block;
 }
 
-.wp-block-button.is-style-outline .wp-block-button__link:hover {
-	background-color: currentColor;
+/* Each FAQ item is a native <details>; reset default marker. */
+.ekwa-faq__item {
+	background: var(--ekwa-faq-item-bg);
 }
-
-/* Invert text colour on hover so it stays readable over the now-solid bg. */
-.wp-block-button.is-style-outline .wp-block-button__link:hover {
-	color: var(--wp--preset--color--white) !important;
-	border-color: transparent;
+.ekwa-faq__item > summary {
+	list-style: none;
+	cursor: pointer;
 }
-
-/* ==========================================================================
-   core/button -- Ghost (transparent + white border, for dark sections)
-   ========================================================================== */
-
-.wp-block-button.is-style-ghost .wp-block-button__link {
-	background: transparent !important;
-	border: 2px solid rgba(255, 255, 255, 0.5);
-	color: #fff !important;
-	transition: background-color 0.2s ease, border-color 0.2s ease;
+.ekwa-faq__item > summary::-webkit-details-marker {
+	display: none;
 }
-
-.wp-block-button.is-style-ghost .wp-block-button__link:hover {
-	background: rgba(255, 255, 255, 0.15) !important;
-	border-color: #fff;
-}
-
-/* ==========================================================================
-   core/button -- Size variants
-   ========================================================================== */
-
-.wp-block-button.is-style-size-sm .wp-block-button__link {
-	padding: 6px 16px !important;
-	font-size: var(--wp--preset--font-size--sm) !important;
-}
-
-.wp-block-button.is-style-size-lg .wp-block-button__link {
-	padding: 16px 48px !important;
-	font-size: var(--wp--preset--font-size--md) !important;
-}
-
-/* ==========================================================================
-   core/group -- Service Card (hover lift + shadow)
-   ========================================================================== */
-
-.wp-block-group.is-style-service-card {
-	transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.wp-block-group.is-style-service-card:hover {
-	transform: translateY(-4px);
-	box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
-}
-
-.wp-block-group.is-style-service-card .way-icon i {
-	font-size: 2.5rem;
-	color: var(--wp--preset--color--primary);
-}
-
-/* ==========================================================================
-   core/group -- Parallax Background
-   ========================================================================== */
-
-.wp-block-group.is-style-parallax-bg {
-	background-attachment: fixed;
-	background-size: cover;
-	background-position: center;
-}
-
-/* iOS does not support background-attachment: fixed. */
-@supports (-webkit-overflow-scrolling: touch) {
-	.wp-block-group.is-style-parallax-bg {
-		background-attachment: scroll;
-	}
-}
-
-/* ==========================================================================
-   core/group -- Dark Overlay (::before pseudo-element)
-   ========================================================================== */
-
-.wp-block-group.is-style-has-overlay {
-	position: relative;
-	z-index: 0;
-}
-
-.wp-block-group.is-style-has-overlay::before {
+.ekwa-faq__item > summary::marker {
+	display: none;
 	content: "";
-	position: absolute;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.5);
-	z-index: 1;
-	pointer-events: none;
-	border-radius: inherit;
 }
 
-.wp-block-group.is-style-has-overlay > * {
-	position: relative;
-	z-index: 2;
+.ekwa-faq__q {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 16px 0;
+	font-weight: 600;
+	color: var(--ekwa-faq-q-color);
+	transition: color 0.2s ease;
+}
+.ekwa-faq__q-text {
+	flex: 1;
+	min-width: 0;
+}
+.ekwa-faq__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	flex-shrink: 0;
+	color: var(--ekwa-faq-accent);
+	transition: transform 0.25s ease;
+}
+.ekwa-faq__item[open] > .ekwa-faq__q .ekwa-faq__icon,
+.ekwa-faq__item.is-default-open > .ekwa-faq__q .ekwa-faq__icon {
+	transform: rotate(180deg);
+}
+.ekwa-faq__item[open] > .ekwa-faq__q {
+	color: var(--ekwa-faq-accent);
 }
 
-/* ==========================================================================
-   core/column -- Card (hover lift)
-   ========================================================================== */
-
-.wp-block-column.is-style-card {
-	transition: transform 0.2s ease, box-shadow 0.2s ease;
+.ekwa-faq__a {
+	padding: 0 0 16px;
+	color: var(--ekwa-faq-a-color);
+	line-height: 1.65;
 }
+.ekwa-faq__a > *:first-child { margin-top: 0; }
+.ekwa-faq__a > *:last-child  { margin-bottom: 0; }
 
-.wp-block-column.is-style-card:hover {
-	transform: translateY(-4px);
-	box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12);
+/* Focus ring for keyboard users. */
+.ekwa-faq__item > summary:focus-visible {
+	outline: 2px solid var(--ekwa-faq-accent);
+	outline-offset: 2px;
+	border-radius: 4px;
 }
 
 /* ==========================================================================

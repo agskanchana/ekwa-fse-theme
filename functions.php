@@ -53,6 +53,12 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**
+ * Inline each block's front-end CSS/JS on render (replaces the monolithic
+ * ekwa-blocks.css / ekwa-block-styles.css / ekwa-blocks.js / ekwa-faq.js).
+ */
+require_once get_template_directory() . '/inc/ekwa-inline-assets.php';
+
+/**
  * Load WebP image support (auto-generation + transparent URL swap).
  */
 require_once get_template_directory() . '/inc/ekwa-webp.php';
@@ -115,8 +121,9 @@ require_once get_template_directory() . '/inc/ekwa-header-menu.php';
 function ekwa_enqueue_styles() {
 	// The parent theme's style.css contains only the desktop/mobile header
 	// toggle. Inline it (no HTTP request) but keep the 'ekwa-style' handle
-	// registered with src=false so dependent styles (ekwa-mobile, ekwa-blocks-css,
-	// ekwa-block-styles, and the child's ekwa-child-style) still chain to it.
+	// registered with src=false so the child's ekwa-child-style still chains
+	// to it. The two media queries below are the entire contents of the former
+	// assets/css/ekwa-mobile.css — inlined here so no separate request is made.
 	wp_register_style( 'ekwa-style', false, array(), wp_get_theme()->get( 'Version' ) );
 	wp_enqueue_style( 'ekwa-style' );
 	wp_add_inline_style(
@@ -130,38 +137,9 @@ function ekwa_enqueue_styles() {
 		array(),
 		'6.5.1'
 	);
-	wp_enqueue_style(
-		'ekwa-mobile',
-		get_template_directory_uri() . '/assets/css/ekwa-mobile.css',
-		array( 'ekwa-style' ),
-		wp_get_theme()->get( 'Version' )
-	);
-	wp_enqueue_style(
-		'ekwa-blocks-css',
-		get_template_directory_uri() . '/assets/css/ekwa-blocks.css',
-		array( 'ekwa-style' ),
-		wp_get_theme()->get( 'Version' )
-	);
-	wp_enqueue_style(
-		'ekwa-block-styles',
-		get_template_directory_uri() . '/assets/css/ekwa-block-styles.css',
-		array( 'ekwa-style' ),
-		wp_get_theme()->get( 'Version' )
-	);
-	wp_enqueue_script(
-		'ekwa-blocks-js',
-		get_template_directory_uri() . '/assets/js/ekwa-blocks.js',
-		array(),
-		wp_get_theme()->get( 'Version' ),
-		true
-	);
-	wp_enqueue_script(
-		'ekwa-faq-js',
-		get_template_directory_uri() . '/assets/js/ekwa-faq.js',
-		array(),
-		wp_get_theme()->get( 'Version' ),
-		true
-	);
+	// Per-block CSS/JS is no longer enqueued globally. Each block inlines its
+	// own front-end CSS (blocks/<name>/style.css) and JS (blocks/<name>/view.js)
+	// only when it renders — see inc/ekwa-inline-assets.php.
 }
 add_action( 'wp_enqueue_scripts', 'ekwa_enqueue_styles' );
 
@@ -189,8 +167,18 @@ add_action( 'admin_enqueue_scripts', 'ekwa_enqueue_admin_fa' );
 function ekwa_editor_styles() {
 	add_editor_style( 'assets/fontawesome/css/all.min.css' );
 	add_editor_style( 'assets/css/ekwa-editor.css' );
-	add_editor_style( 'assets/css/ekwa-block-styles.css' );
-	add_editor_style( 'assets/css/ekwa-blocks.css' );
+
+	// The per-block partials are the single source of truth for block CSS. The
+	// front end inlines only the blocks in use; the editor loads the full set so
+	// every block previews correctly. Paths are relative to the theme root.
+	$theme_dir = get_template_directory();
+	$partials  = array_merge(
+		glob( $theme_dir . '/blocks/*/style.css' ) ?: array(),
+		glob( $theme_dir . '/blocks/_core-styles/*.css' ) ?: array()
+	);
+	foreach ( $partials as $partial ) {
+		add_editor_style( 'blocks/' . ltrim( str_replace( $theme_dir . '/blocks/', '', $partial ), '/' ) );
+	}
 }
 add_action( 'after_setup_theme', 'ekwa_editor_styles' );
 

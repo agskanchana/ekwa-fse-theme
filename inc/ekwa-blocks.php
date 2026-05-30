@@ -246,19 +246,8 @@ function ekwa_register_blocks() {
 		filemtime( get_template_directory() . '/assets/js/ekwa-header-menu-editor.js' ),
 		true
 	);
-	wp_register_style(
-		'ekwa-header-menu-style',
-		get_template_directory_uri() . '/assets/css/ekwa-header-menu.css',
-		array(),
-		filemtime( get_template_directory() . '/assets/css/ekwa-header-menu.css' )
-	);
-	wp_register_script(
-		'ekwa-header-menu-view',
-		get_template_directory_uri() . '/assets/js/ekwa-header-menu.js',
-		array(),
-		filemtime( get_template_directory() . '/assets/js/ekwa-header-menu.js' ),
-		true
-	);
+	// Front-end CSS/JS for this block is inlined on render — see
+	// inc/ekwa-inline-assets.php (blocks/ekwa-header-menu/style.css + view.js).
 
 	register_block_type(
 		get_template_directory() . '/blocks/ekwa-header-menu',
@@ -454,20 +443,9 @@ function ekwa_register_blocks() {
 	);
 
 	// Carousel block (responsive, ADA-compliant).
-	// Shared frontend script + style — auto-enqueued by WP only on pages where the block (or another consumer) appears.
-	wp_register_script(
-		'ekwa-carousel-view',
-		get_template_directory_uri() . '/assets/js/ekwa-carousel.js',
-		array(),
-		filemtime( get_template_directory() . '/assets/js/ekwa-carousel.js' ),
-		true
-	);
-	wp_register_style(
-		'ekwa-carousel-style',
-		get_template_directory_uri() . '/assets/css/ekwa-carousel.css',
-		array(),
-		filemtime( get_template_directory() . '/assets/css/ekwa-carousel.css' )
-	);
+	// Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php
+	// (blocks/ekwa-carousel/style.css + view.js; also pulled in by
+	// ekwa/related-articles in carousel mode).
 	wp_register_script(
 		'ekwa-carousel-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-carousel-editor.js',
@@ -1214,7 +1192,7 @@ function ekwa_render_social_block( $attrs ) {
 	$uid   = 'ekwa-soc-blk-' . $instance;
 	$js_fn = 'ekwaSocBlkToggle' . $instance;
 
-	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	$out = '';
 
 	$permalink = urlencode( (string) get_permalink() );
@@ -1737,7 +1715,7 @@ function ekwa_render_search_block( $attrs ) {
 	// Sanitise the overlay background — allow rgba/hsla but strip anything suspicious.
 	$overlay_bg = preg_replace( '/[^a-zA-Z0-9%(),.\s#]/', '', $overlay_bg );
 
-	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	$out = '';
 
 	/*
@@ -1838,7 +1816,7 @@ function ekwa_render_scroll_top_block( $attributes ) {
 
 	$is_editor = defined( 'REST_REQUEST' ) && REST_REQUEST;
 
-	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 
 	/* In the editor, render inline and always visible so the preview is useful. */
 	$editor_style = $is_editor
@@ -1948,7 +1926,7 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 		wp_add_inline_style( 'mmenu-light', ':root{' . $mmenu_css . '}' );
 	}
 
-	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	$out = '';
 
 	// ── Hamburger button ────────────────────────────────────────
@@ -1993,9 +1971,6 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
  * @return string
  */
 function ekwa_render_header_menu_block( $attrs ) {
-	wp_enqueue_style( 'ekwa-header-menu-style' );
-	wp_enqueue_script( 'ekwa-header-menu-view' );
-
 	$nav = ekwa_render_main_nav( 'main_menu' );
 
 	if ( '' === $nav ) {
@@ -2199,7 +2174,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 		true
 	);
 
-	/* CSS and JS are now in ekwa-blocks.css / ekwa-blocks.js. */
+	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	// ── HTML ─────────────────────────────────────────────────────
 	$html  = '<div class="ekwa-mobile-dock">';
 	$html .= '<div class="dock-wrap">';
@@ -3674,13 +3649,10 @@ function ekwa_render_div_block( $attrs, $content ) {
 
 	// Lazy backgrounds: when the per-block toggle is on (default true) and a
 	// bg image is set, defer the `background-image` declaration to JS via
-	// data-bg + the ekwa-lazy-bg class. Enqueues the IO shim on demand so
-	// pages without lazy-bg divs ship zero extra JS.
+	// data-bg + the ekwa-lazy-bg class. The IntersectionObserver shim is inlined
+	// on demand (once per request) so pages without lazy-bg divs ship zero JS.
 	$lazy_bg_attr = isset( $attrs['lazyBg'] ) ? (bool) $attrs['lazyBg'] : true;
 	$lazy_bg      = $bg_image && $lazy_bg_attr;
-	if ( $lazy_bg ) {
-		wp_enqueue_script( 'ekwa-lazy-bg' );
-	}
 
 	// Build style string from background image + any extra inline styles.
 	$style_parts = array();
@@ -3708,6 +3680,11 @@ function ekwa_render_div_block( $attrs, $content ) {
 	}
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</' . $tag . '>';
+
+	// Queue the lazy-bg IntersectionObserver shim once, printed before </body>.
+	if ( $lazy_bg ) {
+		ekwa_inline_queue_script( 'assets/js/ekwa-lazy-bg.js' );
+	}
 
 	return $html;
 }
@@ -4264,16 +4241,11 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$wrap_open  = '<section class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
 	$wrap_close = '</section>';
 
+	// Blog stylesheet (post-card styles) and, in carousel mode, the carousel
+	// bundle are inlined on render — see inc/ekwa-inline-assets.php.
+
 	// ── Grid mode ─────────────────────────────────────────────────────
 	if ( ! $use_carousel ) {
-		// Make sure the blog stylesheet is loaded so the post-card styles apply on page contexts.
-		wp_enqueue_style(
-			'ekwa-blog',
-			get_template_directory_uri() . '/assets/css/ekwa-blog.css',
-			array(),
-			filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
-		);
-
 		$grid_html = '<div class="ekwa-related__grid" data-desktop-items="' . $desktop . '" data-tablet-items="' . $tablet . '" data-mobile-items="' . $mobile . '">';
 		foreach ( $posts as $p ) {
 			$grid_html .= ekwa_render_post_card( $p->ID );
@@ -4284,14 +4256,6 @@ function ekwa_render_related_articles_block( $attrs ) {
 	}
 
 	// ── Carousel mode ─────────────────────────────────────────────────
-	wp_enqueue_script( 'ekwa-carousel-view' );
-	wp_enqueue_style(  'ekwa-carousel-style' );
-	wp_enqueue_style(
-		'ekwa-blog',
-		get_template_directory_uri() . '/assets/css/ekwa-blog.css',
-		array(),
-		filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
-	);
 
 	// Default gap between items so cards don't visually touch. Filter to override.
 	$item_gap = absint( apply_filters( 'ekwa_related_articles_gap', 20 ) );
@@ -4533,13 +4497,8 @@ function ekwa_render_related_posts_block( $attrs ) {
 		$heading_text = ( count( $posts ) === 1 ) ? $singular : $plural;
 	}
 
-	// Make sure the blog stylesheet is on the page (it carries the article-card styles).
-	wp_enqueue_style(
-		'ekwa-blog',
-		get_template_directory_uri() . '/assets/css/ekwa-blog.css',
-		array(),
-		filemtime( get_template_directory() . '/assets/css/ekwa-blog.css' )
-	);
+	// The blog stylesheet (article-card styles) is inlined on render — see
+	// inc/ekwa-inline-assets.php.
 
 	$template = (string) get_option( 'ekwa_related_posts_template', '' );
 	if ( '' === trim( $template ) ) {

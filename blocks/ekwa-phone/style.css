@@ -1,0 +1,16 @@
+/* Phone block (single number) */
+.ekwa-phone-number {
+	display: inline-block;
+}
+.ekwa-phone-number__link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	text-decoration: none;
+}
+.ekwa-phone-number__icon {
+	flex-shrink: 0;
+}
+.ekwa-phone-number__prefix {
+	font-weight: 500;
+}

@@ -47,58 +47,23 @@ function ekwa_perf_decoding_async_enabled() {
 // lazysizes enqueue
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ekwa_perf_enqueue_lazysizes() {
+function ekwa_perf_inline_lazysizes() {
 	if ( ekwa_perf_lazy_mode() !== 'lazysizes' ) {
 		return;
 	}
 
 	// unveilhooks extends lazysizes with <video>, <iframe poster>, CSS-bg, etc.
-	// Listed as a dep of lazysizes so it prints first — lazysizes plugins
-	// are designed to be loaded before the core lib.
-	wp_register_script(
-		'ekwa-lazysizes-unveilhooks',
-		get_template_directory_uri() . '/assets/js/ls.unveilhooks.min.js',
-		array(),
-		'5.3.2',
-		array(
-			'in_footer' => false,
-			'strategy'  => 'async',
-		)
-	);
-
-	wp_enqueue_script(
-		'ekwa-lazysizes',
-		get_template_directory_uri() . '/assets/js/lazysizes.min.js',
-		array( 'ekwa-lazysizes-unveilhooks' ),
-		'5.3.2',
-		array(
-			'in_footer' => false,
-			'strategy'  => 'async',
-		)
-	);
+	// It must run before the core lib, so it's inlined first. Both are inlined
+	// (no separate request) — in <head> by default so lazy loading starts as
+	// early as possible, or just before </body> when the footer option is on.
+	ekwa_inline_print_script( 'assets/js/ls.unveilhooks.min.js' );
+	ekwa_inline_print_script( 'assets/js/lazysizes.min.js' );
 }
-add_action( 'wp_enqueue_scripts', 'ekwa_perf_enqueue_lazysizes' );
-
-/**
- * Register (don't enqueue) the IntersectionObserver shim that paints
- * `[data-bg]` background images once the wrapper enters the viewport.
- *
- * The ekwa/div render callback calls wp_enqueue_script('ekwa-lazy-bg')
- * on demand, so pages without lazy-bg divs ship zero extra JS.
- */
-function ekwa_perf_register_lazy_bg() {
-	wp_register_script(
-		'ekwa-lazy-bg',
-		get_template_directory_uri() . '/assets/js/ekwa-lazy-bg.js',
-		array(),
-		wp_get_theme()->get( 'Version' ),
-		array(
-			'in_footer' => true,
-			'strategy'  => 'defer',
-		)
-	);
-}
-add_action( 'wp_enqueue_scripts', 'ekwa_perf_register_lazy_bg' );
+add_action(
+	get_option( 'ekwa_perf_lazysizes_footer', 0 ) ? 'wp_footer' : 'wp_head',
+	'ekwa_perf_inline_lazysizes',
+	8
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero preload — emits <link rel="preload" as="image"> in <head>

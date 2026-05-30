@@ -1,0 +1,24 @@
+/* Section block */
+.ekwa-section {
+	position: relative;
+}
+.ekwa-section__overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+}
+.ekwa-section__container {
+	position: relative;
+	z-index: 1;
+	margin-left: auto;
+	margin-right: auto;
+}
+.ekwa-section__inner {
+	position: relative;
+	z-index: 1;
+}
+/* iOS does not support fixed backgrounds in overflow contexts. */
+@supports (-webkit-touch-callout: none) {
+	.ekwa-section { background-attachment: scroll !important; }
+}

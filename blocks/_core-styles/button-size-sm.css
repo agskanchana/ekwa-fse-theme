@@ -1,0 +1,5 @@
+/* core/button -- Size variant: Small */
+.wp-block-button.is-style-size-sm .wp-block-button__link {
+	padding: 6px 16px !important;
+	font-size: var(--wp--preset--font-size--sm) !important;
+}
