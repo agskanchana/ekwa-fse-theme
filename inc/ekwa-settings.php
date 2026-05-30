@@ -308,6 +308,27 @@ function ekwa_save_settings() {
 		update_option( 'ekwa_related_posts_template', $tpl_input );
 	}
 
+	// Logo SVG markup — WAF-safe base64 with raw fallback; sanitized before storage.
+	$svg_input = null;
+	if ( isset( $_POST['ekwa_svg_logo_markup_b64'] ) && '' !== $_POST['ekwa_svg_logo_markup_b64'] ) {
+		$decoded = base64_decode( wp_unslash( $_POST['ekwa_svg_logo_markup_b64'] ), true );
+		if ( false !== $decoded ) {
+			$svg_input = $decoded;
+		}
+	}
+	if ( null === $svg_input && isset( $_POST['ekwa_svg_logo_markup'] ) ) {
+		$svg_input = wp_unslash( $_POST['ekwa_svg_logo_markup'] );
+	}
+	if ( null !== $svg_input ) {
+		$clean = function_exists( 'ekwa_sanitize_svg_markup' ) ? ekwa_sanitize_svg_markup( $svg_input ) : '';
+		update_option( 'ekwa_svg_logo_markup', $clean );
+	}
+
+	// GitHub access token for theme updates (ignored when the constant is set).
+	if ( ! defined( 'EKWA_GITHUB_TOKEN' ) && isset( $_POST['ekwa_github_token'] ) ) {
+		update_option( 'ekwa_github_token', sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) ) );
+	}
+
 	// WebP options — checkboxes need explicit handling so unchecked saves as 0.
 	update_option( 'ekwa_webp_enabled', isset( $_POST['ekwa_webp_enabled'] ) ? 1 : 0 );
 	update_option( 'ekwa_webp_apply_core_image', isset( $_POST['ekwa_webp_apply_core_image'] ) ? 1 : 0 );
@@ -966,7 +987,25 @@ function ekwa_render_settings_page() {
 					</script>
 				</div>
 
-			</div><!-- /general -->
+				<div class="ekwa-section" id="ekwa-theme-updates">
+						<h2><?php esc_html_e( 'Theme Updates', 'ekwa' ); ?></h2>
+						<table class="form-table">
+							<tr>
+								<th><label for="ekwa_github_token"><?php esc_html_e( 'GitHub access token', 'ekwa' ); ?></label></th>
+								<td>
+									<?php if ( defined( 'EKWA_GITHUB_TOKEN' ) ) : ?>
+										<input type="text" id="ekwa_github_token" class="regular-text" value="<?php esc_attr_e( 'Set via EKWA_GITHUB_TOKEN constant', 'ekwa' ); ?>" disabled />
+										<p class="description"><?php esc_html_e( 'A token is defined in wp-config.php (EKWA_GITHUB_TOKEN); it takes precedence over this field.', 'ekwa' ); ?></p>
+									<?php else : ?>
+										<input type="password" id="ekwa_github_token" name="ekwa_github_token" value="<?php echo esc_attr( get_option( 'ekwa_github_token', '' ) ); ?>" class="regular-text" autocomplete="off" spellcheck="false" placeholder="ghp_…" />
+										<p class="description"><?php esc_html_e( 'Theme updates are pulled from GitHub. Anonymous requests are limited to 60/hour per server, so update checks can fail. Add a Personal Access Token (read-only / public-repo access is enough) to raise the limit to 5,000/hour. Leave empty to use anonymous requests.', 'ekwa' ); ?></p>
+									<?php endif; ?>
+								</td>
+							</tr>
+						</table>
+					</div>
+
+				</div><!-- /general -->
 
 			<!-- ========== BRANDING TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'branding' === $active_tab ? 'active' : ''; ?>" data-tab="branding">
@@ -1026,6 +1065,36 @@ function ekwa_render_settings_page() {
 									<button type="button" class="button ekwa-media-remove" <?php echo ! $share_img ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
 									<p class="description"><?php esc_html_e( 'Recommended: 350px × 350px', 'ekwa' ); ?></p>
 								</div>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_svg_logo_markup"><?php esc_html_e( 'Logo SVG markup', 'ekwa' ); ?></label></th>
+							<td>
+								<textarea id="ekwa_svg_logo_markup" name="ekwa_svg_logo_markup" rows="8" class="large-text code" spellcheck="false" placeholder="&lt;svg ...&gt;...&lt;/svg&gt;"><?php echo esc_textarea( get_option( 'ekwa_svg_logo_markup', '' ) ); ?></textarea>
+								<input type="hidden" id="ekwa_svg_logo_markup_b64" name="ekwa_svg_logo_markup_b64" value="" />
+								<p class="description"><?php esc_html_e( 'Paste raw <svg>…</svg> markup. The Ekwa SVG Logo block renders it inline (linked to the home page). <script> tags and on* event handlers are stripped on save.', 'ekwa' ); ?></p>
+								<script>
+									document.addEventListener( 'DOMContentLoaded', function () {
+										var ta  = document.getElementById( 'ekwa_svg_logo_markup' );
+										var b64 = document.getElementById( 'ekwa_svg_logo_markup_b64' );
+										// Ship a base64 copy on submit so WAF rules that strip raw
+										// SVG/HTML from POST bodies don't wipe the markup on save.
+										if ( ta && b64 && ta.form ) {
+											ta.form.addEventListener( 'submit', function () {
+												try {
+													var bytes = new TextEncoder().encode( ta.value );
+													var bin   = '';
+													for ( var i = 0; i < bytes.length; i++ ) {
+														bin += String.fromCharCode( bytes[ i ] );
+													}
+													b64.value = btoa( bin );
+												} catch ( e ) {
+													b64.value = '';
+												}
+											} );
+										}
+									} );
+								</script>
 							</td>
 						</tr>
 					</table>

@@ -158,6 +158,22 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// SVG Logo block — renders the SVG markup stored in Settings → Branding.
+	wp_register_script(
+		'ekwa-svg-logo-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-svg-logo-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-svg-logo',
+		array(
+			'render_callback' => 'ekwa_render_svg_logo_block',
+		)
+	);
+
 	// Social Icons block.
 	wp_register_script(
 		'ekwa-social-editor',
@@ -1158,6 +1174,55 @@ function ekwa_render_hours_block( $attrs ) {
  */
 function ekwa_render_copyright_block() {
 	return ekwa_copyright_shortcode();
+}
+
+/**
+ * Server-side render callback for the ekwa/svg-logo block.
+ *
+ * Outputs the SVG markup stored in Settings → Branding inline (not as <img>),
+ * wrapped in a link to the home page (or a custom URL) by default.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_svg_logo_block( $attrs ) {
+	$svg = function_exists( 'ekwa_sanitize_svg_markup' )
+		? ekwa_sanitize_svg_markup( get_option( 'ekwa_svg_logo_markup', '' ) )
+		: '';
+
+	if ( '' === $svg ) {
+		// Nudge editors to configure it; render nothing on the front end.
+		if ( current_user_can( 'edit_theme_options' ) ) {
+			return '<span class="ekwa-svg-logo ekwa-svg-logo--empty" style="display:inline-block;padding:8px 12px;border:1px dashed #b3b3b3;color:#555;font-size:13px;">'
+				. esc_html__( 'Add your logo SVG markup at Settings → Ekwa → Branding.', 'ekwa' )
+				. '</span>';
+		}
+		return '';
+	}
+
+	$link_to_home = ! isset( $attrs['linkToHome'] ) || (bool) $attrs['linkToHome'];
+	$custom_url   = isset( $attrs['customUrl'] ) ? trim( (string) $attrs['customUrl'] ) : '';
+	$aria_label   = isset( $attrs['ariaLabel'] ) ? trim( (string) $attrs['ariaLabel'] ) : '';
+	$max_width    = isset( $attrs['maxWidth'] ) ? absint( $attrs['maxWidth'] ) : 0;
+
+	$style = $max_width > 0 ? '--ekwa-logo-max:' . $max_width . 'px;' : '';
+
+	$wrapper = get_block_wrapper_attributes( array(
+		'class' => 'ekwa-svg-logo',
+		'style' => $style,
+	) );
+
+	if ( $link_to_home || '' !== $custom_url ) {
+		$href  = '' !== $custom_url ? esc_url( $custom_url ) : esc_url( home_url( '/' ) );
+		$label = '' !== $aria_label
+			? $aria_label
+			: ( '' !== $custom_url ? '' : get_bloginfo( 'name' ) );
+		$aria  = '' !== $label ? ' aria-label="' . esc_attr( $label ) . '"' : '';
+		return '<a href="' . $href . '"' . $aria . ' ' . $wrapper . '>' . $svg . '</a>';
+	}
+
+	$aria = '' !== $aria_label ? ' role="img" aria-label="' . esc_attr( $aria_label ) . '"' : '';
+	return '<span' . $aria . ' ' . $wrapper . '>' . $svg . '</span>';
 }
 
 /**

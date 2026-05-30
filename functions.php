@@ -22,6 +22,66 @@ $ekwa_theme_updater = PucFactory::buildUpdateChecker(
 );
 
 /**
+ * Authenticate GitHub update checks with a Personal Access Token when one is
+ * available, lifting the API limit from 60/hr (anonymous) to 5000/hr. The
+ * EKWA_GITHUB_TOKEN constant (e.g. in wp-config.php) takes precedence over the
+ * value stored on the settings screen.
+ */
+function ekwa_github_token() {
+	if ( defined( 'EKWA_GITHUB_TOKEN' ) && EKWA_GITHUB_TOKEN ) {
+		return (string) EKWA_GITHUB_TOKEN;
+	}
+	return (string) get_option( 'ekwa_github_token', '' );
+}
+
+$ekwa_github_token = ekwa_github_token();
+if ( '' !== $ekwa_github_token ) {
+	$ekwa_theme_updater->setAuthentication( $ekwa_github_token );
+}
+
+/**
+ * Flag a GitHub API rate-limit (HTTP 403 with X-RateLimit-Remaining: 0) so we
+ * can prompt the admin to add a token. Stored as a short-lived transient.
+ */
+function ekwa_github_flag_rate_limit( $error, $http_response = null, $url = null, $slug = null ) {
+	if ( 'ekwa' !== $slug || ! is_array( $http_response ) ) {
+		return;
+	}
+	$code      = wp_remote_retrieve_response_code( $http_response );
+	$remaining = wp_remote_retrieve_header( $http_response, 'x-ratelimit-remaining' );
+	if ( 403 == $code && '0' === (string) $remaining ) { // phpcs:ignore WordPress.PHP.StrictComparisons.LooseComparison
+		set_transient( 'ekwa_github_rate_limited', 1, HOUR_IN_SECONDS );
+	}
+}
+add_action( 'puc_api_error', 'ekwa_github_flag_rate_limit', 10, 4 );
+
+/**
+ * Admin notice when update checks were rate-limited and no token is configured.
+ */
+function ekwa_github_rate_limit_notice() {
+	if ( ! current_user_can( 'update_themes' ) ) {
+		return;
+	}
+	if ( '' !== ekwa_github_token() ) {
+		// A token is set — it already raises the cap; nothing to prompt.
+		delete_transient( 'ekwa_github_rate_limited' );
+		return;
+	}
+	if ( ! get_transient( 'ekwa_github_rate_limited' ) ) {
+		return;
+	}
+	$url = admin_url( 'admin.php?page=ekwa-settings&tab=general#ekwa-theme-updates' );
+	echo '<div class="notice notice-warning is-dismissible"><p>';
+	printf(
+		/* translators: %s: settings URL. */
+		wp_kses_post( __( '<strong>Ekwa theme updates:</strong> GitHub\'s API rate limit was reached, so update checks may fail. <a href="%s">Add a GitHub Personal Access Token</a> to raise the limit.', 'ekwa' ) ),
+		esc_url( $url )
+	);
+	echo '</p></div>';
+}
+add_action( 'admin_notices', 'ekwa_github_rate_limit_notice' );
+
+/**
  * Load theme settings page.
  */
 require_once get_template_directory() . '/inc/ekwa-settings.php';
@@ -327,6 +387,32 @@ function ekwa_fix_svg_mime_check( $data, $file, $filename, $mimes ) {
 }
 add_filter( 'wp_check_filetype_and_ext', 'ekwa_fix_svg_mime_check', 10, 4 );
 
+/**
+ * Sanitize raw SVG markup for safe inline output / storage.
+ *
+ * Strips XML processing instructions, <script> elements and inline event
+ * handlers. Returns '' when the input contains no <svg> root (invalid).
+ * Shared by the SVG upload prefilter, the SVG-logo setting save, and the
+ * ekwa/svg-logo block render.
+ *
+ * @param string $svg Raw SVG markup.
+ * @return string Sanitized markup, or '' if it isn't an SVG.
+ */
+function ekwa_sanitize_svg_markup( $svg ) {
+	$svg = (string) $svg;
+	if ( '' === $svg ) {
+		return '';
+	}
+	$svg = preg_replace( '/<\?xml.*?\?>/s', '', $svg );
+	$svg = preg_replace( '/<script[^>]*>.*?<\/script>/si', '', $svg );
+	$svg = preg_replace( '/\bon\w+\s*=\s*["\'][^"\']*["\']/i', '', $svg );
+
+	if ( false === stripos( $svg, '<svg' ) ) {
+		return '';
+	}
+	return trim( $svg );
+}
+
 function ekwa_sanitize_svg_on_upload( $file ) {
 	if ( 'image/svg+xml' !== $file['type'] ) {
 		return $file;
@@ -338,18 +424,13 @@ function ekwa_sanitize_svg_on_upload( $file ) {
 		return $file;
 	}
 
-	// Strip XML processing instructions, scripts, and event handlers.
-	$contents = preg_replace( '/<\?xml.*?\?>/s', '', $contents );
-	$contents = preg_replace( '/<script[^>]*>.*?<\/script>/si', '', $contents );
-	$contents = preg_replace( '/\bon\w+\s*=\s*["\'][^"\']*["\']/i', '', $contents );
-
-	// Must contain an <svg tag to be valid.
-	if ( false === stripos( $contents, '<svg' ) ) {
+	$clean = ekwa_sanitize_svg_markup( $contents );
+	if ( '' === $clean ) {
 		$file['error'] = __( 'Invalid SVG file.', 'ekwa' );
 		return $file;
 	}
 
-	file_put_contents( $file['tmp_name'], $contents );
+	file_put_contents( $file['tmp_name'], $clean );
 	return $file;
 }
 add_filter( 'wp_handle_upload_prefilter', 'ekwa_sanitize_svg_on_upload' );

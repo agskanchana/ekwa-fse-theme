@@ -1,0 +1,28 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/svg-logo",
+	"version": "1.0.0",
+	"title": "Ekwa SVG Logo",
+	"category": "common",
+	"icon": "format-image",
+	"description": "Outputs the site logo as inline SVG (set the markup in Theme Settings → Branding). Links to the home page by default.",
+	"textdomain": "ekwa",
+	"keywords": [ "logo", "svg", "brand", "header" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "left", "center", "right" ],
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"attributes": {
+		"linkToHome": { "type": "boolean", "default": true },
+		"customUrl":  { "type": "string",  "default": "" },
+		"ariaLabel":  { "type": "string",  "default": "" },
+		"maxWidth":   { "type": "number",  "default": 0 }
+	},
+	"editorScript": "ekwa-svg-logo-editor"
+}

@@ -1,0 +1,11 @@
+/* SVG logo block */
+.ekwa-svg-logo {
+	display: inline-block;
+	line-height: 0;
+}
+.ekwa-svg-logo > svg {
+	display: block;
+	width: 100%;
+	max-width: var(--ekwa-logo-max, none);
+	height: auto;
+}

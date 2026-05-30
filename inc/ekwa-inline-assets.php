@@ -55,6 +55,7 @@ function ekwa_inline_asset_map() {
 		'ekwa/grid'             => array( 'css' => 'blocks/ekwa-grid/style.css' ),
 		'ekwa/button'           => array( 'css' => 'blocks/ekwa-button/style.css' ),
 		'ekwa/card-link'        => array( 'css' => 'blocks/ekwa-card-link/style.css' ),
+		'ekwa/svg-logo'         => array( 'css' => 'blocks/ekwa-svg-logo/style.css' ),
 		'ekwa/faq'              => array( 'css' => 'blocks/ekwa-faq/style.css',               'js' => 'blocks/ekwa-faq/view.js' ),
 		'ekwa/reveal'           => array( 'css' => 'blocks/ekwa-reveal/style.css',            'js' => 'blocks/ekwa-reveal/view.js' ),
 		'ekwa/reveal-hidden'    => array( 'css' => 'blocks/ekwa-reveal/style.css' ),
