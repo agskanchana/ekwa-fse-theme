@@ -1,4 +1,12 @@
 /* Mobile dock block */
+
+/* Hide the raw mobile services nav until mmenu-light processes it (adds .mm-spn).
+   Prevents the services links flashing before the library loads — important in
+   deferred mode, where mmenu only loads on the first interaction. */
+#ekwa-mobile-services-nav:not(.mm-spn) {
+	display: none;
+}
+
 .ekwa-mobile-dock {
 	display: none;
 	position: fixed;

@@ -21,7 +21,10 @@
 	transition: all 0.3s ease;
 }
 
-/* Hidden mobile nav (before mmenu-light processes it) */
+/* Hidden mobile nav (before mmenu-light processes it). Without this the raw
+   <ul> flashes until the library runs — visible in deferred mode, where mmenu
+   only loads on the first interaction. (The services nav is rendered by the
+   mobile-dock block, which hides its own nav the same way.) */
 #ekwa-mobile-nav:not(.mm-spn) {
 	display: none;
 }
