@@ -170,6 +170,101 @@ function ekwa_perf_emit_fa_mobile_loader() {
 add_action( 'wp_print_footer_scripts', 'ekwa_perf_emit_fa_mobile_loader' );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 2c. Mobile menu (mmenu-light) deferral — load the off-canvas drawer library
+//     on the first user interaction instead of during initial navigation. The
+//     drawer is only needed when the hamburger / dock "services" button is used
+//     (mobile only), so it never belongs on the critical path.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Whether the mobile menu should be deferred to first interaction (opt-in).
+ */
+function ekwa_perf_defer_mmenu_enabled() {
+	return (bool) get_option( 'ekwa_perf_defer_mmenu', 0 );
+}
+
+/**
+ * Per-request flag: a block that needs mmenu-light rendered on this page.
+ * Set by the hamburger / mobile-dock render callbacks (in deferred mode) so the
+ * footer loader only prints when the menu is actually present.
+ *
+ * @param bool $set Pass true to mark mmenu as needed.
+ * @return bool Current flag.
+ */
+function ekwa_perf_mmenu_needed( $set = false ) {
+	static $needed = false;
+	if ( $set ) {
+		$needed = true;
+	}
+	return $needed;
+}
+
+/** Mark mmenu-light as needed on this request (used instead of enqueuing). */
+function ekwa_perf_mmenu_mark_needed() {
+	ekwa_perf_mmenu_needed( true );
+}
+
+/**
+ * Print the mmenu interaction loader in the footer. Exposes
+ * window.ekwaLoadMmenu(cb): injects the CSS <link> + JS <script src> once, then
+ * calls window.ekwaBuildMmenu() (defined by the hamburger block) and runs queued
+ * callbacks. Auto-prewarms on the first interaction (mobile widths only).
+ */
+function ekwa_perf_emit_mmenu_loader() {
+	if ( is_admin() || ! ekwa_perf_defer_mmenu_enabled() || ! ekwa_perf_mmenu_needed() ) {
+		return;
+	}
+	$css = wp_json_encode( get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css' );
+	$js  = wp_json_encode( get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js' );
+	?>
+<script id="ekwa-mmenu-loader">
+(function(){
+	var cssUrl = <?php echo $css; ?>;
+	var jsUrl  = <?php echo $js; ?>;
+	var state = 0; // 0 = idle, 1 = loading, 2 = ready
+	var queue = [];
+
+	window.ekwaLoadMmenu = function(cb){
+		if (state === 2) { if (cb) cb(); return; }
+		if (cb) queue.push(cb);
+		if (state === 1) { return; }
+		state = 1;
+
+		var l = document.createElement('link');
+		l.rel = 'stylesheet';
+		l.href = cssUrl;
+		document.head.appendChild(l);
+
+		var s = document.createElement('script');
+		s.src = jsUrl;
+		s.onload = function(){
+			state = 2;
+			if (typeof window.ekwaBuildMmenu === 'function') { window.ekwaBuildMmenu(); }
+			while (queue.length) { try { queue.shift()(); } catch (e) {} }
+		};
+		document.body.appendChild(s);
+	};
+
+	// Prewarm on the first interaction so the drawer is ready before the tap —
+	// only on mobile widths, where the hamburger / dock are visible.
+	if (window.matchMedia && window.matchMedia('(max-width: 1199px)').matches) {
+		var events = ['scroll','touchstart','click','keydown'];
+		var warmed = false;
+		function warm(){
+			if (warmed) return;
+			warmed = true;
+			window.ekwaLoadMmenu();
+			events.forEach(function(e){ window.removeEventListener(e, warm); });
+		}
+		events.forEach(function(e){ window.addEventListener(e, warm, {passive:true, once:true}); });
+	}
+})();
+</script>
+	<?php
+}
+add_action( 'wp_print_footer_scripts', 'ekwa_perf_emit_mmenu_loader' );
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. Resource hints — preconnect + conditional dns-prefetch
 // ─────────────────────────────────────────────────────────────────────────────
 

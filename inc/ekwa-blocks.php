@@ -1957,20 +1957,26 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 	$bar_h     = max( 2, round( $icon_size / 8 ) );
 	$bar_gap   = max( 3, round( $icon_size / 5 ) );
 
-	// Enqueue mmenu-light only when this block is present.
-	wp_enqueue_style(
-		'mmenu-light',
-		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
-		array(),
-		'3.2.2'
-	);
-	wp_enqueue_script(
-		'mmenu-light',
-		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
-		array(),
-		'3.2.2',
-		true
-	);
+	// Load mmenu-light only when this block is present. In deferred mode the
+	// library is injected on first interaction (see inc/ekwa-perf-head.php);
+	// otherwise it's enqueued normally.
+	if ( function_exists( 'ekwa_perf_defer_mmenu_enabled' ) && ekwa_perf_defer_mmenu_enabled() ) {
+		ekwa_perf_mmenu_mark_needed();
+	} else {
+		wp_enqueue_style(
+			'mmenu-light',
+			get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
+			array(),
+			'3.2.2'
+		);
+		wp_enqueue_script(
+			'mmenu-light',
+			get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
+			array(),
+			'3.2.2',
+			true
+		);
+	}
 
 	// Emit per-site mmenu color overrides as CSS custom properties.
 	$mmenu_color_map = array(
@@ -2223,21 +2229,26 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 
 	$bid = 'ekwa-mobile-dock';
 
-	// Ensure mmenu-light is loaded for the services drawer (and harmless if the
-	// hamburger block already enqueued it — wp_enqueue_* dedupes on handle).
-	wp_enqueue_style(
-		'mmenu-light',
-		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
-		array(),
-		'3.2.2'
-	);
-	wp_enqueue_script(
-		'mmenu-light',
-		get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
-		array(),
-		'3.2.2',
-		true
-	);
+	// Ensure mmenu-light is available for the services drawer. In deferred mode
+	// it loads on first interaction; otherwise enqueue it (dedupes with the
+	// hamburger block on the shared 'mmenu-light' handle).
+	if ( function_exists( 'ekwa_perf_defer_mmenu_enabled' ) && ekwa_perf_defer_mmenu_enabled() ) {
+		ekwa_perf_mmenu_mark_needed();
+	} else {
+		wp_enqueue_style(
+			'mmenu-light',
+			get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.css',
+			array(),
+			'3.2.2'
+		);
+		wp_enqueue_script(
+			'mmenu-light',
+			get_template_directory_uri() . '/assets/mmenu-light/mmenu-light.js',
+			array(),
+			'3.2.2',
+			true
+		);
+	}
 
 	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	// ── HTML ─────────────────────────────────────────────────────

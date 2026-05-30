@@ -26,8 +26,19 @@
 		document.addEventListener('click', function (e) {
 			if (!e.target.closest('.ekwa-mobile-dock .services-item')) return;
 			if (window.ekwaServicesDrawer) { window.ekwaServicesDrawer.open(); return; }
-			var hBtn = document.querySelector('.ekwa-hamburger-btn');
-			if (hBtn) hBtn.click();
+			function fallback() {
+				var hBtn = document.querySelector('.ekwa-hamburger-btn');
+				if (hBtn) hBtn.click();
+			}
+			// Deferred mode: load mmenu first, then open the services drawer.
+			if (typeof window.ekwaLoadMmenu === 'function') {
+				window.ekwaLoadMmenu(function () {
+					if (window.ekwaServicesDrawer) { window.ekwaServicesDrawer.open(); }
+					else { fallback(); }
+				});
+				return;
+			}
+			fallback();
 		});
 
 		// Auto-hide dock on scroll down, show on scroll up.

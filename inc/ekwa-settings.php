@@ -349,6 +349,7 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lazysizes_footer', isset( $_POST['ekwa_perf_lazysizes_footer'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_minify_inline', isset( $_POST['ekwa_perf_minify_inline'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_defer_mmenu', isset( $_POST['ekwa_perf_defer_mmenu'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_preload_fonts', isset( $_POST['ekwa_perf_preload_fonts'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lean_head', isset( $_POST['ekwa_perf_lean_head'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_image_dimensions', isset( $_POST['ekwa_perf_image_dimensions'] ) ? 1 : 0 );
@@ -1303,6 +1304,7 @@ function ekwa_render_settings_page() {
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
 					$lazysizes_footer_val = get_option( 'ekwa_perf_lazysizes_footer', 0 );
 					$minify_inline_val = get_option( 'ekwa_perf_minify_inline', 0 );
+					$defer_mmenu_val   = get_option( 'ekwa_perf_defer_mmenu', 0 );
 					$preload_fonts_val = get_option( 'ekwa_perf_preload_fonts', 0 );
 					$lean_head_val     = get_option( 'ekwa_perf_lean_head', 0 );
 					$image_dims_val    = get_option( 'ekwa_perf_image_dimensions', 0 );
@@ -1377,6 +1379,16 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'On phones (≤ 768px), wait for the first user interaction (scroll/tap/click) before loading Font Awesome', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Saves ~33KB of CSS from the mobile critical path. Icons in the header may flash unstyled briefly until the user scrolls or taps. Desktop is unaffected.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Defer mobile menu', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_defer_mmenu" value="1" <?php checked( $defer_mmenu_val, 1 ); ?> />
+									<?php esc_html_e( 'Load the mobile off-canvas menu (mmenu-light) on first interaction', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Keeps the mmenu-light CSS/JS (~11KB + 2 requests) off the initial critical path. The library is injected on the first tap/scroll on mobile, so the drawer initializes a moment later. Desktop never loads it (the hamburger is hidden).', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 						<tr>
