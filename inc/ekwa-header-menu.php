@@ -197,7 +197,7 @@ function ekwa_header_menu_render_submenu( $parent_id, $tree, $depth = 0 ) {
 	if ( empty( $tree[ $parent_id ] ) ) {
 		return '';
 	}
-	$out = '<ul class="sub-menu" role="menu">';
+	$out = '<ul class="sub-menu">';
 	foreach ( $tree[ $parent_id ] as $child ) {
 		$grandkids   = ! empty( $tree[ $child->ID ] );
 		$item_classes = array_merge( array( 'menu-item', 'menu-item-' . $child->ID ), (array) $child->classes );
@@ -206,7 +206,7 @@ function ekwa_header_menu_render_submenu( $parent_id, $tree, $depth = 0 ) {
 		}
 		$item_classes = array_filter( array_unique( $item_classes ) );
 
-		$out .= '<li class="' . esc_attr( implode( ' ', $item_classes ) ) . '" role="none">';
+		$out .= '<li class="' . esc_attr( implode( ' ', $item_classes ) ) . '">';
 		$out .= ekwa_header_menu_link( $child, $grandkids );
 		if ( $grandkids ) {
 			$out .= ekwa_header_menu_render_submenu( $child->ID, $tree, $depth + 1 );
@@ -240,7 +240,7 @@ function ekwa_header_menu_render_megamenu( $top_item, $tree ) {
 	}
 	$cols = max( 1, min( 6, $cols ) );
 
-	$out  = '<div class="ekwa-megamenu" role="menu" style="--ekwa-mega-cols:' . $cols . '">';
+	$out  = '<div class="ekwa-megamenu" style="--ekwa-mega-cols:' . $cols . '">';
 	$out .= '<div class="ekwa-megamenu-grid">';
 
 	foreach ( $columns_items as $col_item ) {
@@ -264,7 +264,7 @@ function ekwa_header_menu_render_megamenu( $top_item, $tree ) {
 			$col_classes[] = 'has-image';
 		}
 
-		$out .= '<div class="' . esc_attr( implode( ' ', $col_classes ) ) . '" role="none">';
+		$out .= '<div class="' . esc_attr( implode( ' ', $col_classes ) ) . '">';
 
 		if ( $image_html ) {
 			$out .= '<div class="ekwa-megamenu-image-wrap">' . $image_html . '</div>';
@@ -280,11 +280,11 @@ function ekwa_header_menu_render_megamenu( $top_item, $tree ) {
 
 		// Items = 3rd-level children of this column heading.
 		if ( ! empty( $tree[ $col_item->ID ] ) ) {
-			$out .= '<ul class="ekwa-megamenu-list" role="menu">';
+			$out .= '<ul class="ekwa-megamenu-list">';
 			foreach ( $tree[ $col_item->ID ] as $leaf ) {
 				$leaf_classes = array_merge( array( 'menu-item', 'menu-item-' . $leaf->ID ), (array) $leaf->classes );
 				$leaf_classes = array_filter( array_unique( $leaf_classes ) );
-				$out .= '<li class="' . esc_attr( implode( ' ', $leaf_classes ) ) . '" role="none">';
+				$out .= '<li class="' . esc_attr( implode( ' ', $leaf_classes ) ) . '">';
 				$out .= ekwa_header_menu_link( $leaf, false );
 				$out .= '</li>';
 			}
@@ -330,7 +330,7 @@ function ekwa_render_main_nav( $location = 'main_menu' ) {
 	}
 
 	$out  = '<nav class="ekwa-header-nav" aria-label="' . esc_attr__( 'Main Navigation', 'ekwa' ) . '">';
-	$out .= '<ul class="ekwa-header-menu" role="menubar">';
+	$out .= '<ul class="ekwa-header-menu">';
 
 	foreach ( $top as $item ) {
 		$has_children = ! empty( $tree[ $item->ID ] );
@@ -345,7 +345,7 @@ function ekwa_render_main_nav( $location = 'main_menu' ) {
 		}
 		$item_classes = array_filter( array_unique( $item_classes ) );
 
-		$out .= '<li class="' . esc_attr( implode( ' ', $item_classes ) ) . '" role="none">';
+		$out .= '<li class="' . esc_attr( implode( ' ', $item_classes ) ) . '">';
 		$out .= ekwa_header_menu_link( $item, $has_children );
 
 		if ( $is_mega ) {
