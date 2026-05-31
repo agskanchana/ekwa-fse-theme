@@ -4327,14 +4327,21 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$wrap_open  = '<section class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
 	$wrap_close = '</section>';
 
-	// Blog stylesheet (post-card styles) and, in carousel mode, the carousel
+	// Each card uses the editable "Post item template" (Settings → Related Posts)
+	// so this block honours the same token template as ekwa/related-posts.
+	$template = (string) get_option( 'ekwa_related_posts_template', '' );
+	if ( '' === trim( $template ) ) {
+		$template = ekwa_related_posts_default_template();
+	}
+
+	// Blog stylesheet (card styles) and, in carousel mode, the carousel
 	// bundle are inlined on render — see inc/ekwa-inline-assets.php.
 
 	// ── Grid mode ─────────────────────────────────────────────────────
 	if ( ! $use_carousel ) {
 		$grid_html = '<div class="ekwa-related__grid" data-desktop-items="' . $desktop . '" data-tablet-items="' . $tablet . '" data-mobile-items="' . $mobile . '">';
 		foreach ( $posts as $p ) {
-			$grid_html .= ekwa_render_post_card( $p->ID );
+			$grid_html .= ekwa_related_posts_render_template( $template, $p->ID );
 		}
 		$grid_html .= '</div>';
 
@@ -4360,7 +4367,7 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$html .= '<div class="ekwa-carousel__track">';
 	foreach ( $posts as $p ) {
 		$html .= '<div class="ekwa-carousel__item">';
-		$html .= ekwa_render_post_card( $p->ID );
+		$html .= ekwa_related_posts_render_template( $template, $p->ID );
 		$html .= '</div>';
 	}
 	$html .= '</div>'; // track

@@ -151,6 +151,11 @@ require_once get_template_directory() . '/inc/ekwa-ai-hints.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 
 /**
+ * AI alt-text generation for the ekwa/image block (Gemini multimodal).
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
+
+/**
  * Tag external links with a descriptive title on first user interaction.
  */
 require_once get_template_directory() . '/inc/ekwa-external-links.php';

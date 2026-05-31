@@ -52,6 +52,40 @@
 				setWebp( { busy: false, notice: { status: status, message: message } } );
 			}
 
+			// AI alt-text action state — local, not persisted on the block.
+			var altState = useState( { busy: false, notice: null } );
+			var altAi = altState[0]; var setAltAi = altState[1];
+
+			function setAltNotice( status, message ) {
+				setAltAi( { busy: false, notice: { status: status, message: message } } );
+			}
+
+			function handleGenerateAlt() {
+				if ( ! mediaId ) {
+					setAltNotice( 'error', __( 'Pick an image from the media library first.' ) );
+					return;
+				}
+				setAltAi( { busy: true, notice: null } );
+				apiFetch( {
+					path: '/ekwa/v1/generate-alt',
+					method: 'POST',
+					data: { attachment_id: mediaId },
+				} ).then( function ( res ) {
+					if ( res && res.alt ) {
+						setAttributes( { alt: res.alt } );
+						setAltNotice( 'success', __( 'Alt text generated.' ) );
+					} else {
+						setAltNotice( 'error', __( 'No alt text was returned.' ) );
+					}
+				} ).catch( function ( err ) {
+					var msg = ( err && err.message ) ? err.message : __( 'Alt text generation failed.' );
+					if ( err && err.code === 'no_api_key' ) {
+						msg = __( 'Gemini API key is not configured (Settings → AI).' );
+					}
+					setAltNotice( 'error', msg );
+				} );
+			}
+
 			function handleRegenWebp() {
 				if ( ! mediaId ) {
 					setWebpNotice( 'error', __( 'Pick an image from the media library first.' ) );
@@ -159,6 +193,27 @@
 						value: alt,
 						onChange: function ( val ) { setAttributes( { alt: val } ); },
 					} ),
+					el( 'div', { style: { margin: '-4px 0 16px' } },
+						el( Button, {
+							variant: 'secondary',
+							isSmall: true,
+							onClick: handleGenerateAlt,
+							disabled: altAi.busy || ! mediaId,
+						}, altAi.busy
+							? el( Fragment, null, el( Spinner, null ), __( ' Generating…' ) )
+							: __( 'Generate with AI' )
+						),
+						! mediaId ? el( 'p', { style: { margin: '6px 0 0', fontSize: '12px', color: '#757575' } },
+							__( 'Select a media-library image to enable AI alt text.' )
+						) : null,
+						altAi.notice ? el( 'div', { style: { marginTop: '8px' } },
+							el( Notice, {
+								status: altAi.notice.status,
+								isDismissible: true,
+								onRemove: function () { setAltAi( { busy: false, notice: null } ); },
+							}, altAi.notice.message )
+						) : null
+					),
 					el( TextControl, {
 						label: __( 'Width' ),
 						value: width,
