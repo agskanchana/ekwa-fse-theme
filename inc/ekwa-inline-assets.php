@@ -60,6 +60,7 @@ function ekwa_inline_asset_map() {
 		'ekwa/reveal'           => array( 'css' => 'blocks/ekwa-reveal/style.css',            'js' => 'blocks/ekwa-reveal/view.js' ),
 		'ekwa/reveal-hidden'    => array( 'css' => 'blocks/ekwa-reveal/style.css' ),
 		'ekwa/carousel'         => array( 'css' => 'blocks/ekwa-carousel/style.css',          'js' => 'blocks/ekwa-carousel/view.js' ),
+		'ekwa/load-more-rows'   => array( 'css' => 'blocks/ekwa-load-more-rows/style.css',    'js' => 'blocks/ekwa-load-more-rows/view.js' ),
 
 		// Blog blocks — all share the (page-level) blog stylesheet; dedupe keeps
 		// it to a single inline emission per request.
@@ -232,7 +233,12 @@ function ekwa_inline_get_style( $rel ) {
 	if ( '' === trim( $css ) ) {
 		return '';
 	}
-	return '<style id="' . esc_attr( ekwa_inline_id( $rel ) ) . '">' . $css . '</style>';
+	// The inline <style> is prepended next to its block, so it can land as a
+	// direct child of a flex/grid container. A greedy `> * { display:… !important }`
+	// rule (e.g. .ekwa-single__meta) would otherwise force the <style>'s text to
+	// render on the page. An inline display:none!important wins the cascade and
+	// keeps it hidden everywhere without affecting how the CSS applies.
+	return '<style id="' . esc_attr( ekwa_inline_id( $rel ) ) . '" style="display:none!important">' . $css . '</style>';
 }
 
 /**

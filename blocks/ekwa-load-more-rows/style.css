@@ -1,0 +1,23 @@
+/* Load More Rows block */
+.ekwa-lmr__row.is-hidden {
+	display: none;
+}
+
+.ekwa-lmr__more {
+	margin-top: 16px;
+}
+.ekwa-lmr__btn {
+	cursor: pointer;
+}
+
+/* Fade-in for rows revealed by the Load More button. */
+.ekwa-lmr__row.is-revealed {
+	animation: ekwa-lmr-fade 0.3s ease;
+}
+@keyframes ekwa-lmr-fade {
+	from { opacity: 0; transform: translateY(8px); }
+	to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.ekwa-lmr__row.is-revealed { animation: none; }
+}

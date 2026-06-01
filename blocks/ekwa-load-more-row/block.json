@@ -1,0 +1,19 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/load-more-row",
+	"version": "1.0.0",
+	"title": "Row",
+	"category": "design",
+	"icon": "minus",
+	"description": "A single row inside a Load More Rows block. Add any blocks inside.",
+	"textdomain": "ekwa",
+	"parent": [ "ekwa/load-more-rows" ],
+	"supports": {
+		"html": false,
+		"anchor": false,
+		"className": false,
+		"reusable": false
+	},
+	"editorScript": "ekwa-load-more-row-editor"
+}

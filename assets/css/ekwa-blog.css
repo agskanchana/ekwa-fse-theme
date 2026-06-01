@@ -54,7 +54,7 @@
 	color: #4b5563;
 	line-height: 1.4;
 }
-.ekwa-single__meta > * {
+.ekwa-single__meta > *:not(style):not(script) {
 	display: inline-flex !important;
 	align-items: center;
 	gap: 6px;
@@ -64,7 +64,7 @@
 	border-radius: 999px;
 	white-space: nowrap;
 }
-.ekwa-single__meta > *::before {
+.ekwa-single__meta > *:not(style):not(script)::before {
 	font-family: "Font Awesome 6 Free";
 	font-weight: 900;
 	color: var(--wp--preset--color--primary, #4f46e5);

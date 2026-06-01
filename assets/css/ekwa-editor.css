@@ -981,3 +981,51 @@
 	margin-top: 0.6em;
 	margin-bottom: 0.6em;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Load More Rows — editor-only outlines so the container and its rows are easy
+   to tell apart while authoring. These classes (…--editor) are added only in the
+   block editor, so nothing here reaches the front end.
+   ────────────────────────────────────────────────────────────────────────── */
+.ekwa-lmr--editor {
+	position: relative;
+	border: 2px dashed #2563eb;            /* container — blue */
+	border-radius: 10px;
+	padding: 26px 14px 14px;
+	margin-top: 22px;
+}
+.ekwa-lmr--editor::before {
+	content: "Load More Rows";
+	position: absolute;
+	top: -11px;
+	left: 12px;
+	padding: 1px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.6;
+	color: #fff;
+	background: #2563eb;
+	border-radius: 4px;
+	letter-spacing: 0.3px;
+}
+.ekwa-lmr__row--editor {
+	position: relative;
+	border: 1px dashed #e11d48;            /* each row — pink/red */
+	border-radius: 8px;
+	padding: 22px 12px 12px;
+	margin: 14px 0;
+}
+.ekwa-lmr__row--editor::before {
+	content: "Row";
+	position: absolute;
+	top: -10px;
+	left: 10px;
+	padding: 1px 7px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.6;
+	color: #fff;
+	background: #e11d48;
+	border-radius: 4px;
+	letter-spacing: 0.3px;
+}

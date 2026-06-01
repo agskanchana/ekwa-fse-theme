@@ -1,0 +1,29 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/load-more-rows",
+	"version": "1.0.0",
+	"title": "Load More Rows",
+	"category": "design",
+	"icon": "excerpt-view",
+	"description": "Stack rows of content and reveal the hidden ones in batches with a Load More button.",
+	"textdomain": "ekwa",
+	"keywords": [ "load more", "rows", "reveal", "show more", "accordion" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"attributes": {
+		"visibleRows":     { "type": "number",  "default": 2 },
+		"batchSize":       { "type": "number",  "default": 1 },
+		"buttonText":      { "type": "string",  "default": "Load More" },
+		"buttonClassName": { "type": "string",  "default": "btn btn-dark" },
+		"alignButton":     { "type": "string",  "default": "center" },
+		"hideWhenDone":    { "type": "boolean", "default": true }
+	},
+	"editorScript": "ekwa-load-more-rows-editor"
+}

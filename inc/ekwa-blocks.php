@@ -716,6 +716,8 @@ function ekwa_register_blocks() {
 		'related-posts'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'reveal'           => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
 		'reveal-hidden'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
+		'load-more-rows'   => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
+		'load-more-row'    => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
 	);
 
 	foreach ( $blog_blocks as $slug => $config ) {
@@ -4671,6 +4673,87 @@ function ekwa_render_reveal_hidden_block( $attrs, $content ) {
 		$html .= ' id="' . esc_attr( $anchor ) . '"';
 	}
 	$html .= '>' . $content . '</div>';
+
+	return $html;
+}
+
+/**
+ * Render: ekwa/load-more-row.
+ *
+ * A single row wrapper inside ekwa/load-more-rows. The fixed
+ * `class="ekwa-lmr__row"` (no wrapper attributes) lets the parent reliably mark
+ * rows beyond the visible count as hidden.
+ *
+ * @param array  $attrs   Block attributes (none).
+ * @param string $content Inner blocks HTML.
+ * @return string
+ */
+function ekwa_render_load_more_row_block( $attrs, $content ) {
+	return '<div class="ekwa-lmr__row">' . $content . '</div>';
+}
+
+/**
+ * Render: ekwa/load-more-rows.
+ *
+ * Shows the first `visibleRows` rows and marks the rest hidden server-side (so
+ * there's no flash); view.js reveals them `batchSize` at a time when the Load
+ * More button is clicked. The button is omitted when nothing is hidden.
+ *
+ * @param array  $attrs   Block attributes.
+ * @param string $content Inner rows HTML (from ekwa/load-more-row children).
+ * @return string
+ */
+function ekwa_render_load_more_rows_block( $attrs, $content ) {
+	$visible      = isset( $attrs['visibleRows'] ) ? max( 0, (int) $attrs['visibleRows'] ) : 2;
+	$batch        = isset( $attrs['batchSize'] )   ? max( 1, (int) $attrs['batchSize'] )   : 1;
+	$button_text  = isset( $attrs['buttonText'] )  ? wp_strip_all_tags( $attrs['buttonText'] ) : __( 'Load More', 'ekwa' );
+	$btn_class    = isset( $attrs['buttonClassName'] ) ? sanitize_text_field( $attrs['buttonClassName'] ) : 'btn btn-dark';
+	$align        = isset( $attrs['alignButton'] ) ? $attrs['alignButton'] : 'center';
+	$hide_done    = ! isset( $attrs['hideWhenDone'] ) || (bool) $attrs['hideWhenDone'];
+	$user_class   = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
+	$anchor       = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] )    : '';
+
+	if ( ! in_array( $align, array( 'left', 'center', 'right' ), true ) ) {
+		$align = 'center';
+	}
+
+	// Mark every row beyond the visible count as hidden (no flash on load).
+	$index  = 0;
+	$marked = preg_replace_callback(
+		'/<div class="ekwa-lmr__row"/',
+		function () use ( &$index, $visible ) {
+			$is_hidden = $index >= $visible;
+			$index++;
+			return $is_hidden
+				? '<div class="ekwa-lmr__row is-hidden" hidden'
+				: '<div class="ekwa-lmr__row"';
+		},
+		(string) $content
+	);
+	$total        = $index;
+	$hidden_count = max( 0, $total - $visible );
+
+	$wrap_class = trim( 'ekwa-lmr ' . $user_class );
+
+	$html  = '<div class="' . esc_attr( $wrap_class ) . '"';
+	if ( $anchor ) {
+		$html .= ' id="' . esc_attr( $anchor ) . '"';
+	}
+	$html .= ' data-batch="' . esc_attr( $batch ) . '"';
+	if ( $hide_done ) {
+		$html .= ' data-hide-when-done="1"';
+	}
+	$html .= '>';
+	$html .= '<div class="ekwa-lmr__track">' . $marked . '</div>';
+
+	// Button only when there's something to reveal.
+	if ( $hidden_count > 0 ) {
+		$html .= '<div class="ekwa-lmr__more" style="text-align:' . esc_attr( $align ) . ';">';
+		$html .= '<button type="button" class="ekwa-lmr__btn ' . esc_attr( $btn_class ) . '">' . esc_html( $button_text ) . '</button>';
+		$html .= '</div>';
+	}
+
+	$html .= '</div>';
 
 	return $html;
 }
