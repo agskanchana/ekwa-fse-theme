@@ -834,22 +834,32 @@ function ekwa_fonts_download_google( $family, $weights ) {
 		return new WP_Error( 'ekwa_fonts_parse', __( 'No @font-face declarations found.', 'ekwa' ) );
 	}
 
-	$saved = array();
+	// Google returns SEVERAL @font-face blocks per weight — one per unicode-range
+	// subset, in this order: cyrillic(-ext), greek(-ext), vietnamese, latin-ext,
+	// latin. We self-host a single file per weight and emit it without a
+	// unicode-range, so we MUST pick the `latin` subset (the block whose range
+	// covers basic Latin, U+0000–00FF). Grabbing the first block self-hosts the
+	// Cyrillic subset, which has none of the Latin letters — so on-page Latin
+	// text silently falls back to a system font (the bug this fixes). Prefer
+	// latin; fall back to the first subset seen only if a font has no latin block.
+	$chosen = array(); // weight => array( src, is_latin )
 	foreach ( $blocks[0] as $block ) {
 		if ( ! preg_match( '/font-weight:\s*(\d+)/i', $block, $wm ) ) { continue; }
 		if ( ! preg_match( '/src:\s*url\((https:\/\/fonts\.gstatic\.com\/[^)]+\.woff2)\)/i', $block, $sm ) ) { continue; }
 		$weight = $wm[1];
-		$src    = $sm[1];
-
 		if ( ! in_array( $weight, $weights, true ) ) {
 			continue;
 		}
-		// Already saved this weight? Skip duplicate (Google may return Latin & latin-ext).
-		if ( isset( $saved[ $weight ] ) ) {
-			continue;
-		}
 
-		$bin = wp_remote_get( $src, array( 'timeout' => 30 ) );
+		$is_latin = (bool) preg_match( '/unicode-range:[^;}]*U\+0000/i', $block );
+		if ( ! isset( $chosen[ $weight ] ) || ( $is_latin && empty( $chosen[ $weight ]['is_latin'] ) ) ) {
+			$chosen[ $weight ] = array( 'src' => $sm[1], 'is_latin' => $is_latin );
+		}
+	}
+
+	$saved = array();
+	foreach ( $chosen as $weight => $info ) {
+		$bin = wp_remote_get( $info['src'], array( 'timeout' => 30 ) );
 		if ( is_wp_error( $bin ) || 200 !== wp_remote_retrieve_response_code( $bin ) ) {
 			continue;
 		}
