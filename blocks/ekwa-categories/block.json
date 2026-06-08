@@ -11,7 +11,8 @@
 	"keywords": [ "categories", "taxonomy", "sidebar", "widget" ],
 	"supports": { "html": false },
 	"attributes": {
-		"title": { "type": "string", "default": "Categories" }
+		"title": { "type": "string", "default": "Categories" },
+		"headingLevel": { "type": "string", "default": "h2" }
 	},
 	"editorScript": "ekwa-categories-editor"
 }

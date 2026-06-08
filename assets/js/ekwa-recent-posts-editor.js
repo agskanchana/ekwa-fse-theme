@@ -8,8 +8,13 @@
 	var PanelBody = wp.components.PanelBody;
 	var TextControl = wp.components.TextControl;
 	var RangeControl = wp.components.RangeControl;
+	var SelectControl = wp.components.SelectControl;
 	var ServerSideRender = wp.serverSideRender;
 	var __ = wp.i18n.__;
+
+	var HEADING_LEVELS = [ 'h2', 'h3', 'h4', 'h5', 'h6' ].map( function ( h ) {
+		return { label: h.toUpperCase(), value: h };
+	} );
 
 	registerBlockType( 'ekwa/recent-posts', {
 		edit: function ( props ) {
@@ -19,6 +24,7 @@
 				el( InspectorControls, null,
 					el( PanelBody, { title: __( 'Settings' ), initialOpen: true },
 						el( TextControl, { label: __( 'Heading' ), value: a.title, onChange: function ( v ) { set( { title: v } ); } } ),
+						el( SelectControl, { label: __( 'Heading level' ), value: a.headingLevel || 'h2', options: HEADING_LEVELS, onChange: function ( v ) { set( { headingLevel: v } ); } } ),
 						el( RangeControl, { label: __( 'Posts to show' ), value: a.count, min: 1, max: 12, onChange: function ( v ) { set( { count: v } ); } } )
 					)
 				),

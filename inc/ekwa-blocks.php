@@ -4194,9 +4194,10 @@ function ekwa_render_toc_block( $attrs ) {
 function ekwa_render_recent_posts_block( $attrs ) {
 	$count = absint( $attrs['count'] ?? 5 );
 	$title = $attrs['title'] ?? __( 'Recent Posts', 'ekwa' );
+	$tag   = preg_match( '/^h[2-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-		return '<div class="ekwa-sidebar-widget"><h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4><p style="color:#9ca3af;font-size:12px;">Latest posts list (rendered on front-end).</p></div>';
+		return '<div class="ekwa-sidebar-widget"><' . $tag . ' class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</' . $tag . '><p style="color:#9ca3af;font-size:12px;">Latest posts list (rendered on front-end).</p></div>';
 	}
 
 	$args = array(
@@ -4212,7 +4213,7 @@ function ekwa_render_recent_posts_block( $attrs ) {
 	}
 
 	$html  = '<div class="ekwa-sidebar-widget ekwa-sidebar-widget--recent">';
-	$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4>';
+	$html .= '<' . $tag . ' class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</' . $tag . '>';
 	$html .= '<ul class="ekwa-recent-posts">';
 	foreach ( $recent as $rp ) {
 		$thumb = get_the_post_thumbnail( $rp->ID, 'thumbnail', array(
@@ -4240,9 +4241,10 @@ function ekwa_render_recent_posts_block( $attrs ) {
  */
 function ekwa_render_categories_block( $attrs ) {
 	$title = $attrs['title'] ?? __( 'Categories', 'ekwa' );
+	$tag   = preg_match( '/^h[2-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-		return '<div class="ekwa-sidebar-widget"><h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4><p style="color:#9ca3af;font-size:12px;">Category list (rendered on front-end).</p></div>';
+		return '<div class="ekwa-sidebar-widget"><' . $tag . ' class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</' . $tag . '><p style="color:#9ca3af;font-size:12px;">Category list (rendered on front-end).</p></div>';
 	}
 
 	$excluded_slugs = array( 'uncategorized', 'featured', 'featured-articles' );
@@ -4259,7 +4261,7 @@ function ekwa_render_categories_block( $attrs ) {
 	}
 
 	$html  = '<div class="ekwa-sidebar-widget ekwa-sidebar-widget--cats">';
-	$html .= '<h4 class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</h4>';
+	$html .= '<' . $tag . ' class="ekwa-sidebar-widget__title">' . esc_html( $title ) . '</' . $tag . '>';
 	$html .= '<ul class="ekwa-categories">';
 	foreach ( $cats as $cat ) {
 		$html .= '<li class="ekwa-categories__item">';
