@@ -119,6 +119,13 @@ require_once get_template_directory() . '/inc/ekwa-blocks.php';
 require_once get_template_directory() . '/inc/ekwa-inline-assets.php';
 
 /**
+ * Inline the active child theme's style.css / ekwa-child.js (opt-in via the
+ * Performance settings tab). Lives in the parent so it works without editing
+ * each child theme.
+ */
+require_once get_template_directory() . '/inc/ekwa-inline-child.php';
+
+/**
  * Load WebP image support (auto-generation + transparent URL swap).
  */
 require_once get_template_directory() . '/inc/ekwa-webp.php';
