@@ -3713,6 +3713,17 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$bg_image     = isset( $attrs['backgroundImage'] ) ? esc_url( $attrs['backgroundImage'] ) : '';
 	$inline_style = isset( $attrs['inlineStyle'] )     ? $attrs['inlineStyle'] : '';
 
+	// Serve the WebP companion for the background when the browser advertises
+	// support — mirrors the ekwa/image URL swap. Browsers that don't send an
+	// `image/webp` Accept header keep the original JPG/PNG (graceful fallback),
+	// and the response already carries `Vary: Accept` from the WebP module.
+	if ( $bg_image
+		&& function_exists( 'ekwa_webp_is_enabled' ) && ekwa_webp_is_enabled()
+		&& function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports()
+		&& function_exists( 'ekwa_webp_url_for' ) ) {
+		$bg_image = ekwa_webp_url_for( $bg_image );
+	}
+
 	// Resolve href via the shared link-source helper. For external mode, fall
 	// back to the legacy `href` attribute when `url` is empty (backward-compat
 	// with content saved before the Link Source control was added).
@@ -3740,7 +3751,11 @@ function ekwa_render_div_block( $attrs, $content ) {
 	// data-bg + the ekwa-lazy-bg class. The IntersectionObserver shim is inlined
 	// on demand (once per request) so pages without lazy-bg divs ship zero JS.
 	$lazy_bg_attr = isset( $attrs['lazyBg'] ) ? (bool) $attrs['lazyBg'] : true;
-	$lazy_bg      = $bg_image && $lazy_bg_attr;
+	// A high-priority (LCP) background is preloaded in <head> with
+	// fetchpriority="high" (see ekwa_perf_emit_hero_preloads), so it must paint
+	// immediately on render — lazy-loading it would defeat the preload entirely.
+	$preload_bg   = ! empty( $attrs['preloadBg'] );
+	$lazy_bg      = $bg_image && $lazy_bg_attr && ! $preload_bg;
 
 	// Build style string from background image + any extra inline styles.
 	$style_parts = array();

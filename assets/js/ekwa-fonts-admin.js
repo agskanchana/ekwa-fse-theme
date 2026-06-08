@@ -15,6 +15,8 @@
 	var $list             = $( '#ekwa-fonts-list' );
 	var $addGoogleBtn     = $( '#ekwa-fonts-add-google' );
 	var $addUploadBtn     = $( '#ekwa-fonts-add-upload' );
+	var $detectAiBtn      = $( '#ekwa-fonts-detect-ai' );
+	var $aiResults        = $( '#ekwa-fonts-ai-results' );
 	var catalogPromise    = null;
 
 	function loadCatalog() {
@@ -164,10 +166,22 @@
 		$input.on( 'blur', function () { setTimeout( close, 200 ); } );
 	}
 
-	/* -- Add Google Font ------------------------------------------------- */
-	$addGoogleBtn.on( 'click', function () {
+	/**
+	 * Bring a freshly added row into view (used after AI "Embed" clicks).
+	 */
+	function scrollToRow( $row ) {
+		if ( $row && $row[0] && $row[0].scrollIntoView ) {
+			$row[0].scrollIntoView( { behavior: 'smooth', block: 'center' } );
+		}
+	}
+
+	/**
+	 * Create a "New Google Font" row, fully wired (autocomplete + var sync).
+	 * Returns the jQuery row so callers can pre-fill it.
+	 */
+	function createGoogleRow() {
 		var $row = renderTemplate( 'tmpl-ekwa-fonts-new-google' );
-		if ( ! $row ) { return; }
+		if ( ! $row ) { return null; }
 		$list.append( $row );
 		var $family = $row.find( '.ekwa-fonts-family-search' );
 		var $var    = $row.find( '.ekwa-fonts-varname' );
@@ -177,18 +191,28 @@
 			$row.find( '.ekwa-fonts-suggest' ),
 			$row.find( '.ekwa-fonts-preview' )
 		);
-	} );
+		return $row;
+	}
 
-	/* -- Add Upload Font ------------------------------------------------- */
-	$addUploadBtn.on( 'click', function () {
+	/**
+	 * Create an "Upload Font File" row, wired for var-name auto-sync.
+	 */
+	function createUploadRow() {
 		var $row = renderTemplate( 'tmpl-ekwa-fonts-new-upload' );
-		if ( ! $row ) { return; }
+		if ( ! $row ) { return null; }
 		$list.append( $row );
 		wireVarNameAutosync(
 			$row.find( '.ekwa-fonts-family' ),
 			$row.find( '.ekwa-fonts-varname' )
 		);
-	} );
+		return $row;
+	}
+
+	/* -- Add Google Font ------------------------------------------------- */
+	$addGoogleBtn.on( 'click', function () { createGoogleRow(); } );
+
+	/* -- Add Upload Font ------------------------------------------------- */
+	$addUploadBtn.on( 'click', function () { createUploadRow(); } );
 
 	/* -- Cancel new row -------------------------------------------------- */
 	$list.on( 'click', '.ekwa-fonts-cancel', function () {
@@ -319,6 +343,155 @@
 				$row.find( '.ekwa-fonts-rename-var' ).val( res.data.var_name );
 			}
 		} );
+	} );
+
+	/* ===================================================================
+	 * AI: detect fonts used in the child theme stylesheet
+	 * =================================================================== */
+
+	var i18n = ekwaFonts.i18n || {};
+
+	function sprintf1( tpl, val ) {
+		return String( tpl || '' ).replace( '%s', val );
+	}
+
+	/**
+	 * Open a Google-font row pre-filled with a family + weights, ready for the
+	 * user to review and hit "Download & save".
+	 */
+	function embedGoogleFont( family, weights ) {
+		var $row = createGoogleRow();
+		if ( ! $row ) { return; }
+		var $family = $row.find( '.ekwa-fonts-family-search' );
+		$family.val( family );
+		var sync = $family.data( 'syncVarName' );
+		if ( typeof sync === 'function' ) { sync(); }
+		$family.trigger( 'change' ); // refresh preview if the catalog is loaded
+
+		var wanted = {};
+		( weights || [] ).forEach( function ( w ) { wanted[ String( w ) ] = true; } );
+		$row.find( '.ekwa-fonts-weights input[type=checkbox]' ).each( function () {
+			this.checked = !! wanted[ this.value ];
+		} );
+
+		scrollToRow( $row );
+	}
+
+	/**
+	 * Open an upload row pre-filled with a custom family name.
+	 */
+	function embedCustomFont( family ) {
+		var $row = createUploadRow();
+		if ( ! $row ) { return; }
+		$row.find( '.ekwa-fonts-family' ).val( family ).trigger( 'input' );
+		scrollToRow( $row );
+	}
+
+	function renderAiResults( fonts ) {
+		$aiResults.empty();
+
+		if ( ! fonts || ! fonts.length ) {
+			$aiResults.html(
+				'<div class="notice notice-warning inline"><p></p></div>'
+			).find( 'p' ).text( i18n.aiNoFonts || 'No fonts detected.' );
+			return;
+		}
+
+		var $panel = $( '<div class="ekwa-fonts-ai-panel"></div>' );
+
+		var $head = $( '<div class="ekwa-fonts-ai-head"></div>' );
+		$( '<h3></h3>' ).text( i18n.aiHeading || 'Detected fonts' ).appendTo( $head );
+		$( '<button type="button" class="button-link ekwa-fonts-ai-dismiss"></button>' )
+			.text( i18n.dismiss || 'Dismiss' ).appendTo( $head );
+		$panel.append( $head );
+
+		$( '<p class="description"></p>' ).text( i18n.aiIntro || '' ).appendTo( $panel );
+
+		var $cards = $( '<div class="ekwa-fonts-ai-cards"></div>' );
+
+		fonts.forEach( function ( f ) {
+			var isGoogle = !! f.is_google_font;
+			var weights  = f.weights || [];
+			var styles   = f.styles || [];
+			var hasItalic = styles.indexOf( 'italic' ) !== -1;
+
+			var $card = $( '<div class="ekwa-fonts-ai-card"></div>' );
+
+			$( '<span class="ekwa-fonts-ai-card-name"></span>' ).text( f.family ).appendTo( $card );
+			$( '<span class="ekwa-fonts-ai-card-src"></span>' )
+				.addClass( isGoogle ? '' : 'is-custom' )
+				.text( isGoogle ? ( i18n.srcGoogle || 'Google Font' ) : ( i18n.srcCustom || 'Custom' ) )
+				.appendTo( $card );
+
+			var $weights = $( '<div class="ekwa-fonts-ai-card-weights"></div>' );
+			weights.forEach( function ( w ) {
+				$( '<span class="ekwa-fonts-weight-chip"></span>' ).text( w ).appendTo( $weights );
+			} );
+			$card.append( $weights );
+
+			var metaBits = [];
+			if ( f.usage_count ) { metaBits.push( sprintf1( i18n.aiUsage || 'used in %s rules', f.usage_count ) ); }
+			if ( f.notes ) { metaBits.push( f.notes ); }
+			if ( hasItalic ) { metaBits.push( i18n.aiItalic || 'italic used' ); }
+			if ( metaBits.length ) {
+				$( '<div class="ekwa-fonts-ai-card-meta"></div>' ).text( metaBits.join( ' · ' ) ).appendTo( $card );
+			}
+
+			$( '<button type="button" class="button button-primary ekwa-fonts-ai-embed"></button>' )
+				.text( isGoogle ? ( i18n.embed || 'Embed' ) : ( i18n.embedUpload || 'Upload to embed' ) )
+				.data( 'family', f.family )
+				.data( 'weights', weights )
+				.data( 'google', isGoogle ? 1 : 0 )
+				.appendTo( $card );
+
+			$cards.append( $card );
+		} );
+
+		$panel.append( $cards );
+		$aiResults.append( $panel );
+	}
+
+	$detectAiBtn.on( 'click', function () {
+		var $btn = $( this );
+		$btn.prop( 'disabled', true );
+		$aiResults.show().html(
+			'<p><span class="spinner is-active" style="float:none;margin:0 6px 0 0;"></span></p>'
+		);
+		$aiResults.find( 'p' ).append(
+			document.createTextNode( i18n.detecting || 'Scanning…' )
+		);
+
+		$.post( ekwaFonts.ajaxUrl, {
+			action : 'ekwa_fonts_ai_detect',
+			nonce  : ekwaFonts.nonce,
+		} ).done( function ( res ) {
+			if ( res && res.success && res.data && res.data.fonts ) {
+				renderAiResults( res.data.fonts );
+			} else {
+				var msg = ( res && res.data && res.data.message ) || i18n.aiError || 'Error';
+				$aiResults.html( '<div class="notice notice-error inline"><p></p></div>' ).find( 'p' ).text( msg );
+			}
+		} ).fail( function () {
+			$aiResults.html( '<div class="notice notice-error inline"><p></p></div>' )
+				.find( 'p' ).text( i18n.aiError || 'Network error' );
+		} ).always( function () {
+			$btn.prop( 'disabled', false );
+		} );
+	} );
+
+	/* -- AI: embed a detected font -------------------------------------- */
+	$aiResults.on( 'click', '.ekwa-fonts-ai-embed', function () {
+		var $b = $( this );
+		if ( $b.data( 'google' ) ) {
+			embedGoogleFont( $b.data( 'family' ), $b.data( 'weights' ) );
+		} else {
+			embedCustomFont( $b.data( 'family' ) );
+		}
+	} );
+
+	/* -- AI: dismiss the results panel ---------------------------------- */
+	$aiResults.on( 'click', '.ekwa-fonts-ai-dismiss', function () {
+		$aiResults.hide().empty();
 	} );
 
 } )( jQuery, window.ekwaFonts );

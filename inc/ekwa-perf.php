@@ -89,10 +89,31 @@ function ekwa_perf_collect_hero_image_blocks( $blocks, &$found ) {
 	}
 }
 
+/**
+ * Recursively collect ekwa/div blocks whose background image is flagged
+ * preloadBg=true. These paint a CSS background-image that is the page's LCP,
+ * so we emit a high-priority preload hint for them (a background can't carry
+ * fetchpriority itself — the <link rel=preload> is the supported mechanism).
+ */
+function ekwa_perf_collect_bg_preload_blocks( $blocks, &$found ) {
+	foreach ( $blocks as $block ) {
+		if ( ! is_array( $block ) ) {
+			continue;
+		}
+		if ( isset( $block['blockName'] ) && $block['blockName'] === 'ekwa/div' ) {
+			$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+			if ( ! empty( $attrs['preloadBg'] ) && ! empty( $attrs['backgroundImage'] ) ) {
+				$found[] = $attrs;
+			}
+		}
+		if ( ! empty( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
+			ekwa_perf_collect_bg_preload_blocks( $block['innerBlocks'], $found );
+		}
+	}
+}
+
 function ekwa_perf_emit_hero_preloads() {
-	$hero_on   = ekwa_perf_preload_hero_enabled();
-	$banner_on = (bool) get_option( 'ekwa_perf_preload_banner', 0 );
-	if ( ( ! $hero_on && ! $banner_on ) || ! is_singular() ) {
+	if ( ! is_singular() ) {
 		return;
 	}
 
@@ -101,14 +122,31 @@ function ekwa_perf_emit_hero_preloads() {
 		return;
 	}
 
+	$hero_on   = ekwa_perf_preload_hero_enabled();
+	$banner_on = (bool) get_option( 'ekwa_perf_preload_banner', 0 );
+
+	$has_blocks = ! empty( $post->post_content ) && has_blocks( $post->post_content );
+	$scan_hero  = $hero_on && $has_blocks;
+	// Per-block opt-in (independent of the global hero/banner toggles). Cheap
+	// substring guard so pages without a preloaded background never parse blocks
+	// just for this pass.
+	$scan_div   = $has_blocks && false !== strpos( $post->post_content, '"preloadBg"' );
+	$scan_banner = $banner_on && has_post_thumbnail( $post );
+
+	if ( ! $scan_hero && ! $scan_div && ! $scan_banner ) {
+		return;
+	}
+
 	$webp_supports = function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports();
 	$srcset_on     = ekwa_perf_srcset_enabled();
 	$emitted       = array();
 
+	$parsed = ( $scan_hero || $scan_div ) ? parse_blocks( $post->post_content ) : array();
+
 	// Hero ekwa/image blocks declared in the post content.
 	$found = array();
-	if ( $hero_on && ! empty( $post->post_content ) && has_blocks( $post->post_content ) ) {
-		ekwa_perf_collect_hero_image_blocks( parse_blocks( $post->post_content ), $found );
+	if ( $scan_hero ) {
+		ekwa_perf_collect_hero_image_blocks( $parsed, $found );
 	}
 
 	foreach ( $found as $attrs ) {
@@ -179,6 +217,32 @@ function ekwa_perf_emit_hero_preloads() {
 				}
 				echo " fetchpriority=\"high\">\n";
 			}
+		}
+	}
+
+	// ekwa/div backgrounds explicitly flagged as the LCP (preloadBg). A CSS
+	// background can't carry fetchpriority itself, so a high-priority preload
+	// hint is how the browser is told to fetch it first (the PageSpeed "LCP
+	// request discovery / fetchpriority=high" audit). Routed through the WebP
+	// companion so it matches the painted background exactly.
+	if ( $scan_div ) {
+		$bg_blocks = array();
+		ekwa_perf_collect_bg_preload_blocks( $parsed, $bg_blocks );
+		foreach ( $bg_blocks as $attrs ) {
+			$src = isset( $attrs['backgroundImage'] ) ? esc_url_raw( (string) $attrs['backgroundImage'] ) : '';
+			if ( ! $src ) {
+				continue;
+			}
+			$key = 'bg:' . $src;
+			if ( isset( $emitted[ $key ] ) ) {
+				continue;
+			}
+			$emitted[ $key ] = true;
+
+			if ( $webp_supports && function_exists( 'ekwa_webp_url_for' ) ) {
+				$src = ekwa_webp_url_for( $src );
+			}
+			echo '<link rel="preload" as="image" href="' . esc_url( $src ) . "\" fetchpriority=\"high\">\n";
 		}
 	}
 }

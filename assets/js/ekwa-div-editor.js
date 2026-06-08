@@ -221,14 +221,40 @@
 			}
 
 			if ( bgImage ) {
+				var preloadBg = !! attributes.preloadBg;
+
+				bgChildren.push(
+					el( ToggleControl, {
+						key:     'preload-bg',
+						label:   __( 'High fetch priority (LCP background)' ),
+						help:    __( 'Adds a <link rel=preload fetchpriority=high> hint so the browser fetches this background first. Use only for the above-the-fold LCP background. Turns off lazy loading.' ),
+						checked: preloadBg,
+						onChange: function ( val ) {
+							// Preloading the LCP and lazy-loading it are mutually
+							// exclusive — turning one on forces the other off.
+							setAttributes( { preloadBg: val, lazyBg: val ? false : attributes.lazyBg } );
+						},
+					} )
+				);
+
 				bgChildren.push(
 					el( ToggleControl, {
 						key:     'lazy-bg',
 						label:   __( 'Lazy load background' ),
 						help:    __( 'Defer painting until the wrapper enters the viewport. Turn off for above-the-fold heroes.' ),
 						checked: attributes.lazyBg !== false,
-						onChange: function ( val ) { setAttributes( { lazyBg: val } ); },
+						disabled: preloadBg,
+						onChange: function ( val ) {
+							setAttributes( { lazyBg: val, preloadBg: val ? false : attributes.preloadBg } );
+						},
 					} )
+				);
+
+				bgChildren.push(
+					el( 'p', {
+						key: 'webp-note',
+						style: { fontSize: '12px', color: '#757575', marginTop: '4px' },
+					}, __( 'Served as WebP automatically when the browser supports it; the original JPG/PNG is the fallback.' ) )
 				);
 			}
 

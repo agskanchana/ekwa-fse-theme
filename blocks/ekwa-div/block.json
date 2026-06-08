@@ -26,6 +26,7 @@
 		"backgroundImage":   { "type": "string",  "default": "" },
 		"backgroundImageId": { "type": "number",  "default": 0 },
 		"lazyBg":            { "type": "boolean", "default": true },
+		"preloadBg":         { "type": "boolean", "default": false },
 		"inlineStyle":       { "type": "string",  "default": "" },
 		"customAttributes":  { "type": "object",  "default": {} }
 	},

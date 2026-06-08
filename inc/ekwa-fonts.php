@@ -191,6 +191,18 @@ function ekwa_fonts_admin_enqueue( $hook ) {
 			'missingWeights'  => __( 'Please pick at least one weight.', 'ekwa' ),
 			'missingFile'     => __( 'Please choose a font file (.woff2, .woff, .ttf, .otf).', 'ekwa' ),
 			'invalidExt'      => __( 'Only .woff2, .woff, .ttf, .otf files are accepted.', 'ekwa' ),
+			'detecting'       => __( 'Scanning the child theme stylesheet with AI…', 'ekwa' ),
+			'aiError'         => __( 'Could not analyse the stylesheet. Please try again.', 'ekwa' ),
+			'aiNoFonts'       => __( 'No embeddable typefaces were detected in the stylesheet.', 'ekwa' ),
+			'aiHeading'       => __( 'Fonts detected in the child theme stylesheet', 'ekwa' ),
+			'aiIntro'         => __( 'Review each typeface, then click Embed to self-host it. Google fonts are downloaded; custom fonts open an upload row.', 'ekwa' ),
+			'aiUsage'         => __( 'used in %s rules', 'ekwa' ),
+			'aiItalic'        => __( 'italic used — Google download self-hosts the upright (normal) weights only.', 'ekwa' ),
+			'srcGoogle'       => __( 'Google Font', 'ekwa' ),
+			'srcCustom'       => __( 'Custom / upload', 'ekwa' ),
+			'embed'           => __( 'Embed', 'ekwa' ),
+			'embedUpload'     => __( 'Upload to embed', 'ekwa' ),
+			'dismiss'         => __( 'Dismiss', 'ekwa' ),
 		),
 	) );
 }
@@ -219,14 +231,37 @@ function ekwa_fonts_render_tab() {
 			<?php endforeach; ?>
 		</div>
 
-		<div class="ekwa-fonts-actions" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+		<div class="ekwa-fonts-actions" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
 			<button type="button" class="button button-secondary" id="ekwa-fonts-add-google">
 				<?php esc_html_e( '+ Add Google Font', 'ekwa' ); ?>
 			</button>
 			<button type="button" class="button button-secondary" id="ekwa-fonts-add-upload">
 				<?php esc_html_e( '+ Upload Font File', 'ekwa' ); ?>
 			</button>
+			<?php
+			$child_active = ( get_template_directory() !== get_stylesheet_directory() );
+			$ai_key       = function_exists( 'ekwa_get_ai_api_key' ) ? ekwa_get_ai_api_key() : false;
+			if ( $child_active ) :
+				?>
+				<button type="button" class="button button-secondary" id="ekwa-fonts-detect-ai" <?php disabled( ! $ai_key ); ?>>
+					<span class="dashicons dashicons-superhero-alt" style="vertical-align:text-bottom;"></span>
+					<?php esc_html_e( 'Detect fonts from stylesheet (AI)', 'ekwa' ); ?>
+				</button>
+				<?php if ( ! $ai_key ) : ?>
+					<span class="description" style="margin:0;">
+						<?php
+						printf(
+							/* translators: %s: link to the AI settings tab. */
+							wp_kses_post( __( 'Add a %s to enable AI detection.', 'ekwa' ) ),
+							'<a href="' . esc_url( admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=ai' ) ) . '">' . esc_html__( 'Gemini API key', 'ekwa' ) . '</a>'
+						);
+						?>
+					</span>
+				<?php endif; ?>
+			<?php endif; ?>
 		</div>
+
+		<div id="ekwa-fonts-ai-results" class="ekwa-fonts-ai-results" style="display:none;"></div>
 	</div>
 
 	<?php /* HTML template for a Google-font picker row (used by JS when adding new) */ ?>
@@ -363,6 +398,19 @@ function ekwa_fonts_render_tab() {
 		.ekwa-fonts-preview { margin-top:10px; padding:10px 12px; background:#f6f7f7; border:1px solid #dcdcde; border-radius:3px; max-width:28em; }
 		.ekwa-fonts-preview-label { display:block; font-size:11px; color:#646970; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; }
 		.ekwa-fonts-preview-sample { display:block; font-size:22px; line-height:1.3; }
+		.ekwa-fonts-ai-results { margin-top:16px; }
+		.ekwa-fonts-ai-panel { border:1px solid #c3c4c7; border-left:4px solid #2271b1; background:#fff; padding:12px 16px; border-radius:4px; }
+		.ekwa-fonts-ai-panel .ekwa-fonts-ai-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+		.ekwa-fonts-ai-panel .ekwa-fonts-ai-head h3 { margin:0; font-size:14px; }
+		.ekwa-fonts-ai-cards { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+		.ekwa-fonts-ai-card { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; border:1px solid #dcdcde; border-radius:4px; padding:10px 12px; background:#fbfbfc; }
+		.ekwa-fonts-ai-card-name { font-size:15px; font-weight:600; }
+		.ekwa-fonts-ai-card-src { font-size:11px; color:#fff; background:#2271b1; padding:1px 8px; border-radius:10px; }
+		.ekwa-fonts-ai-card-src.is-custom { background:#646970; }
+		.ekwa-fonts-ai-card-weights { display:flex; flex-wrap:wrap; gap:5px; }
+		.ekwa-fonts-ai-card-weights .ekwa-fonts-weight-chip { background:#f0f0f1; border:1px solid #dcdcde; padding:1px 8px; border-radius:10px; font-size:11px; }
+		.ekwa-fonts-ai-card-meta { color:#646970; font-size:12px; flex-basis:100%; }
+		.ekwa-fonts-ai-card .ekwa-fonts-ai-embed { margin-left:auto; }
 	</style>
 	<?php
 }
@@ -463,6 +511,191 @@ function ekwa_fonts_ajax_catalog() {
 	wp_send_json_success( array( 'families' => ekwa_fonts_get_google_catalog() ) );
 }
 add_action( 'wp_ajax_ekwa_fonts_catalog', 'ekwa_fonts_ajax_catalog' );
+
+/* ------------------------------------------------------------------------
+ * AJAX: Detect fonts used in the child theme stylesheet (Gemini AI)
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Read the active (child) theme's style.css, capped for the prompt budget.
+ *
+ * @return string|WP_Error CSS contents, or error when there's no child sheet.
+ */
+function ekwa_fonts_read_child_stylesheet() {
+	$parent_dir = get_template_directory();
+	$child_dir  = get_stylesheet_directory();
+	if ( $parent_dir === $child_dir ) {
+		return new WP_Error( 'ekwa_fonts_no_child', __( 'No child theme is active, so there is no stylesheet to scan.', 'ekwa' ) );
+	}
+	$path = $child_dir . '/style.css';
+	if ( ! is_readable( $path ) ) {
+		return new WP_Error( 'ekwa_fonts_no_css', __( 'The child theme stylesheet could not be read.', 'ekwa' ) );
+	}
+	$css = file_get_contents( $path );
+	if ( false === $css || '' === trim( $css ) ) {
+		return new WP_Error( 'ekwa_fonts_empty_css', __( 'The child theme stylesheet is empty.', 'ekwa' ) );
+	}
+	$max = 120000; // ~120 KB is plenty for a hand-written theme sheet.
+	if ( strlen( $css ) > $max ) {
+		$css = substr( $css, 0, $max ) . "\n\n/* …truncated for AI analysis */";
+	}
+	return $css;
+}
+
+/**
+ * System prompt instructing Gemini to extract real typefaces + weights as JSON.
+ *
+ * @return string
+ */
+function ekwa_fonts_ai_detect_prompt() {
+	$allowed = implode( ',', ekwa_fonts_weight_choices() );
+	return <<<PROMPT
+You are a CSS typography analyzer. You will be given the full contents of a WordPress theme stylesheet. Identify every REAL text typeface (font family) the stylesheet actually uses, and for each one list the font-weights and font-styles it is rendered in.
+
+RULES:
+- Resolve CSS custom properties. If a variable like `--ff-sans: 'Inter', system-ui, sans-serif;` is defined and used via `font-family: var(--ff-sans)`, the family is "Inter".
+- The PRIMARY (first) named family in a stack is the real typeface. IGNORE generic/system fallbacks used only after the primary: serif, sans-serif, monospace, cursive, system-ui, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto (only when clearly a system fallback), Helvetica, Arial, Georgia, "Times New Roman".
+- IGNORE icon fonts entirely: "Font Awesome", "Font Awesome 6 Free", "FontAwesome", dashicons, "Material Icons".
+- WEIGHTS: collect every explicit font-weight applied to rules that use the family (map keyword normal=400, bold=700). When the family is applied to heading tags (h1–h6) or strong/b WITHOUT an explicit font-weight, assume 700 for those rules. When applied to body/normal text without an explicit weight, assume 400. Output numeric weights only, each from this allowed set: {$allowed}.
+- STYLES: list "normal" and/or "italic" based on font-style usage of that family.
+- usage_count: number of distinct CSS rules that reference the family (directly or through its variable).
+- is_google_font: true if the family is a well-known Google Fonts family; false if it looks like a custom/brand font that would need a manual upload.
+- notes: a short (max ~8 words) human note on where it is used (e.g. "Body & UI text", "Headings").
+
+OUTPUT:
+Return ONLY valid minified JSON, no markdown, no code fences, no commentary, in EXACTLY this shape:
+{"fonts":[{"family":"Inter","is_google_font":true,"weights":["400","600","700"],"styles":["normal"],"usage_count":16,"notes":"Body & UI text"}]}
+Order fonts by usage_count descending. If no real typefaces are found, return {"fonts":[]}.
+PROMPT;
+}
+
+/**
+ * Normalize one AI font entry against our allowed weights/values.
+ *
+ * @param mixed $entry Raw decoded entry.
+ * @return array|null Sanitized entry, or null when invalid.
+ */
+function ekwa_fonts_ai_sanitize_entry( $entry ) {
+	if ( ! is_array( $entry ) ) {
+		return null;
+	}
+	$family = isset( $entry['family'] ) ? sanitize_text_field( (string) $entry['family'] ) : '';
+	if ( '' === $family ) {
+		return null;
+	}
+
+	$allowed = ekwa_fonts_weight_choices();
+	$weights = array();
+	if ( isset( $entry['weights'] ) && is_array( $entry['weights'] ) ) {
+		foreach ( $entry['weights'] as $w ) {
+			$w = preg_replace( '/[^0-9]/', '', (string) $w );
+			if ( '' !== $w && in_array( $w, $allowed, true ) && ! in_array( $w, $weights, true ) ) {
+				$weights[] = $w;
+			}
+		}
+	}
+	if ( empty( $weights ) ) {
+		$weights = array( '400' );
+	}
+	sort( $weights, SORT_NUMERIC );
+
+	$styles = array();
+	if ( isset( $entry['styles'] ) && is_array( $entry['styles'] ) ) {
+		foreach ( $entry['styles'] as $s ) {
+			$s = strtolower( trim( (string) $s ) );
+			if ( in_array( $s, array( 'normal', 'italic' ), true ) && ! in_array( $s, $styles, true ) ) {
+				$styles[] = $s;
+			}
+		}
+	}
+	if ( empty( $styles ) ) {
+		$styles = array( 'normal' );
+	}
+
+	return array(
+		'family'         => $family,
+		'is_google_font' => ! empty( $entry['is_google_font'] ),
+		'weights'        => $weights,
+		'styles'         => $styles,
+		'usage_count'    => isset( $entry['usage_count'] ) ? max( 0, (int) $entry['usage_count'] ) : 0,
+		'notes'          => isset( $entry['notes'] ) ? sanitize_text_field( wp_html_excerpt( (string) $entry['notes'], 80 ) ) : '',
+	);
+}
+
+function ekwa_fonts_ajax_ai_detect() {
+	check_ajax_referer( 'ekwa_fonts', 'nonce' );
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Permission denied.', 'ekwa' ) ), 403 );
+	}
+
+	// The AI helpers live in files loaded later in functions.php; they are all
+	// loaded by the time this AJAX request runs, but require defensively.
+	require_once get_template_directory() . '/inc/ekwa-ai-shared.php';
+	if ( ! function_exists( 'ekwa_ai_generate_call_gemini' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
+	}
+
+	$api_key = ekwa_get_ai_api_key();
+	if ( ! $api_key ) {
+		wp_send_json_error( array( 'message' => __( 'Gemini API key is not configured (Settings → AI).', 'ekwa' ) ) );
+	}
+
+	$css = ekwa_fonts_read_child_stylesheet();
+	if ( is_wp_error( $css ) ) {
+		wp_send_json_error( array( 'message' => $css->get_error_message() ) );
+	}
+
+	$model = 'gemini-2.5-flash';
+	if ( function_exists( 'ekwa_ai_generate_allowed_models' ) ) {
+		$models = ekwa_ai_generate_allowed_models();
+		if ( ! isset( $models[ $model ] ) ) {
+			$model = (string) array_key_first( $models );
+		}
+	}
+
+	$contents = array(
+		array(
+			'role'  => 'user',
+			'parts' => array(
+				array( 'text' => "Analyze this stylesheet and return the fonts JSON.\n\n```css\n" . $css . "\n```" ),
+			),
+		),
+	);
+
+	$result = ekwa_ai_generate_call_gemini( ekwa_fonts_ai_detect_prompt(), $contents, 0.1, $api_key, $model );
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+	}
+
+	$raw = isset( $result['content'] ) ? (string) $result['content'] : '';
+	if ( function_exists( 'ekwa_ai_generate_strip_fences' ) ) {
+		$raw = ekwa_ai_generate_strip_fences( $raw );
+	}
+	$data = json_decode( $raw, true );
+	// Fallback: pull the first {...} object out if the model added stray text.
+	if ( ! is_array( $data ) && preg_match( '/\{.*\}/s', $raw, $m ) ) {
+		$data = json_decode( $m[0], true );
+	}
+	if ( ! is_array( $data ) || ! isset( $data['fonts'] ) || ! is_array( $data['fonts'] ) ) {
+		wp_send_json_error( array( 'message' => __( 'The AI response could not be parsed. Please try again.', 'ekwa' ) ) );
+	}
+
+	$fonts = array();
+	foreach ( $data['fonts'] as $entry ) {
+		$clean = ekwa_fonts_ai_sanitize_entry( $entry );
+		if ( $clean ) {
+			$fonts[] = $clean;
+		}
+	}
+
+	// Stable order: most-used first.
+	usort( $fonts, function ( $a, $b ) {
+		return $b['usage_count'] <=> $a['usage_count'];
+	} );
+
+	wp_send_json_success( array( 'fonts' => $fonts ) );
+}
+add_action( 'wp_ajax_ekwa_fonts_ai_detect', 'ekwa_fonts_ajax_ai_detect' );
 
 /* ------------------------------------------------------------------------
  * AJAX: Download a Google Font (server-side)
