@@ -173,6 +173,11 @@ require_once get_template_directory() . '/inc/ekwa-external-links.php';
 require_once get_template_directory() . '/inc/ekwa-cookie-banner.php';
 
 /**
+ * Chatbot loader — injects the configured loader.js on first user interaction.
+ */
+require_once get_template_directory() . '/inc/ekwa-chatbot.php';
+
+/**
  * Load blog features (TOC, author link, load more, post cards).
  */
 require_once get_template_directory() . '/inc/ekwa-blog.php';

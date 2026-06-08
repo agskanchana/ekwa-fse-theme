@@ -266,6 +266,7 @@ function ekwa_save_settings() {
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
 		'ekwa_gemini_api_key'   => 'sanitize_text_field',
+		'ekwa_chatbot_src'      => 'ekwa_sanitize_chatbot_src',
 		'ekwa_mmenu_bg'           => 'ekwa_sanitize_color',
 		'ekwa_mmenu_text'         => 'ekwa_sanitize_color',
 		'ekwa_mmenu_icon'         => 'ekwa_sanitize_color',
@@ -798,6 +799,7 @@ function ekwa_render_settings_page() {
 	$email         = get_option( 'ekwa_email', '' );
 	$contact_page  = get_option( 'ekwa_contact_page', 0 );
 	$author_page   = get_option( 'ekwa_author_page', 0 );
+	$chatbot_src   = get_option( 'ekwa_chatbot_src', '' );
 	$appt_type     = get_option( 'ekwa_appt_type', 'page' );
 	$appt_page     = get_option( 'ekwa_appt_page', 0 );
 	$appt_url      = get_option( 'ekwa_appt_url', '' );
@@ -1003,6 +1005,24 @@ function ekwa_render_settings_page() {
 										<input type="password" id="ekwa_github_token" name="ekwa_github_token" value="<?php echo esc_attr( get_option( 'ekwa_github_token', '' ) ); ?>" class="regular-text" autocomplete="off" spellcheck="false" placeholder="ghp_…" />
 										<p class="description"><?php esc_html_e( 'Theme updates are pulled from GitHub. Anonymous requests are limited to 60/hour per server, so update checks can fail. Add a Personal Access Token (read-only / public-repo access is enough) to raise the limit to 5,000/hour. Leave empty to use anonymous requests.', 'ekwa' ); ?></p>
 									<?php endif; ?>
+								</td>
+							</tr>
+						</table>
+					</div>
+
+					<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Chatbot', 'ekwa' ); ?></h2>
+						<table class="form-table">
+							<tr>
+								<th><label for="ekwa_chatbot_src"><?php esc_html_e( 'Chatbot script URL', 'ekwa' ); ?></label></th>
+								<td>
+									<input type="text" id="ekwa_chatbot_src" name="ekwa_chatbot_src" value="<?php echo esc_attr( $chatbot_src ); ?>" class="large-text" autocomplete="off" spellcheck="false" placeholder="https://www.bots.ekwa.com/chatbox/10707/loader.js" />
+									<p class="description">
+										<?php esc_html_e( 'Paste the chatbot loader script URL (the src), e.g. https://www.bots.ekwa.com/chatbox/10707/loader.js. You can also paste the full <script> embed — the src is extracted automatically.', 'ekwa' ); ?>
+									</p>
+									<p class="description">
+										<?php esc_html_e( 'The script is injected only on the first user interaction (scroll, mouse move, touch, key press, or click) on both desktop and mobile, so it never blocks initial page load. Leave empty to disable.', 'ekwa' ); ?>
+									</p>
 								</td>
 							</tr>
 						</table>
