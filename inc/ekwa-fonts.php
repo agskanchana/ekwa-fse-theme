@@ -107,13 +107,106 @@ function ekwa_fonts_sanitize_var_name( $raw ) {
 }
 
 /**
- * Sanitize a fallback string (e.g. "serif", "sans-serif"). Falls back to
- * 'sans-serif' when invalid.
+ * The generic CSS font keywords (always listed first in the fallback picker).
+ *
+ * @return string[]
+ */
+function ekwa_fonts_generic_fallbacks() {
+	return array( 'sans-serif', 'serif', 'monospace', 'cursive', 'system-ui' );
+}
+
+/**
+ * Allowed fallback choices: stored key => full CSS font-stack it expands to.
+ *
+ * The key is what the picker stores and what we validate against; the value is
+ * the stack written into the CSS variable / theme.json font-family so the
+ * fallback degrades sensibly (each web-safe family carries its own generic
+ * tail). Generic keywords map to themselves, which keeps older saved values
+ * working unchanged.
+ *
+ * @return array<string,string>
+ */
+function ekwa_fonts_fallback_choices() {
+	return array(
+		// Generic keywords.
+		'sans-serif'      => 'sans-serif',
+		'serif'           => 'serif',
+		'monospace'       => 'monospace',
+		'cursive'         => 'cursive',
+		'system-ui'       => 'system-ui',
+		// Web-safe families (each with its own fallback tail).
+		'Arial'           => 'Arial, Helvetica, sans-serif',
+		'Helvetica'       => 'Helvetica, Arial, sans-serif',
+		'Verdana'         => 'Verdana, Geneva, sans-serif',
+		'Tahoma'          => 'Tahoma, Geneva, sans-serif',
+		'Trebuchet MS'    => '"Trebuchet MS", Helvetica, Arial, sans-serif',
+		'Gill Sans'       => '"Gill Sans", "Gill Sans MT", Calibri, sans-serif',
+		'Georgia'         => 'Georgia, "Times New Roman", Times, serif',
+		'Times New Roman' => '"Times New Roman", Times, serif',
+		'Garamond'        => 'Garamond, Baskerville, "Times New Roman", serif',
+		'Palatino'        => '"Palatino Linotype", Palatino, "Book Antiqua", serif',
+		'Cambria'         => 'Cambria, Georgia, serif',
+		'Courier New'     => '"Courier New", Courier, monospace',
+		'Lucida Console'  => '"Lucida Console", Monaco, monospace',
+	);
+}
+
+/**
+ * Sanitize a fallback choice. Returns a valid stored key (e.g. "serif" or
+ * "Georgia"), defaulting to 'sans-serif' when unrecognised. Matches older
+ * lowercased saves case-insensitively for backward-compatibility.
  */
 function ekwa_fonts_sanitize_fallback( $raw ) {
-	$allowed = array( 'sans-serif', 'serif', 'monospace', 'cursive', 'system-ui' );
-	$raw     = strtolower( trim( (string) $raw ) );
-	return in_array( $raw, $allowed, true ) ? $raw : 'sans-serif';
+	$choices = ekwa_fonts_fallback_choices();
+	$raw     = trim( (string) $raw );
+	if ( isset( $choices[ $raw ] ) ) {
+		return $raw;
+	}
+	foreach ( array_keys( $choices ) as $key ) {
+		if ( 0 === strcasecmp( $key, $raw ) ) {
+			return $key;
+		}
+	}
+	return 'sans-serif';
+}
+
+/**
+ * Resolve a stored fallback key to the full CSS font-stack it expands to.
+ */
+function ekwa_fonts_fallback_stack( $fallback ) {
+	$choices = ekwa_fonts_fallback_choices();
+	$key     = ekwa_fonts_sanitize_fallback( $fallback );
+	return isset( $choices[ $key ] ) ? $choices[ $key ] : 'sans-serif';
+}
+
+/**
+ * Render the <option> list for a fallback <select>, grouped into Generic and
+ * Web-safe, with $selected pre-chosen. Used by both the Google and Upload rows.
+ *
+ * @param string $selected Currently-selected fallback key.
+ * @return string Options markup.
+ */
+function ekwa_fonts_fallback_options_html( $selected = 'sans-serif' ) {
+	$selected = ekwa_fonts_sanitize_fallback( $selected );
+	$generic  = ekwa_fonts_generic_fallbacks();
+	$choices  = ekwa_fonts_fallback_choices();
+
+	$html = '<optgroup label="' . esc_attr__( 'Generic', 'ekwa' ) . '">';
+	foreach ( $generic as $key ) {
+		$html .= '<option value="' . esc_attr( $key ) . '"' . selected( $selected, $key, false ) . '>' . esc_html( $key ) . '</option>';
+	}
+	$html .= '</optgroup>';
+
+	$html .= '<optgroup label="' . esc_attr__( 'Web-safe fonts', 'ekwa' ) . '">';
+	foreach ( array_keys( $choices ) as $key ) {
+		if ( in_array( $key, $generic, true ) ) {
+			continue;
+		}
+		$html .= '<option value="' . esc_attr( $key ) . '"' . selected( $selected, $key, false ) . '>' . esc_html( $key ) . '</option>';
+	}
+	$html .= '</optgroup>';
+
+	return $html;
 }
 
 /**
@@ -303,11 +396,7 @@ function ekwa_fonts_render_tab() {
 					<th><label><?php esc_html_e( 'Fallback', 'ekwa' ); ?></label></th>
 					<td>
 						<select class="ekwa-fonts-fallback">
-							<option value="sans-serif">sans-serif</option>
-							<option value="serif">serif</option>
-							<option value="monospace">monospace</option>
-							<option value="cursive">cursive</option>
-							<option value="system-ui">system-ui</option>
+							<?php echo ekwa_fonts_fallback_options_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 						</select>
 					</td>
 				</tr>
@@ -356,11 +445,7 @@ function ekwa_fonts_render_tab() {
 					<th><label><?php esc_html_e( 'Fallback', 'ekwa' ); ?></label></th>
 					<td>
 						<select class="ekwa-fonts-fallback">
-							<option value="sans-serif">sans-serif</option>
-							<option value="serif">serif</option>
-							<option value="monospace">monospace</option>
-							<option value="cursive">cursive</option>
-							<option value="system-ui">system-ui</option>
+							<?php echo ekwa_fonts_fallback_options_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 						</select>
 					</td>
 				</tr>
@@ -421,7 +506,7 @@ function ekwa_fonts_render_tab() {
 function ekwa_fonts_render_row( $id, $font ) {
 	$var_name = ekwa_fonts_sanitize_var_name( $font['var_name'] ?? '' );
 	$family   = (string) ( $font['family']   ?? '' );
-	$fallback = (string) ( $font['fallback'] ?? 'sans-serif' );
+	$fallback = ekwa_fonts_sanitize_fallback( $font['fallback'] ?? 'sans-serif' );
 	$source   = (string) ( $font['source']   ?? 'upload' );
 	$weights  = ( isset( $font['weights'] ) && is_array( $font['weights'] ) ) ? $font['weights'] : array();
 	ksort( $weights, SORT_NUMERIC );
@@ -980,7 +1065,7 @@ function ekwa_fonts_build_css() {
 				$format
 			);
 		}
-		$root_rules .= sprintf( "--%s:'%s',%s;", $var, str_replace( "'", '', $family ), $fallback );
+		$root_rules .= sprintf( "--%s:'%s',%s;", $var, str_replace( "'", '', $family ), ekwa_fonts_fallback_stack( $fallback ) );
 	}
 	if ( '' === $face_rules && '' === $root_rules ) {
 		return '';
@@ -1104,7 +1189,7 @@ function ekwa_fonts_filter_theme_json( $theme_json ) {
 		$new_entries[] = array(
 			'slug'       => $slug,
 			'name'       => $family,
-			'fontFamily' => sprintf( "'%s', %s", str_replace( "'", '', $family ), $fallback ),
+			'fontFamily' => sprintf( "'%s', %s", str_replace( "'", '', $family ), ekwa_fonts_fallback_stack( $fallback ) ),
 			'fontFace'   => $face_entries,
 		);
 	}
