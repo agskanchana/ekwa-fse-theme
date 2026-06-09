@@ -239,3 +239,122 @@ function ekwa_render_schema() {
 	echo "\n<script type=\"application/ld+json\">\n" . $json . "\n</script>\n";
 }
 add_action( 'wp_head', 'ekwa_render_schema' );
+
+/**
+ * Yoast schema: fall back to the Branding → Share Image when a page has no
+ * Featured Image.
+ *
+ * Yoast builds the Article/WebPage `image` (its `#primaryimage` ImageObject)
+ * from the page's Featured Image. Pages without one omit `image` entirely,
+ * which trips Google's "Missing field image (optional)" warning. When that
+ * happens we synthesise the same `#primaryimage` node Yoast would have built —
+ * sourced from the theme's Share Image option — and wire it into the Article
+ * and WebPage pieces so the graph matches a page that does have a featured image.
+ *
+ * No-ops when Yoast is inactive (the filter never fires), when the page already
+ * has a featured image, or when no Share Image is configured.
+ *
+ * @param array $graph   The Yoast `@graph` array.
+ * @param mixed $context Yoast Meta_Tags_Context (object) — used for the canonical URL.
+ * @return array
+ */
+function ekwa_yoast_schema_fallback_image( $graph, $context = null ) {
+	if ( ! is_array( $graph ) || ! is_singular() ) {
+		return $graph;
+	}
+
+	// If the page has its own featured image, Yoast already populated the
+	// primary image — leave the graph untouched.
+	$post_id = get_queried_object_id();
+	if ( $post_id && has_post_thumbnail( $post_id ) ) {
+		return $graph;
+	}
+
+	$share_id = (int) get_option( 'ekwa_share_image', 0 );
+	if ( ! $share_id ) {
+		return $graph;
+	}
+
+	$src = wp_get_attachment_image_src( $share_id, 'full' );
+	if ( ! is_array( $src ) || empty( $src[0] ) ) {
+		return $graph;
+	}
+	$url    = $src[0];
+	$width  = isset( $src[1] ) ? (int) $src[1] : 0;
+	$height = isset( $src[2] ) ? (int) $src[2] : 0;
+
+	// Stable @id matching Yoast's own scheme: {canonical}#primaryimage.
+	$permalink = '';
+	if ( is_object( $context ) ) {
+		if ( ! empty( $context->canonical ) ) {
+			$permalink = (string) $context->canonical;
+		} elseif ( ! empty( $context->permalink ) ) {
+			$permalink = (string) $context->permalink;
+		}
+	}
+	if ( '' === $permalink ) {
+		$permalink = (string) get_permalink( $post_id );
+	}
+	if ( '' === $permalink ) {
+		return $graph;
+	}
+	$image_ref = $permalink . '#primaryimage';
+
+	// Don't add a second image node if one with this @id already exists.
+	$has_node = false;
+	foreach ( $graph as $piece ) {
+		if ( isset( $piece['@id'] ) && $piece['@id'] === $image_ref ) {
+			$has_node = true;
+			break;
+		}
+	}
+	if ( ! $has_node ) {
+		$node = array(
+			'@type'      => 'ImageObject',
+			'inLanguage' => get_bloginfo( 'language' ),
+			'@id'        => $image_ref,
+			'url'        => $url,
+			'contentUrl' => $url,
+		);
+		if ( $width ) {
+			$node['width'] = $width;
+		}
+		if ( $height ) {
+			$node['height'] = $height;
+		}
+		$graph[] = $node;
+	}
+
+	// Wire the reference into the Article and WebPage pieces (only where absent).
+	foreach ( $graph as &$piece ) {
+		if ( empty( $piece['@type'] ) ) {
+			continue;
+		}
+		$types = is_array( $piece['@type'] ) ? $piece['@type'] : array( $piece['@type'] );
+
+		if ( in_array( 'WebPage', $types, true ) ) {
+			if ( empty( $piece['primaryImageOfPage'] ) ) {
+				$piece['primaryImageOfPage'] = array( '@id' => $image_ref );
+			}
+			if ( empty( $piece['image'] ) ) {
+				$piece['image'] = array( '@id' => $image_ref );
+			}
+			if ( empty( $piece['thumbnailUrl'] ) ) {
+				$piece['thumbnailUrl'] = $url;
+			}
+		}
+
+		if ( in_array( 'Article', $types, true ) ) {
+			if ( empty( $piece['image'] ) ) {
+				$piece['image'] = array( '@id' => $image_ref );
+			}
+			if ( empty( $piece['thumbnailUrl'] ) ) {
+				$piece['thumbnailUrl'] = $url;
+			}
+		}
+	}
+	unset( $piece );
+
+	return $graph;
+}
+add_filter( 'wpseo_schema_graph', 'ekwa_yoast_schema_fallback_image', 11, 2 );
