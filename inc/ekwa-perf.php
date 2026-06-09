@@ -297,6 +297,14 @@ function ekwa_perf_lazysize_placeholder() {
  * Rewrite a single <img> tag for lazysizes. Idempotent and hero-safe.
  */
 function ekwa_perf_lazysize_img_tag( $tag ) {
+	// Front-end only. lazysizes JS is never enqueued in wp-admin, so a
+	// lazysized <img> there would show only the blank 1×1 placeholder — that's
+	// what was blanking the Site Logo / Publisher Logo / Share Image previews on
+	// the Ekwa Settings → Branding tab (they render via wp_get_attachment_image,
+	// which this rewriter also filters).
+	if ( is_admin() ) {
+		return $tag;
+	}
 	if ( ekwa_perf_lazy_mode() !== 'lazysizes' ) {
 		return $tag;
 	}
