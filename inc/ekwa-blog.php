@@ -197,23 +197,13 @@ function ekwa_inject_query_data( $block_content, $block ) {
 	}
 
 	// Check if this query block contains a load-more block.
-	$has_load_more = false;
-	$search_blocks = function ( $blocks ) use ( &$search_blocks, &$has_load_more ) {
-		foreach ( $blocks as $b ) {
-			if ( isset( $b['blockName'] ) && $b['blockName'] === 'ekwa/load-more' ) {
-				$has_load_more = true;
-				return;
-			}
-			if ( ! empty( $b['innerBlocks'] ) ) {
-				$search_blocks( $b['innerBlocks'] );
-			}
-		}
-	};
-	$search_blocks( $block['innerBlocks'] ?? array() );
+	$lm_attrs = ekwa_find_load_more_in_blocks( $block['innerBlocks'] ?? array() );
 
-	if ( ! $has_load_more ) {
+	if ( false === $lm_attrs ) {
 		return $block_content;
 	}
+
+	$pagination_type = $lm_attrs['paginationType'] ?? 'load-more';
 
 	// Extract query attributes.
 	$query_attrs = $block['attrs']['query'] ?? array();
@@ -248,22 +238,167 @@ function ekwa_inject_query_data( $block_content, $block ) {
 	$total      = count( get_posts( $count_args ) );
 	$max_pages  = (int) ceil( $total / $per_page );
 
+	// Current page (from /page/N/ or ?paged=N) and the URL pattern for page links.
+	$paged       = max( 1, (int) get_query_var( 'paged' ), (int) get_query_var( 'page' ) );
+	$big         = 999999999;
+	$url_pattern = str_replace( (string) $big, '%d', get_pagenum_link( $big, false ) );
+	$page1_url   = get_pagenum_link( 1, false );
+
 	$nonce      = wp_create_nonce( 'ekwa_load_more' );
 	$query_json = esc_attr( wp_json_encode( $args ) );
+
+	$data_attrs = ' data-ekwa-query="' . $query_json . '"'
+		. ' data-ekwa-max-pages="' . $max_pages . '"'
+		. ' data-ekwa-nonce="' . $nonce . '"'
+		. ' data-ekwa-current-page="' . $paged . '"'
+		. ' data-ekwa-url-pattern="' . esc_attr( $url_pattern ) . '"'
+		. ' data-ekwa-page1-url="' . esc_attr( $page1_url ) . '"';
 
 	// Inject data attributes into the first div whose class contains wp-block-query.
 	// WordPress may add layout classes (e.g. "wp-block-query is-layout-flow ..."),
 	// so match wp-block-query as a class token rather than the exact attribute value.
 	$block_content = preg_replace(
 		'/(<div\b[^>]*\bclass="[^"]*\bwp-block-query\b[^"]*"[^>]*?)>/s',
-		'$1 data-ekwa-query="' . $query_json . '" data-ekwa-max-pages="' . $max_pages . '" data-ekwa-nonce="' . $nonce . '">',
+		'$1' . $data_attrs . '>',
 		$block_content,
 		1
 	);
 
+	// Server-render numbered pagination links so pages are crawlable and work without JS.
+	if ( 'numbered' === $pagination_type && $max_pages > 1 ) {
+		$links = ekwa_numbered_pagination_html(
+			$paged,
+			$max_pages,
+			$lm_attrs['prevText'] ?? __( 'Prev', 'ekwa' ),
+			$lm_attrs['nextText'] ?? __( 'Next', 'ekwa' )
+		);
+		$block_content = preg_replace_callback(
+			'/(<nav\b[^>]*\bekwa-load-more__pagination\b[^>]*>)\s*(<\/nav>)/',
+			function ( $m ) use ( $links ) {
+				return $m[1] . $links . $m[2];
+			},
+			$block_content,
+			1
+		);
+	}
+
 	return $block_content;
 }
 add_filter( 'render_block', 'ekwa_inject_query_data', 10, 2 );
+
+/**
+ * Find an ekwa/load-more block in a nested block tree. Returns its attrs or false.
+ */
+function ekwa_find_load_more_in_blocks( $blocks ) {
+	foreach ( $blocks as $b ) {
+		if ( ( $b['blockName'] ?? '' ) === 'ekwa/load-more' ) {
+			return $b['attrs'] ?? array();
+		}
+		if ( ! empty( $b['innerBlocks'] ) ) {
+			$found = ekwa_find_load_more_in_blocks( $b['innerBlocks'] );
+			if ( false !== $found ) {
+				return $found;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Page range with ellipsis. Mirrors getPageRange() in ekwa-load-more.js.
+ */
+function ekwa_pagination_range( $current, $total ) {
+	if ( $total <= 7 ) {
+		return range( 1, $total );
+	}
+	$pages = array( 1 );
+	$start = max( 2, $current - 2 );
+	$end   = min( $total - 1, $current + 2 );
+	if ( $start > 2 ) {
+		$pages[] = '...';
+	}
+	for ( $i = $start; $i <= $end; $i++ ) {
+		$pages[] = $i;
+	}
+	if ( $end < $total - 1 ) {
+		$pages[] = '...';
+	}
+	$pages[] = $total;
+	return $pages;
+}
+
+/**
+ * Server-rendered numbered pagination links (same markup the JS builds).
+ */
+function ekwa_numbered_pagination_html( $current, $max, $prev_text, $next_text ) {
+	$out = '';
+
+	if ( $current > 1 ) {
+		$out .= '<a class="ekwa-pagination__btn ekwa-pagination__prev" href="' . esc_url( get_pagenum_link( $current - 1, false ) ) . '">' . esc_html( $prev_text ) . '</a>';
+	} else {
+		$out .= '<span class="ekwa-pagination__btn ekwa-pagination__prev is-disabled" aria-disabled="true">' . esc_html( $prev_text ) . '</span>';
+	}
+
+	foreach ( ekwa_pagination_range( $current, $max ) as $p ) {
+		if ( '...' === $p ) {
+			$out .= '<span class="ekwa-pagination__ellipsis">&hellip;</span>';
+		} elseif ( $p === $current ) {
+			$out .= '<span class="ekwa-pagination__btn ekwa-pagination__page is-active" aria-current="page">' . $p . '</span>';
+		} else {
+			$out .= '<a class="ekwa-pagination__btn ekwa-pagination__page" href="' . esc_url( get_pagenum_link( $p, false ) ) . '" aria-label="' . esc_attr( sprintf( __( 'Page %d', 'ekwa' ), $p ) ) . '">' . $p . '</a>';
+		}
+	}
+
+	if ( $current < $max ) {
+		$out .= '<a class="ekwa-pagination__btn ekwa-pagination__next" href="' . esc_url( get_pagenum_link( $current + 1, false ) ) . '">' . esc_html( $next_text ) . '</a>';
+	} else {
+		$out .= '<span class="ekwa-pagination__btn ekwa-pagination__next is-disabled" aria-disabled="true">' . esc_html( $next_text ) . '</span>';
+	}
+
+	return $out;
+}
+
+/**
+ * Track query blocks that contain a numbered load-more, so the paged URL
+ * can be applied to their custom (non-inherited) queries.
+ */
+function ekwa_track_numbered_query_blocks( $parsed_block ) {
+	if ( ( $parsed_block['blockName'] ?? '' ) === 'core/query' ) {
+		$lm = ekwa_find_load_more_in_blocks( $parsed_block['innerBlocks'] ?? array() );
+		if ( false !== $lm && 'numbered' === ( $lm['paginationType'] ?? '' ) ) {
+			$GLOBALS['ekwa_numbered_query_ids'][] = (int) ( $parsed_block['attrs']['queryId'] ?? 0 );
+		}
+	}
+	return $parsed_block;
+}
+add_filter( 'render_block_data', 'ekwa_track_numbered_query_blocks' );
+
+/**
+ * Make /blog/page/N/ render the right page server-side for tracked query blocks.
+ * Core computes the offset from its own query-{id}-page URL param, so the paged
+ * var has to be translated into an offset here.
+ */
+function ekwa_query_block_respect_paged( $query, $block ) {
+	if ( ! empty( $block->context['query']['inherit'] ) ) {
+		return $query;
+	}
+
+	$query_id = (int) ( $block->context['queryId'] ?? 0 );
+	$tracked  = $GLOBALS['ekwa_numbered_query_ids'] ?? array();
+	if ( ! in_array( $query_id, $tracked, true ) ) {
+		return $query;
+	}
+
+	$paged = max( 1, (int) get_query_var( 'paged' ), (int) get_query_var( 'page' ) );
+	if ( $paged > 1 ) {
+		$per_page        = (int) ( $block->context['query']['perPage'] ?? get_option( 'posts_per_page' ) );
+		$base_offset     = (int) ( $block->context['query']['offset'] ?? 0 );
+		$query['offset'] = ( $per_page * ( $paged - 1 ) ) + $base_offset;
+	}
+
+	return $query;
+}
+add_filter( 'query_loop_block_query_vars', 'ekwa_query_block_respect_paged', 10, 2 );
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BLOG ASSETS — Conditional enqueue.

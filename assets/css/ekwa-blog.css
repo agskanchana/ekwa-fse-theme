@@ -475,8 +475,9 @@
 	cursor: pointer;
 	transition: background 0.2s, color 0.2s;
 	line-height: 1;
+	text-decoration: none;
 }
-.ekwa-pagination__btn:hover:not(:disabled) {
+.ekwa-pagination__btn:hover:not(:disabled):not(.is-disabled):not(.is-active) {
 	background: var(--wp--preset--color--foreground, #1f2937);
 	color: #fff;
 }
@@ -485,9 +486,11 @@
 	color: #fff;
 	cursor: default;
 }
-.ekwa-pagination__btn:disabled {
+.ekwa-pagination__btn:disabled,
+.ekwa-pagination__btn.is-disabled {
 	opacity: 0.35;
 	cursor: default;
+	pointer-events: none;
 }
 .ekwa-pagination__ellipsis {
 	display: inline-flex;

@@ -1,6 +1,8 @@
 /**
  * Ekwa Load More — AJAX pagination for query blocks.
  * Supports "load-more" button mode and "numbered" pagination mode.
+ * Numbered mode uses real page URLs (/blog/page/2/) with pushState,
+ * so pages stay linkable and the back/forward buttons work.
  */
 ( function () {
 	'use strict';
@@ -95,24 +97,46 @@
 		var nav = wrapper.querySelector( '.ekwa-load-more__pagination' );
 		if ( ! nav ) return;
 
-		var currentPage  = 1;
-		var loading      = false;
-		var page1Html    = grid ? grid.innerHTML : '';
-		var prevLabel    = wrapper.dataset.prevText || 'Prev';
-		var nextLabel    = wrapper.dataset.nextText || 'Next';
+		var currentPage = parseInt( queryBlock.dataset.ekwaCurrentPage ) || 1;
+		var urlPattern  = queryBlock.dataset.ekwaUrlPattern || '';
+		var page1Url    = queryBlock.dataset.ekwaPage1Url || '';
+		var loading     = false;
+		var initialPage = currentPage;
+		var initialHtml = grid ? grid.innerHTML : '';
+		var prevLabel   = wrapper.dataset.prevText || 'Prev';
+		var nextLabel   = wrapper.dataset.nextText || 'Next';
+
+		function pageUrl( p ) {
+			if ( p <= 1 && page1Url ) return page1Url;
+			if ( urlPattern ) return urlPattern.replace( '%d', p );
+			return '#';
+		}
+
+		function makeItem( label, page, classes, disabled ) {
+			var el;
+			if ( disabled ) {
+				el = document.createElement( 'span' );
+				el.className = classes + ' is-disabled';
+				el.setAttribute( 'aria-disabled', 'true' );
+			} else {
+				el = document.createElement( 'a' );
+				el.className = classes;
+				el.href = pageUrl( page );
+				el.addEventListener( 'click', function ( e ) {
+					// Let modified clicks (new tab, etc.) behave like normal links.
+					if ( e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0 ) return;
+					e.preventDefault();
+					goToPage( page, true );
+				} );
+			}
+			el.textContent = label;
+			return el;
+		}
 
 		function buildNav() {
 			nav.innerHTML = '';
 
-			var prev = document.createElement( 'button' );
-			prev.className   = 'ekwa-pagination__btn ekwa-pagination__prev';
-			prev.textContent = prevLabel;
-			prev.disabled    = currentPage === 1;
-			prev.setAttribute( 'aria-label', 'Previous page' );
-			prev.addEventListener( 'click', function () {
-				if ( currentPage > 1 ) goToPage( currentPage - 1 );
-			} );
-			nav.appendChild( prev );
+			nav.appendChild( makeItem( prevLabel, currentPage - 1, 'ekwa-pagination__btn ekwa-pagination__prev', currentPage === 1 ) );
 
 			getPageRange( currentPage, maxPages ).forEach( function ( p ) {
 				if ( p === '...' ) {
@@ -122,33 +146,24 @@
 					nav.appendChild( ellipsis );
 					return;
 				}
-				var btn = document.createElement( 'button' );
-				btn.className   = 'ekwa-pagination__btn ekwa-pagination__page';
-				btn.textContent = p;
-				btn.setAttribute( 'aria-label', 'Page ' + p );
 				if ( p === currentPage ) {
-					btn.classList.add( 'is-active' );
-					btn.setAttribute( 'aria-current', 'page' );
+					var active = document.createElement( 'span' );
+					active.className   = 'ekwa-pagination__btn ekwa-pagination__page is-active';
+					active.textContent = p;
+					active.setAttribute( 'aria-current', 'page' );
+					nav.appendChild( active );
+					return;
 				}
-				btn.addEventListener( 'click', function () {
-					if ( p !== currentPage ) goToPage( p );
-				} );
-				nav.appendChild( btn );
+				var link = makeItem( p, p, 'ekwa-pagination__btn ekwa-pagination__page', false );
+				link.setAttribute( 'aria-label', 'Page ' + p );
+				nav.appendChild( link );
 			} );
 
-			var next = document.createElement( 'button' );
-			next.className   = 'ekwa-pagination__btn ekwa-pagination__next';
-			next.textContent = nextLabel;
-			next.disabled    = currentPage === maxPages;
-			next.setAttribute( 'aria-label', 'Next page' );
-			next.addEventListener( 'click', function () {
-				if ( currentPage < maxPages ) goToPage( currentPage + 1 );
-			} );
-			nav.appendChild( next );
+			nav.appendChild( makeItem( nextLabel, currentPage + 1, 'ekwa-pagination__btn ekwa-pagination__next', currentPage === maxPages ) );
 		}
 
-		function goToPage( p ) {
-			if ( loading || p === currentPage ) return;
+		function goToPage( p, push ) {
+			if ( loading || p === currentPage || p < 1 || p > maxPages ) return;
 			loading = true;
 			nav.classList.add( 'is-loading' );
 
@@ -157,12 +172,15 @@
 				buildNav();
 				nav.classList.remove( 'is-loading' );
 				loading = false;
+				if ( push && window.history && history.pushState ) {
+					history.pushState( { ekwaPage: p }, '', pageUrl( p ) );
+				}
 				queryBlock.scrollIntoView( { behavior: 'smooth', block: 'start' } );
 			}
 
-			// Restore server-rendered page 1 without an AJAX call.
-			if ( p === 1 && page1Html ) {
-				if ( grid ) grid.innerHTML = page1Html;
+			// Restore the server-rendered initial page without an AJAX call.
+			if ( p === initialPage && initialHtml ) {
+				if ( grid ) grid.innerHTML = initialHtml;
 				onDone();
 				return;
 			}
@@ -180,6 +198,24 @@
 				}
 			);
 		}
+
+		function parsePageFromUrl() {
+			var m = window.location.pathname.match( /\/page\/(\d+)/ );
+			if ( m ) return parseInt( m[1] );
+			m = window.location.search.match( /[?&]paged=(\d+)/ );
+			if ( m ) return parseInt( m[1] );
+			return 1;
+		}
+
+		if ( window.history && history.replaceState ) {
+			history.replaceState( { ekwaPage: currentPage }, '' );
+		}
+		window.addEventListener( 'popstate', function ( e ) {
+			var p = ( e.state && e.state.ekwaPage ) || parsePageFromUrl();
+			if ( p && p !== currentPage ) {
+				goToPage( p, false );
+			}
+		} );
 
 		buildNav();
 	}
