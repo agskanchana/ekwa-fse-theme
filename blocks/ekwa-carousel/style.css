@@ -59,6 +59,23 @@
 .ekwa-carousel__arrow--prev { left: 0; }
 .ekwa-carousel__arrow--next { right: 0; }
 
+/* Arrows outside the items: the container reserves a side gutter
+   (arrow width + spacing, set via --ekwa-arrow-gutter) and the arrows
+   sit inside it, clear of the cards. */
+.ekwa-carousel--arrows-outside {
+	padding-left: var(--ekwa-arrow-gutter, 52px);
+	padding-right: var(--ekwa-arrow-gutter, 52px);
+}
+@media (max-width: 600px) {
+	.ekwa-carousel--arrows-outside {
+		padding-left: 0;
+		padding-right: 0;
+	}
+	.ekwa-carousel--arrows-outside .ekwa-carousel__arrow {
+		display: none;
+	}
+}
+
 /* Dots */
 .ekwa-carousel__dots {
 	display: flex;

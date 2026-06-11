@@ -2288,7 +2288,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 	$html .= '<span class="dock-divider"></span>';
 
 	// 3. Scroll Up (FAB)
-	$html .= '<button type="button" class="dock-item scroll-up-item" aria-label="Scroll to Top">';
+	$html .= '<button type="button" class="dock-item scroll-up-item" aria-label="Scroll up">';
 	$html .= $svg_arrow_up . '<span class="dock-label">Up</span></button>';
 
 	$html .= '<span class="dock-divider"></span>';
@@ -2527,8 +2527,7 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
 
 	if ( $is_ad && $adsense ) {
 		$tel = ekwa_mobile_number( $adsense );
-		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link"'
-			. ' aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $adsense ) ) . '">'
+		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link">'
 			. $icon_html . '<span>' . esc_html( $label ) . '</span>'
 			. ' <span class="ekwa-phone-dd__number">' . esc_html( $adsense ) . '</span>'
 			. '</a>';
@@ -2559,8 +2558,7 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
 	if ( count( $items ) === 1 && ( ! $items[0]['new'] || ! $items[0]['existing'] ) ) {
 		$phone = $items[0]['new'] ?: $items[0]['existing'];
 		$tel   = ekwa_mobile_number( $phone );
-		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link"'
-			. ' aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $phone ) ) . '">'
+		return '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__trigger ekwa-phone-dd__trigger--link">'
 			. $icon_html . '<span>' . esc_html( $label ) . '</span>'
 			. '</a>';
 	}
@@ -2594,8 +2592,7 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
 
 		if ( $item['new'] ) {
 			$tel = ekwa_mobile_number( $item['new'] );
-			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link"'
-				. ' aria-label="' . esc_attr( sprintf( __( 'Call New Patients %s', 'ekwa' ), $item['new'] ) ) . '">'
+			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link">'
 				. '<i class="fa-solid fa-phone" aria-hidden="true"></i>'
 				. '<span class="ekwa-phone-dd__info">'
 				. '<span class="ekwa-phone-dd__label">New Patients</span>'
@@ -2604,8 +2601,7 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
 		}
 		if ( $item['existing'] ) {
 			$tel = ekwa_mobile_number( $item['existing'] );
-			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link"'
-				. ' aria-label="' . esc_attr( sprintf( __( 'Call Existing Patients %s', 'ekwa' ), $item['existing'] ) ) . '">'
+			$out .= '<a href="tel:' . esc_attr( $tel ) . '" class="ekwa-phone-dd__link">'
 				. '<i class="fa-solid fa-user-check" aria-hidden="true"></i>'
 				. '<span class="ekwa-phone-dd__info">'
 				. '<span class="ekwa-phone-dd__label">Existing Patients</span>'
@@ -4294,6 +4290,9 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$tablet        = absint( $attrs['tabletItems'] ?? 2 );
 	$mobile        = absint( $attrs['mobileItems'] ?? 1 );
 	$show_arrows   = ! empty( $attrs['showArrows'] );
+	$arrows_out    = ! isset( $attrs['arrowsOutside'] ) ? true : (bool) $attrs['arrowsOutside'];
+	$arrow_spacing = absint( $attrs['arrowSpacing'] ?? 12 );
+	$loop          = ! empty( $attrs['loop'] );
 	$show_dots     = ! empty( $attrs['showDots'] );
 	$heading_level = preg_match( '/^h[1-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
 	$singular      = $attrs['singularLabel']         ?? __( 'Related article',  'ekwa' );
@@ -4377,12 +4376,24 @@ function ekwa_render_related_articles_block( $attrs ) {
 	            . ' data-mobile-items="' . $mobile . '"'
 	            . ' data-show-arrows="' . ( $show_arrows ? 'true' : 'false' ) . '"'
 	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"'
+	            . ' data-loop="' . ( $loop ? 'true' : 'false' ) . '"'
 	            . ' data-gap="' . $item_gap . '"'
 	            . ' data-page-mode="true"';
 
+	// Arrows-outside mode reserves a side gutter (arrow width + spacing) so the
+	// arrows never overlap card content. The viewport wrapper keeps off-screen
+	// items clipped while the gutter stays clear.
+	$carousel_class = 'ekwa-carousel';
+	$carousel_style = '';
+	if ( $show_arrows && $arrows_out ) {
+		$carousel_class .= ' ekwa-carousel--arrows-outside';
+		$carousel_style  = ' style="--ekwa-arrow-gutter:' . ( 40 + $arrow_spacing ) . 'px"';
+	}
+
 	$html  = $wrap_open;
 	$html .= $heading_html;
-	$html .= '<div class="ekwa-carousel"' . $data_attrs . '>';
+	$html .= '<div class="' . $carousel_class . '"' . $carousel_style . $data_attrs . '>';
+	$html .= '<div class="ekwa-carousel__viewport">';
 	$html .= '<div class="ekwa-carousel__track">';
 	foreach ( $posts as $p ) {
 		$html .= '<div class="ekwa-carousel__item">';
@@ -4390,6 +4401,7 @@ function ekwa_render_related_articles_block( $attrs ) {
 		$html .= '</div>';
 	}
 	$html .= '</div>'; // track
+	$html .= '</div>'; // viewport
 	if ( $show_arrows ) {
 		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left"></i></button>';
 		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right"></i></button>';

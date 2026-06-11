@@ -203,8 +203,10 @@ function ekwa_phone_shortcode( $atts ) {
 	$icon_html   = $show_icon ? '<i class="ekwa-phone-number__icon ' . esc_attr( $icon_class ) . '" aria-hidden="true"></i>' : '';
 	$prefix_html = ! empty( $prefix_text ) ? '<span class="ekwa-phone-number__prefix">' . esc_html( $prefix_text ) . ' </span>' : '';
 
+	// No aria-label: the visible text (prefix + number) is the accessible name,
+	// keeping it in sync for voice-control users (WCAG 2.5.3 Label in Name).
 	return '<span class="ekwa-phone-number">'
-		. '<a href="tel:' . esc_attr( $tel_number ) . '" class="ekwa-phone-number__link" aria-label="' . esc_attr( sprintf( __( 'Call %s', 'ekwa' ), $phone_number ) ) . '">'
+		. '<a href="tel:' . esc_attr( $tel_number ) . '" class="ekwa-phone-number__link">'
 		. $icon_html
 		. '<span class="ekwa-phone-number__text">' . $prefix_html . '<span class="ekwa-phone-number__number">' . esc_html( $phone_number ) . '</span></span>'
 		. '</a>'

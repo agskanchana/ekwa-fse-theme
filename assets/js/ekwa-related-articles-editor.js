@@ -23,7 +23,10 @@
 				el( RangeControl, { key: 'd', label: __( 'Desktop items' ), value: a.desktopItems, min: 1, max: 4, onChange: function ( v ) { set( { desktopItems: v } ); } } ),
 				el( RangeControl, { key: 't', label: __( 'Tablet items' ), value: a.tabletItems, min: 1, max: 3, onChange: function ( v ) { set( { tabletItems: v } ); } } ),
 				el( RangeControl, { key: 'm', label: __( 'Mobile items' ), value: a.mobileItems, min: 1, max: 2, onChange: function ( v ) { set( { mobileItems: v } ); } } ),
+				el( ToggleControl, { key: 'l', label: __( 'Loop carousel' ), help: __( 'Wrap from the last slide back to the first.' ), checked: a.loop, onChange: function ( v ) { set( { loop: v } ); } } ),
 				el( ToggleControl, { key: 'a', label: __( 'Show arrows' ), checked: a.showArrows, onChange: function ( v ) { set( { showArrows: v } ); } } ),
+				a.showArrows && el( ToggleControl, { key: 'ao', label: __( 'Arrows outside items' ), help: __( 'Keeps the arrows clear of the card content. Hidden on mobile (swipe and dots remain).' ), checked: a.arrowsOutside, onChange: function ( v ) { set( { arrowsOutside: v } ); } } ),
+				a.showArrows && a.arrowsOutside && el( RangeControl, { key: 'as', label: __( 'Arrow spacing (px)' ), help: __( 'Gap between the arrows and the items.' ), value: a.arrowSpacing, min: 0, max: 48, onChange: function ( v ) { set( { arrowSpacing: v } ); } } ),
 				el( ToggleControl, { key: 'o', label: __( 'Show dots' ),   checked: a.showDots,   onChange: function ( v ) { set( { showDots: v } ); } } )
 			] : [];
 
