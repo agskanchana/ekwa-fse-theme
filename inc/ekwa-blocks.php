@@ -2254,7 +2254,9 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 
 	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	// ── HTML ─────────────────────────────────────────────────────
-	$html  = '<div class="ekwa-mobile-dock">';
+	// <nav> landmark so the dock's quick actions are reachable via
+	// landmark navigation (screen readers / rotor).
+	$html  = '<nav class="ekwa-mobile-dock" aria-label="' . esc_attr__( 'Quick actions', 'ekwa' ) . '">';
 	$html .= '<div class="dock-wrap">';
 
 	// Default SVG icons.
@@ -2307,7 +2309,7 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 	$html .= $needs_loc_popup ? '</button>' : '</a>';
 
 	$html .= '</div>'; // .dock-wrap
-	$html .= '</div>'; // #bid
+	$html .= '</nav>'; // .ekwa-mobile-dock
 
 	// ── Mobile Services nav (mmenu-light drawer) ───────────────────
 	if ( has_nav_menu( 'mobile_services' ) ) {
