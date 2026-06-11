@@ -446,6 +446,60 @@
 	border-style: dashed;
 }
 
+/* ── Numbered pagination ── */
+.ekwa-load-more__pagination {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 0;
+}
+.ekwa-load-more__pagination.is-loading {
+	opacity: 0.5;
+	pointer-events: none;
+}
+.ekwa-pagination__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 38px;
+	height: 38px;
+	padding: 0 10px;
+	font-size: 14px;
+	font-weight: 500;
+	border: 2px solid var(--wp--preset--color--foreground, #1f2937);
+	background: transparent;
+	color: var(--wp--preset--color--foreground, #1f2937);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 0.2s, color 0.2s;
+	line-height: 1;
+}
+.ekwa-pagination__btn:hover:not(:disabled) {
+	background: var(--wp--preset--color--foreground, #1f2937);
+	color: #fff;
+}
+.ekwa-pagination__btn.is-active {
+	background: var(--wp--preset--color--foreground, #1f2937);
+	color: #fff;
+	cursor: default;
+}
+.ekwa-pagination__btn:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+.ekwa-pagination__ellipsis {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 38px;
+	font-size: 14px;
+	color: var(--wp--preset--color--foreground, #1f2937);
+	user-select: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    POST NAVIGATION (previous / next)
    ═══════════════════════════════════════════════════════════════════════════ */

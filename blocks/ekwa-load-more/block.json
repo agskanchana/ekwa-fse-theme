@@ -11,9 +11,12 @@
 	"keywords": [ "load", "more", "pagination", "ajax" ],
 	"supports": { "html": false },
 	"attributes": {
-		"buttonText":  { "type": "string", "default": "Load More" },
-		"loadingText": { "type": "string", "default": "Loading..." },
-		"noMoreText":  { "type": "string", "default": "No more posts" }
+		"paginationType": { "type": "string", "default": "load-more" },
+		"buttonText":     { "type": "string", "default": "Load More" },
+		"loadingText":    { "type": "string", "default": "Loading..." },
+		"noMoreText":     { "type": "string", "default": "No more posts" },
+		"prevText":       { "type": "string", "default": "Prev" },
+		"nextText":       { "type": "string", "default": "Next" }
 	},
 	"editorScript": "ekwa-load-more-editor"
 }

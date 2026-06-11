@@ -4407,11 +4407,19 @@ function ekwa_render_related_articles_block( $attrs ) {
  * Render: ekwa/load-more.
  */
 function ekwa_render_load_more_block( $attrs ) {
-	$button_text  = $attrs['buttonText'] ?? __( 'Load More', 'ekwa' );
-	$loading_text = $attrs['loadingText'] ?? __( 'Loading...', 'ekwa' );
-	$no_more_text = $attrs['noMoreText'] ?? __( 'No more posts', 'ekwa' );
+	$pagination_type = $attrs['paginationType'] ?? 'load-more';
+	$button_text     = $attrs['buttonText'] ?? __( 'Load More', 'ekwa' );
+	$loading_text    = $attrs['loadingText'] ?? __( 'Loading...', 'ekwa' );
+	$no_more_text    = $attrs['noMoreText'] ?? __( 'No more posts', 'ekwa' );
+	$prev_text       = $attrs['prevText'] ?? __( 'Prev', 'ekwa' );
+	$next_text       = $attrs['nextText'] ?? __( 'Next', 'ekwa' );
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		if ( 'numbered' === $pagination_type ) {
+			return '<div class="ekwa-load-more" data-pagination-type="numbered" style="text-align:center;padding:16px;">'
+				. '<nav class="ekwa-load-more__pagination" aria-label="' . esc_attr__( 'Post navigation', 'ekwa' ) . '"></nav>'
+				. '</div>';
+		}
 		return '<div class="ekwa-load-more" style="text-align:center;padding:16px;"><button class="ekwa-load-more__btn" disabled>' . esc_html( $button_text ) . '</button></div>';
 	}
 
@@ -4427,7 +4435,13 @@ function ekwa_render_load_more_block( $attrs ) {
 		'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 	) );
 
-	return '<div class="ekwa-load-more" data-loading-text="' . esc_attr( $loading_text ) . '" data-no-more-text="' . esc_attr( $no_more_text ) . '">'
+	if ( 'numbered' === $pagination_type ) {
+		return '<div class="ekwa-load-more" data-pagination-type="numbered" data-prev-text="' . esc_attr( $prev_text ) . '" data-next-text="' . esc_attr( $next_text ) . '">'
+			. '<nav class="ekwa-load-more__pagination" aria-label="' . esc_attr__( 'Post navigation', 'ekwa' ) . '"></nav>'
+			. '</div>';
+	}
+
+	return '<div class="ekwa-load-more" data-pagination-type="load-more" data-loading-text="' . esc_attr( $loading_text ) . '" data-no-more-text="' . esc_attr( $no_more_text ) . '">'
 		. '<button class="ekwa-load-more__btn">' . esc_html( $button_text ) . '</button>'
 		. '</div>';
 }
