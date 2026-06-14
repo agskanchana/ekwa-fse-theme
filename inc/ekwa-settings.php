@@ -352,6 +352,7 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_minify_inline', isset( $_POST['ekwa_perf_minify_inline'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_inline_child_css', isset( $_POST['ekwa_perf_inline_child_css'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_inline_child_js', isset( $_POST['ekwa_perf_inline_child_js'] ) ? 1 : 0 );
+	update_option( 'ekwa_editor_disable_child_css', isset( $_POST['ekwa_editor_disable_child_css'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_defer_mmenu', isset( $_POST['ekwa_perf_defer_mmenu'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_preload_fonts', isset( $_POST['ekwa_perf_preload_fonts'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lean_head', isset( $_POST['ekwa_perf_lean_head'] ) ? 1 : 0 );
@@ -1328,6 +1329,7 @@ function ekwa_render_settings_page() {
 					$minify_inline_val = get_option( 'ekwa_perf_minify_inline', 0 );
 					$inline_child_css_val = get_option( 'ekwa_perf_inline_child_css', 0 );
 					$inline_child_js_val  = get_option( 'ekwa_perf_inline_child_js', 0 );
+					$disable_child_editor_css_val = get_option( 'ekwa_editor_disable_child_css', 0 );
 					$defer_mmenu_val   = get_option( 'ekwa_perf_defer_mmenu', 0 );
 					$preload_fonts_val = get_option( 'ekwa_perf_preload_fonts', 0 );
 					$lean_head_val     = get_option( 'ekwa_perf_lean_head', 0 );
@@ -1443,6 +1445,16 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'Inline the child theme assets/js/ekwa-child.js just before </body>', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Replaces the separate child script request with an inline <script>, printed after all other inlined block scripts at the foot of the page. Minified too when "Minify inline CSS/JS" is on.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Hide child CSS in editor', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_editor_disable_child_css" value="1" <?php checked( $disable_child_editor_css_val, 1 ); ?> />
+									<?php esc_html_e( 'Do not load the child theme style.css inside the block editor canvas', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Editor-only — the child stylesheet still loads on the front end. Turn this on when child styles overlay blocks in the editor and make them hard to select or click.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 						<tr>

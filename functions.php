@@ -178,6 +178,12 @@ require_once get_template_directory() . '/inc/ekwa-cookie-banner.php';
 require_once get_template_directory() . '/inc/ekwa-chatbot.php';
 
 /**
+ * Lightbox (GLightbox) — class-driven lightbox for images/videos; injects the
+ * library CSS/JS on first user interaction. See inc/ekwa-lightbox.php for usage.
+ */
+require_once get_template_directory() . '/inc/ekwa-lightbox.php';
+
+/**
  * Load blog features (TOC, author link, load more, post cards).
  */
 require_once get_template_directory() . '/inc/ekwa-blog.php';
@@ -258,6 +264,57 @@ function ekwa_editor_styles() {
 	}
 }
 add_action( 'after_setup_theme', 'ekwa_editor_styles' );
+
+/**
+ * Whether the active child theme's style.css should be suppressed inside the
+ * block editor canvas. Opt-in via Ekwa Settings → Performance.
+ *
+ * The child still enqueues its stylesheet on the front end (that path is
+ * untouched) — this only affects the editor, where some child styles can
+ * overlay blocks and make them hard to select/click.
+ */
+function ekwa_editor_disable_child_css_enabled() {
+	return (bool) get_option( 'ekwa_editor_disable_child_css', 0 );
+}
+
+/**
+ * Drop the active child theme's style.css (and its RTL variant) from the editor
+ * styles global so it isn't inlined into the block editor iframe.
+ *
+ * Runs at priority 11 — after the child registers it via add_editor_style()
+ * (priority 10) — and only when a child theme is active and the toggle is on.
+ * Lives in the parent so it works for any child without editing the child's
+ * functions.php (mirrors the inline-child design in inc/ekwa-inline-child.php).
+ */
+function ekwa_editor_remove_child_css() {
+	if ( ! ekwa_editor_disable_child_css_enabled() ) {
+		return;
+	}
+	// No child theme active — parent === stylesheet root; nothing to remove.
+	if ( get_template_directory() === get_stylesheet_directory() ) {
+		return;
+	}
+	if ( empty( $GLOBALS['editor_styles'] ) || ! is_array( $GLOBALS['editor_styles'] ) ) {
+		return;
+	}
+
+	$child_dir = wp_normalize_path( get_stylesheet_directory() );
+	$GLOBALS['editor_styles'] = array_values( array_filter(
+		$GLOBALS['editor_styles'],
+		static function ( $style ) use ( $child_dir ) {
+			// Resolve each (usually relative) editor-style entry to a file path the
+			// same way core does — get_theme_file_path() prefers the child theme.
+			// Match the child's ROOT style.css exactly so block-partial overrides
+			// (blocks/<name>/style.css) inside the child are never caught.
+			$resolved = wp_normalize_path( get_theme_file_path( (string) $style ) );
+			if ( $resolved === $child_dir . '/style.css' || $resolved === $child_dir . '/style-rtl.css' ) {
+				return false; // Drop the child theme's own stylesheet.
+			}
+			return true;
+		}
+	) );
+}
+add_action( 'after_setup_theme', 'ekwa_editor_remove_child_css', 11 );
 
 /**
  * Enqueue the phone-button block extension in the editor.
