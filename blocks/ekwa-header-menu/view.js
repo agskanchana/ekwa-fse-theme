@@ -71,6 +71,21 @@
 				closeAll();
 			}
 		} );
+
+		// Flyouts open on :hover OR :focus-within (see style.css). After a click,
+		// the focused link keeps its flyout open via :focus-within, so hovering a
+		// sibling would open a second flyout while the first lingers — they
+		// overlap. When the pointer moves onto a different menu link, drop the
+		// stale focus so hover stays authoritative. Keyboard users never fire
+		// mouseover, so focus navigation is unaffected.
+		nav.addEventListener( 'mouseover', function ( e ) {
+			var link = e.target && e.target.closest ? e.target.closest( 'a' ) : null;
+			if ( ! link || ! nav.contains( link ) ) { return; }
+			var active = document.activeElement;
+			if ( active && active.tagName === 'A' && active !== link && nav.contains( active ) ) {
+				active.blur();
+			}
+		} );
 	}
 
 	function bootstrap() {
