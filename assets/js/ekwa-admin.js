@@ -387,6 +387,43 @@
 	});
 
 	/* ============================================================
+	 *  Internal-link keywords — rebuild via Gemini
+	 * ============================================================ */
+	$(document).on('click', '#ekwa-interlink-rebuild-btn', function (e) {
+		e.preventDefault();
+
+		var $btn     = $(this);
+		var $status  = $('#ekwa-interlink-rebuild-status');
+		var endpoint = window.ekwaAdmin && ekwaAdmin.interlinkRebuildUrl;
+		var nonce    = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
+
+		if (!endpoint) {
+			$status.text('REST endpoint missing.');
+			return;
+		}
+
+		$btn.prop('disabled', true);
+		$status.text('Generating…');
+
+		$.ajax({
+			url: endpoint,
+			method: 'POST',
+			headers: { 'X-WP-Nonce': nonce }
+		}).done(function (res) {
+			$status.text((res && res.message) || 'Done.');
+			$btn.prop('disabled', false);
+		}).fail(function (xhr) {
+			var msg = 'Error.';
+			if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+				msg += ' — ' + xhr.responseJSON.message;
+			}
+			$status.text(msg);
+			$btn.prop('disabled', false);
+			if (window.console && xhr) { console.error('Interlink rebuild failed:', xhr.responseText); }
+		});
+	});
+
+	/* ============================================================
 	 *  Nav-menu item image picker (used by mega-menu columns)
 	 * ============================================================ */
 	$(document).on('click', '.ekwa-menu-image-pick', function (e) {

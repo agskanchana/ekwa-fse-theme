@@ -71,6 +71,7 @@ function ekwa_admin_enqueue( $hook ) {
 		'noImage'          => __( 'No image selected', 'ekwa' ),
 		'webpRegenUrl'     => esc_url_raw( rest_url( 'ekwa/v1/webp-regen-batch' ) ),
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
+		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
 		'webpStrings'      => array(
 			'starting'  => __( 'Starting…', 'ekwa' ),
 			'progress'  => __( '%1$s of %2$s processed', 'ekwa' ),
@@ -266,6 +267,8 @@ function ekwa_save_settings() {
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
 		'ekwa_gemini_api_key'   => 'sanitize_text_field',
+		'ekwa_interlink_enabled'      => 'sanitize_text_field',
+		'ekwa_interlink_refine_model' => 'sanitize_text_field',
 		'ekwa_chatbot_src'      => 'ekwa_sanitize_chatbot_src',
 		'ekwa_mmenu_bg'           => 'ekwa_sanitize_color',
 		'ekwa_mmenu_text'         => 'ekwa_sanitize_color',
@@ -1586,7 +1589,54 @@ function ekwa_render_settings_page() {
 						</tr>
 					</table>
 				</div>
-			</div><!-- /ai -->
+				<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Internal Linking Suggestions', 'ekwa' ); ?></h2>
+						<p class="description" style="margin-bottom:1em;">
+							<?php esc_html_e( 'Adds an "Internal Links" panel to the block editor that scans the page and suggests links to other pages (each phrase is linked once). Keyword variations are generated with Gemini and cached per page.', 'ekwa' ); ?>
+						</p>
+						<table class="form-table">
+							<tr>
+								<th><?php esc_html_e( 'Enable', 'ekwa' ); ?></th>
+								<td>
+									<?php $interlink_enabled = function_exists( 'ekwa_interlink_enabled' ) ? ekwa_interlink_enabled() : true; ?>
+									<label>
+										<input type="checkbox" name="ekwa_interlink_enabled" value="1" <?php checked( $interlink_enabled ); ?> />
+										<?php esc_html_e( 'Show the Internal Links panel in the editor', 'ekwa' ); ?>
+									</label>
+								</td>
+							</tr>
+							<tr>
+								<th><label for="ekwa_interlink_refine_model"><?php esc_html_e( 'AI Model', 'ekwa' ); ?></label></th>
+								<td>
+									<?php
+									$interlink_model  = get_option( 'ekwa_interlink_refine_model', 'gemini-2.5-flash' );
+									$interlink_models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array( 'gemini-2.5-flash' => 'Gemini 2.5 Flash' );
+									?>
+									<select id="ekwa_interlink_refine_model" name="ekwa_interlink_refine_model">
+										<?php foreach ( $interlink_models as $model_id => $model_label ) : ?>
+											<option value="<?php echo esc_attr( $model_id ); ?>" <?php selected( $interlink_model, $model_id ); ?>><?php echo esc_html( $model_label ); ?></option>
+										<?php endforeach; ?>
+									</select>
+									<p class="description"><?php esc_html_e( 'Used for keyword expansion and the editor\'s "Refine with AI" button.', 'ekwa' ); ?></p>
+								</td>
+							</tr>
+							<tr>
+								<th><?php esc_html_e( 'Keywords', 'ekwa' ); ?></th>
+								<td>
+									<?php $interlink_has_key = ( defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY ) || get_option( 'ekwa_gemini_api_key' ); ?>
+									<button type="button" class="button" id="ekwa-interlink-rebuild-btn"<?php echo $interlink_has_key ? '' : ' disabled'; ?>><?php esc_html_e( 'Rebuild link keywords', 'ekwa' ); ?></button>
+									<span id="ekwa-interlink-rebuild-status" style="margin-left:8px;"></span>
+									<p class="description">
+										<?php esc_html_e( 'Regenerate the cached anchor keywords for every published page via Gemini. Runs automatically when a page title changes; use this to populate them all at once.', 'ekwa' ); ?>
+										<?php if ( ! $interlink_has_key ) : ?>
+											<br><em><?php esc_html_e( 'Add a Gemini API key above to enable this.', 'ekwa' ); ?></em>
+										<?php endif; ?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+				</div><!-- /ai -->
 
 			<p class="submit ekwa-main-submit">
 				<?php submit_button( __( 'Save Settings', 'ekwa' ), 'primary', 'submit', false ); ?>

@@ -163,6 +163,11 @@ require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
 
 /**
+ * Internal linking suggestions in the block editor (page index + Gemini helpers).
+ */
+require_once get_template_directory() . '/inc/ekwa-interlink.php';
+
+/**
  * Tag external links with a descriptive title on first user interaction.
  */
 require_once get_template_directory() . '/inc/ekwa-external-links.php';
@@ -404,6 +409,55 @@ function ekwa_enqueue_converter_editor_script() {
 	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );
+
+/**
+ * Internal linking suggestions — editor sidebar that scans the current page and
+ * proposes one-click internal links to other pages.
+ */
+function ekwa_enqueue_interlink_editor_script() {
+	if ( function_exists( 'ekwa_interlink_enabled' ) && ! ekwa_interlink_enabled() ) {
+		return;
+	}
+
+	wp_enqueue_script(
+		'ekwa-interlink-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-interlink-editor.js',
+		array(
+			'wp-plugins',
+			'wp-editor',
+			'wp-edit-post',
+			'wp-block-editor',
+			'wp-blocks',
+			'wp-components',
+			'wp-element',
+			'wp-data',
+			'wp-rich-text',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		filemtime( get_template_directory() . '/assets/js/ekwa-interlink-editor.js' ),
+		true
+	);
+
+	$ai_models     = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
+	$ai_model_list = array();
+	foreach ( $ai_models as $model_id => $model_label ) {
+		$ai_model_list[] = array(
+			'value' => $model_id,
+			'label' => $model_label,
+		);
+	}
+	wp_localize_script(
+		'ekwa-interlink-editor',
+		'ekwaInterlink',
+		array(
+			'models'       => $ai_model_list,
+			'defaultModel' => function_exists( 'ekwa_interlink_refine_model' ) ? ekwa_interlink_refine_model() : 'gemini-2.5-flash',
+			'hasApiKey'    => (bool) ekwa_get_ai_api_key(),
+		)
+	);
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_interlink_editor_script' );
 
 /**
  * Register theme support.
