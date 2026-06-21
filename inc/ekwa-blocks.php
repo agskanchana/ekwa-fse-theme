@@ -3090,23 +3090,27 @@ function ekwa_render_policy_pages_block( $attrs ) {
 	$is_ad = ( isset( $_COOKIE['adward_number'] ) || isset( $_GET['ads'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$phone = ( $is_ad && $adsense ) ? $adsense : $first['phone_new'];
 
-	// Build the upstream URL with proper encoding. Note: param key
+	// Build the upstream URL. Use http_build_query (NOT add_query_arg) because
+	// add_query_arg does not URL-encode the values it is given. The street
+	// address frequently contains a "#" (e.g. "... Pkwy #150"); left unencoded
+	// that "#" starts a URL fragment in the browser's fetch(), so everything
+	// after it (city/state/zip/email) is silently dropped from the request.
+	// PHP_QUERY_RFC3986 encodes "#" as %23, spaces as %20, etc.
 	// `bussiness_name` is a typo in the upstream API contract — keep it.
-	$url = add_query_arg(
-		array(
-			'id'             => $policy_id,
-			'bussiness_name' => $practice_name,
-			'phone'          => $phone,
-			'country'        => $country,
-			'domain'         => home_url(),
-			'address'        => $first['street'],
-			'city'           => $first['city'],
-			'state'          => $first['state'],
-			'zip'            => $first['zip'],
-			'email'          => $email,
-		),
-		'https://policies.ekwa.com/wp-json/ws/v1/policy_page'
+	$params = array(
+		'id'             => $policy_id,
+		'bussiness_name' => $practice_name,
+		'phone'          => $phone,
+		'country'        => $country,
+		'domain'         => home_url(),
+		'address'        => $first['street'],
+		'city'           => $first['city'],
+		'state'          => $first['state'],
+		'zip'            => $first['zip'],
+		'email'          => $email,
 	);
+	$url = 'https://policies.ekwa.com/wp-json/ws/v1/policy_page?'
+		. http_build_query( $params, '', '&', PHP_QUERY_RFC3986 );
 
 	// Unique container id so multiple instances on a page don't collide.
 	$uid = 'ekwa-policy-' . wp_generate_uuid4();
