@@ -28,6 +28,7 @@
 		"lazyBg":            { "type": "boolean", "default": true },
 		"preloadBg":         { "type": "boolean", "default": false },
 		"inlineStyle":       { "type": "string",  "default": "" },
+		"scopedCss":         { "type": "string",  "default": "" },
 		"customAttributes":  { "type": "object",  "default": {} }
 	},
 	"editorScript": "ekwa-div-editor"

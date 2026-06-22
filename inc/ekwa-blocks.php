@@ -3714,6 +3714,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$anchor       = isset( $attrs['anchor'] )          ? sanitize_html_class( $attrs['anchor'] ) : '';
 	$bg_image     = isset( $attrs['backgroundImage'] ) ? esc_url( $attrs['backgroundImage'] ) : '';
 	$inline_style = isset( $attrs['inlineStyle'] )     ? $attrs['inlineStyle'] : '';
+	$scoped_css   = isset( $attrs['scopedCss'] )       ? (string) $attrs['scopedCss'] : '';
 
 	// Serve the WebP companion for the background when the browser advertises
 	// support — mirrors the ekwa/image URL swap. Browsers that don't send an
@@ -3785,6 +3786,13 @@ function ekwa_render_div_block( $attrs, $content ) {
 	}
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</' . $tag . '>';
+
+	// Self-contained section CSS (AI Block Builder): inline the block's scoped
+	// stylesheet once per request, only where the block renders. Deduped by the
+	// CSS hash so the same section's CSS is emitted at most once per page.
+	if ( '' !== trim( $scoped_css ) && ! is_admin() && function_exists( 'ekwa_inline_get_style_inline' ) ) {
+		$html = ekwa_inline_get_style_inline( $scoped_css, 'scoped-' . md5( $scoped_css ) ) . $html;
+	}
 
 	// Queue the lazy-bg IntersectionObserver shim once, printed before </body>.
 	if ( $lazy_bg ) {

@@ -119,10 +119,29 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 
 	$block_markup = trim( $extracted['html'] );
 	$css          = $extracted['css'];
+	$warnings     = array();
+
+	// Replace the AI's scoping sentinel with a real unique section id in BOTH the
+	// CSS and the markup, then embed the (scoped) CSS into the wrapper block's
+	// scopedCss attribute so the section becomes self-contained — its CSS inlines
+	// on the front end only where the block renders (ekwa_render_div_block).
+	if ( false !== strpos( $block_markup, 'EKWA_SCOPE' ) || false !== strpos( $css, 'EKWA_SCOPE' ) ) {
+		$scope        = 'eai-sec-' . substr( md5( uniqid( '', true ) ), 0, 6 );
+		$css          = str_replace( 'EKWA_SCOPE', $scope, $css );
+		$block_markup = str_replace( 'EKWA_SCOPE', $scope, $block_markup );
+	} else {
+		$scope = '';
+	}
+
+	if ( '' !== trim( $css ) ) {
+		$embed        = ekwa_ai_blocks_embed_scoped_css( $block_markup, $css, $scope );
+		$block_markup = $embed['markup'];
+		$warnings     = array_merge( $warnings, $embed['warnings'] );
+	}
 
 	// Validate that every referenced block is registered, and (best-effort)
 	// render the markup server-side for an accurate preview.
-	$warnings     = ekwa_ai_generate_blocks_validate( $block_markup );
+	$warnings      = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $block_markup ) );
 	$rendered_html = ekwa_ai_generate_blocks_render_preview( $block_markup );
 
 	return rest_ensure_response( array(
@@ -131,6 +150,58 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		'rendered_html' => $rendered_html,
 		'warnings'      => $warnings,
 	) );
+}
+
+/**
+ * Embed the section's scoped CSS into its top-level ekwa/div wrapper.
+ *
+ * The Block Builder asks the AI to wrap each section in a single top-level
+ * ekwa/div carrying the scope class, and to scope every selector under it. Here
+ * we move the extracted CSS into that wrapper's `scopedCss` attribute so the
+ * markup is self-contained — `ekwa_render_div_block()` then inlines the CSS once
+ * per request, only where the block renders.
+ *
+ * @param string $markup Block-comment markup (sentinel already replaced).
+ * @param string $css    Scoped CSS to embed (sentinel already replaced).
+ * @param string $scope  The generated scope class (e.g. "eai-sec-ab12cd"), or ''.
+ * @return array{ markup:string, warnings:array<int,string> }
+ */
+function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
+	$warnings = array();
+
+	$blocks = parse_blocks( $markup );
+
+	// Real top-level blocks = those with a block name (skip whitespace blocks).
+	$real = array();
+	foreach ( $blocks as $i => $block ) {
+		if ( ! empty( $block['blockName'] ) ) {
+			$real[] = $i;
+		}
+	}
+
+	if ( count( $real ) === 1 && 'ekwa/div' === $blocks[ $real[0] ]['blockName'] ) {
+		$idx = $real[0];
+		if ( ! isset( $blocks[ $idx ]['attrs'] ) || ! is_array( $blocks[ $idx ]['attrs'] ) ) {
+			$blocks[ $idx ]['attrs'] = array();
+		}
+		$blocks[ $idx ]['attrs']['scopedCss'] = $css;
+
+		// Make sure the scope class is actually on the wrapper, so the scoped
+		// selectors match. (It normally is, via the sentinel replacement.)
+		if ( '' !== $scope ) {
+			$class = isset( $blocks[ $idx ]['attrs']['className'] ) ? (string) $blocks[ $idx ]['attrs']['className'] : '';
+			if ( false === strpos( ' ' . $class . ' ', ' ' . $scope . ' ' ) ) {
+				$blocks[ $idx ]['attrs']['className'] = trim( $class . ' ' . $scope );
+			}
+		}
+
+		return array( 'markup' => serialize_blocks( $blocks ), 'warnings' => $warnings );
+	}
+
+	// Structure isn't a single wrapping ekwa/div — leave markup untouched and
+	// fall back to manual CSS handling via the panel.
+	$warnings[] = __( 'Could not auto-embed the section CSS (the output is not wrapped in a single ekwa/div). Paste the CSS panel into your stylesheet manually.', 'ekwa' );
+	return array( 'markup' => $markup, 'warnings' => $warnings );
 }
 
 /**
@@ -143,7 +214,7 @@ function ekwa_ai_generate_blocks_system_prompt( $context = 'section' ) {
 	$context_cue = '';
 	if ( 'header' === $context ) {
 		$context_cue = "HEADER CONTEXT — strict rules:\n"
-			. "1. DESKTOP ONLY. The site has a separate mobile header. Wrap the whole header in an ekwa/div with a className you control, and add this rule to your <style>: `@media (max-width: 1199.98px){ .your-header-class{ display:none !important; } }`.\n"
+			. "1. DESKTOP ONLY. The site has a separate mobile header. The whole header is your single top-level ekwa/div (className \"EKWA_SCOPE\"); hide it on smaller screens with this rule in your <style>: `@media (max-width: 1199.98px){ .EKWA_SCOPE{ display:none !important; } }`.\n"
 			. "2. NO mobile markup — no hamburger, no off-canvas drawer, no mobile toggle. Assume viewport ≥ 1200px.\n"
 			. "3. Use ekwa/header-menu for the PRIMARY navigation (never type menu items). Use core/site-logo OR ekwa/svg-logo for the logo. Every requested element (logo, menu, phone, search, address, social, button) MUST appear as its block.\n"
 			. "4. Keep it a compact header bar — no hero, no page body.\n\n";
@@ -174,9 +245,16 @@ BLOCK MARKUP RULES:
 - Use ONLY the blocks listed in the BLOCK SPEC below. Do not invent block names or attributes.
 - Prefer ekwa/* blocks — they are server-rendered and never trigger block-validation errors. For the core/* text blocks (paragraph, heading, list) copy the serialization in the spec EXACTLY, including any wp-block-* classes, or the block becomes invalid.
 
-STYLING RULES (classes + one stylesheet):
-- Put EVERY style rule — layout, spacing, colors, typography, responsive media queries, :hover/:focus, pseudo-elements — inside the single top <style> block. The user pastes it into their shared stylesheet.
-- Apply styling by giving blocks a semantic `className` (BEM-ish: block__element--modifier) and targeting that class in the <style>. Reuse classes/CSS variables from the SITE STYLESHEET if one is provided below.
+STYLING RULES (scoped classes + one stylesheet — IMPORTANT):
+- Wrap your ENTIRE output in EXACTLY ONE top-level ekwa/div. Give that wrapper the className "EKWA_SCOPE" (you may add more classes after it, e.g. "EKWA_SCOPE site-header"). EKWA_SCOPE is a placeholder — the system replaces it with a unique section id.
+- Put EVERY style rule — layout, spacing, colors, typography, responsive media queries, :hover/:focus, pseudo-elements — inside the single top <style> block.
+- SCOPE every selector by prefixing it with .EKWA_SCOPE so the styles can't leak. Examples:
+    .EKWA_SCOPE .card { ... }
+    .EKWA_SCOPE .card:hover { ... }
+    @media (max-width: 991.98px) { .EKWA_SCOPE .grid { grid-template-columns: 1fr; } }
+  To style the wrapper itself, use `.EKWA_SCOPE { ... }`.
+- Name any @keyframes uniquely (e.g. ekwa-fade-EKWA_SCOPE) so they never collide with other sections.
+- Apply styling by giving inner blocks a semantic `className` (BEM-ish: block__element--modifier) and targeting `.EKWA_SCOPE .that-class` in the <style>. Reuse classes/CSS variables from the SITE STYLESHEET if one is provided below.
 - DO NOT use any per-block `inlineStyle` attribute, and do NOT put a `style="..."` attribute on elements. All CSS goes in the <style> block.
 - ekwa/flex and ekwa/grid already emit their own display/flex/grid declarations from their attributes — set those via attributes, and use the className only for gap and extra styling.
 

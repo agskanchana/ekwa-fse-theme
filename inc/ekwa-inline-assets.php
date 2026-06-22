@@ -242,6 +242,37 @@ function ekwa_inline_get_style( $rel ) {
 }
 
 /**
+ * Inline <style> markup for a raw CSS string, once per request.
+ *
+ * Sibling of ekwa_inline_get_style() for CSS that lives in a block attribute
+ * (e.g. ekwa/div scopedCss from the AI Block Builder) rather than a partial
+ * file. Deduped on $key so identical CSS is emitted at most once per request,
+ * and minified through the same conservative minifier when the global toggle is
+ * on. The inline display:none guard matches ekwa_inline_get_style().
+ *
+ * @param string $css The CSS to inline.
+ * @param string $key Dedupe key (e.g. 'scoped-' . md5( $css )).
+ * @return string Markup, or '' if already emitted / empty.
+ */
+function ekwa_inline_get_style_inline( $css, $key ) {
+	$css = trim( (string) $css );
+	if ( '' === $css ) {
+		return '';
+	}
+	if ( ! ekwa_inline_mark_emitted( 'inline:' . $key ) ) {
+		return '';
+	}
+	if ( ekwa_inline_minify_enabled() ) {
+		$css = ekwa_inline_minify_css( $css );
+	}
+	if ( '' === trim( $css ) ) {
+		return '';
+	}
+	$id = 'ekwa-inline-' . sanitize_html_class( substr( md5( $key ), 0, 12 ) );
+	return '<style id="' . esc_attr( $id ) . '" style="display:none!important">' . $css . '</style>';
+}
+
+/**
  * Inline <script> markup for a file, once per request.
  *
  * @param string $rel Path relative to the theme root.

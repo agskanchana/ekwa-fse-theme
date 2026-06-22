@@ -497,18 +497,20 @@
 				} )
 			);
 
-			// Generated CSS panel.
+			// Generated CSS panel — informational. The CSS is already embedded in
+			// the section's wrapper block and auto-inlined where it renders, so
+			// there's nothing to paste; this is read-only for transparency.
 			children.push(
 				el( 'div', { key: 'css', className: 'ekwa-ai-extract' },
 					el( 'div', { className: 'ekwa-ai-extract-header' },
-						el( 'strong', null, __( 'CSS for these blocks', 'ekwa' ) ),
+						el( 'strong', null, __( 'Section CSS', 'ekwa' ) ),
 						el( 'span', { className: 'ekwa-ai-extract-hint' },
-							__( 'Paste into your common / child stylesheet. Full CSS supported (media queries, hover, keyframes).', 'ekwa' )
+							__( 'Already embedded in the block and auto-inlined only where this section renders — no need to paste it anywhere. Copy it only if you’d rather manage it in your stylesheet.', 'ekwa' )
 						)
 					),
 					el( TextareaControl, {
 						value: css,
-						onChange: setCss,
+						readOnly: true,
 						rows: 8,
 						className: 'ekwa-ai-extract-textarea',
 						placeholder: __( '/* No extra CSS was generated. */', 'ekwa' ),

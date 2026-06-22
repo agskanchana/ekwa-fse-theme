@@ -264,6 +264,28 @@
 				)
 			);
 
+			// ── Section CSS (advanced) ───────────────────────────────
+			// Self-contained scoped CSS set by the AI Block Builder. Shown in a
+			// collapsed panel so it stays viewable/editable without cluttering
+			// the common controls. Applied in the canvas via the <style> below.
+			if ( attributes.scopedCss || isSelected ) {
+				panels.push(
+					el( PanelBody, {
+						key: 'scoped-css',
+						title: __( 'Section CSS (advanced)' ),
+						initialOpen: false,
+					},
+						el( TextareaControl, {
+							label: __( 'Scoped CSS' ),
+							help: __( 'Auto-inlined on the front end only where this block renders. Selectors are scoped to this section’s class.' ),
+							value: attributes.scopedCss || '',
+							rows: 8,
+							onChange: function ( val ) { setAttributes( { scopedCss: val } ); },
+						} )
+					)
+				);
+			}
+
 			// ── Custom HTML Attributes ───────────────────────────────
 			if ( CustomAttrsControl ) {
 				panels.push(
@@ -301,6 +323,9 @@
 			return el( Fragment, null,
 				el( InspectorControls, null, panels ),
 				el( 'div', blockProps,
+					attributes.scopedCss
+						? el( 'style', null, attributes.scopedCss )
+						: null,
 					tagLabel,
 					el( InnerBlocks, null )
 				)
