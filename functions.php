@@ -158,6 +158,13 @@ require_once get_template_directory() . '/inc/ekwa-ai-hints.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 
 /**
+ * AI Block Builder — generates Ekwa/core block markup directly (Gemini),
+ * skipping the lossy HTML→block converter step.
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-block-specs.php';
+require_once get_template_directory() . '/inc/ekwa-ai-generate-blocks.php';
+
+/**
  * AI alt-text generation for the ekwa/image block (Gemini multimodal).
  */
 require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
@@ -401,6 +408,35 @@ function ekwa_enqueue_converter_editor_script() {
 	wp_localize_script(
 		'ekwa-ai-generate-editor',
 		'ekwaAiGenerate',
+		array(
+			'childStylesheetUrl' => $child_css_uri,
+			'models'             => $ai_model_list,
+			'defaultModel'       => 'gemini-2.5-flash',
+		)
+	);
+
+	// AI Block Builder — emits Ekwa/core block markup directly (no HTML→block
+	// conversion). Standalone plugin entry; reuses the same model list + child CSS.
+	wp_enqueue_script(
+		'ekwa-ai-blocks-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-ai-blocks-editor.js',
+		array(
+			'wp-plugins',
+			'wp-editor',
+			'wp-blocks',
+			'wp-block-editor',
+			'wp-components',
+			'wp-element',
+			'wp-data',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		filemtime( get_template_directory() . '/assets/js/ekwa-ai-blocks-editor.js' ),
+		true
+	);
+	wp_localize_script(
+		'ekwa-ai-blocks-editor',
+		'ekwaAiBlocks',
 		array(
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
