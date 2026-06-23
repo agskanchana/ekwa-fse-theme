@@ -1144,6 +1144,7 @@ function ekwa_render_address_block( $attrs ) {
 		'location'   => isset( $attrs['location'] )  ? $attrs['location']                                    : 1,
 		'mode'       => isset( $attrs['mode'] )       ? $attrs['mode']                                        : 'full',
 		'label'      => isset( $attrs['label'] )      ? $attrs['label']                                       : '',
+		'aria_label' => isset( $attrs['ariaLabel'] )  ? $attrs['ariaLabel']                                   : '',
 		'show_icon'  => isset( $attrs['showIcon'] )   ? ( $attrs['showIcon'] ? 'true' : 'false' )             : 'true',
 		'icon_class' => isset( $attrs['iconClass'] )  ? $attrs['iconClass']                                   : 'fa-solid fa-location-dot',
 		'new_tab'    => isset( $attrs['newTab'] )     ? ( $attrs['newTab'] ? 'true' : 'false' )               : 'true',

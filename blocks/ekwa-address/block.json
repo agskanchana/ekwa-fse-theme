@@ -17,6 +17,7 @@
 		"location":  { "type": "number",  "default": 1 },
 		"mode":      { "type": "string",  "default": "full" },
 		"label":     { "type": "string",  "default": "" },
+		"ariaLabel": { "type": "string",  "default": "" },
 		"showIcon":  { "type": "boolean", "default": true },
 		"iconClass": { "type": "string",  "default": "fa-solid fa-location-dot" },
 		"newTab":    { "type": "boolean", "default": true }

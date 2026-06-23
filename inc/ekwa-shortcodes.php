@@ -227,6 +227,7 @@ add_shortcode( 'ekwa_phone', 'ekwa_phone_shortcode' );
  *                        'address' – icon + formatted street address
  *                        'full'    – icon + full address including city/state/zip
  *   label      (string)  Custom link label used when mode="text". Default: 'Directions'
+ *   aria_label (string)  Custom screen-reader label for the link. Default: 'Get directions to {full address}'
  *   show_icon  (bool)    Whether to show the map-pin icon. Default: true
  *   icon_class (string)  FA icon class. Default: 'fa-solid fa-location-dot'
  *   new_tab    (bool)    Open in new tab. Default: true
@@ -243,6 +244,7 @@ function ekwa_address_shortcode( $atts ) {
 			'location'   => 1,
 			'mode'       => 'icon',
 			'label'      => '',
+			'aria_label' => '',
 			'show_icon'  => 'true',
 			'icon_class' => 'fa-solid fa-location-dot',
 			'new_tab'    => 'true',
@@ -251,12 +253,13 @@ function ekwa_address_shortcode( $atts ) {
 		'ekwa_address'
 	);
 
-	$loc_index  = max( 1, absint( $atts['location'] ) ) - 1;
-	$mode       = sanitize_text_field( $atts['mode'] );
-	$label      = sanitize_text_field( $atts['label'] );
-	$show_icon  = filter_var( $atts['show_icon'], FILTER_VALIDATE_BOOLEAN );
-	$icon_class = sanitize_text_field( $atts['icon_class'] );
-	$new_tab    = filter_var( $atts['new_tab'], FILTER_VALIDATE_BOOLEAN );
+	$loc_index   = max( 1, absint( $atts['location'] ) ) - 1;
+	$mode        = sanitize_text_field( $atts['mode'] );
+	$label       = sanitize_text_field( $atts['label'] );
+	$custom_aria = sanitize_text_field( $atts['aria_label'] );
+	$show_icon   = filter_var( $atts['show_icon'], FILTER_VALIDATE_BOOLEAN );
+	$icon_class  = sanitize_text_field( $atts['icon_class'] );
+	$new_tab     = filter_var( $atts['new_tab'], FILTER_VALIDATE_BOOLEAN );
 
 	$locations = get_option( 'ekwa_locations', array() );
 	$loc       = isset( $locations[ $loc_index ] ) ? $locations[ $loc_index ] : array();
@@ -286,10 +289,14 @@ function ekwa_address_shortcode( $atts ) {
 		$display_text = $full_address;
 	}
 
-	// aria-label for screen readers.
-	$aria_label = $full_address
-		? sprintf( __( 'Get directions to %s', 'ekwa' ), $full_address )
-		: __( 'Get directions to our location', 'ekwa' );
+	// aria-label for screen readers. A custom value overrides the auto-generated default.
+	if ( '' !== $custom_aria ) {
+		$aria_label = $custom_aria;
+	} else {
+		$aria_label = $full_address
+			? sprintf( __( 'Get directions to %s', 'ekwa' ), $full_address )
+			: __( 'Get directions to our location', 'ekwa' );
+	}
 
 	$target    = $new_tab ? ' target="_blank" rel="noreferrer nofollow"' : '';
 	$css_class = 'ekwa-address ekwa-address--' . esc_attr( $mode );

@@ -78,6 +78,15 @@
 							},
 						} ),
 
+						el( TextControl, {
+							label:    __( 'Aria Label', 'ekwa' ),
+							help:     __( 'Screen-reader label for the directions link. Leave blank to use the default: "Get directions to {address}".', 'ekwa' ),
+							value:    attrs.ariaLabel,
+							onChange: function ( value ) {
+								setAttrs( { ariaLabel: value } );
+							},
+						} ),
+
 						el( ToggleControl, {
 							label:    __( 'Show Icon', 'ekwa' ),
 							checked:  attrs.showIcon,
