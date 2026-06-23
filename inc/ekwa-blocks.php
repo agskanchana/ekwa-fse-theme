@@ -2212,14 +2212,14 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 
 	if ( $is_ad && $adsense ) {
 		$needs_call_popup = false;
-		$single_phone     = preg_replace( '/[^0-9+]/', '', $adsense );
+		$single_phone     = ekwa_mobile_number( $adsense );
 	} else {
 		$needs_call_popup = ( count( $phone_data ) > 1 ) || ( count( $phone_data ) === 1 && $has_both_types );
 		$single_phone     = '';
 		if ( ! $needs_call_popup && $total_phones === 1 ) {
 			foreach ( $phone_data as $d ) {
-				if ( $d['existing'] ) { $single_phone = preg_replace( '/[^0-9+]/', '', $d['existing'] ); break; }
-				if ( $d['new'] )      { $single_phone = preg_replace( '/[^0-9+]/', '', $d['new'] );      break; }
+				if ( $d['existing'] ) { $single_phone = ekwa_mobile_number( $d['existing'] ); break; }
+				if ( $d['new'] )      { $single_phone = ekwa_mobile_number( $d['new'] );      break; }
 			}
 		}
 	}
@@ -2351,14 +2351,14 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 			$html .= '<div class="accordion-body' . ( $first ? ' active' : '' ) . '" id="' . esc_attr( $aid ) . '">';
 			$html .= '<div class="accordion-content">';
 			if ( $loc['existing'] ) {
-				$tel = preg_replace( '/[^0-9+]/', '', $loc['existing'] );
+				$tel = ekwa_mobile_number( $loc['existing'] );
 				$html .= '<div class="phone-item"><span class="phone-label">Existing Patient</span>'
 					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
 					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
 					. esc_html( $loc['existing'] ) . '</a></div>';
 			}
 			if ( $loc['new'] ) {
-				$tel = preg_replace( '/[^0-9+]/', '', $loc['new'] );
+				$tel = ekwa_mobile_number( $loc['new'] );
 				$html .= '<div class="phone-item"><span class="phone-label">New Patient</span>'
 					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
 					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
@@ -2719,6 +2719,7 @@ function ekwa_render_inner_banner_block( $attrs ) {
 	$overlay_opacity  = isset( $attrs['overlayOpacity'] ) ? absint( $attrs['overlayOpacity'] ) : 50;
 	$min_height       = isset( $attrs['minHeight'] )      ? absint( $attrs['minHeight'] )      : 200;
 	$show_breadcrumbs = (bool) ( $attrs['showBreadcrumbs'] ?? true );
+	$aria_label       = isset( $attrs['ariaLabel'] )      ? trim( (string) $attrs['ariaLabel'] ) : '';
 
 	// Resolve heading data and featured image.
 	if ( $is_real ) {
@@ -2762,7 +2763,10 @@ function ekwa_render_inner_banner_block( $attrs ) {
 		'style' => $inline,
 	) );
 
-	$out  = '<section ' . $wrapper_attrs . '>';
+	// Optional custom aria-label turns the banner into a labelled landmark region.
+	$aria_attr = '' !== $aria_label ? ' aria-label="' . esc_attr( $aria_label ) . '"' : '';
+
+	$out  = '<section ' . $wrapper_attrs . $aria_attr . '>';
 
 	// Overlay (only when bg image is present and opacity > 0).
 	if ( $bg_url && $overlay_opacity > 0 ) {

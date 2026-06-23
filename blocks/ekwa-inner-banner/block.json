@@ -30,6 +30,10 @@
 		"showBreadcrumbs": {
 			"type": "boolean",
 			"default": true
+		},
+		"ariaLabel": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"editorScript": "ekwa-inner-banner-editor"

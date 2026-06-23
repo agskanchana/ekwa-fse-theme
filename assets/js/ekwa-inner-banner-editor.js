@@ -5,6 +5,7 @@
 	var PanelBody = wp.components.PanelBody;
 	var RangeControl = wp.components.RangeControl;
 	var ToggleControl = wp.components.ToggleControl;
+	var TextControl = wp.components.TextControl;
 	var ServerSideRender = wp.serverSideRender;
 	var __ = wp.i18n.__;
 
@@ -39,6 +40,12 @@
 							label: __('Show Breadcrumbs', 'ekwa'),
 							checked: attrs.showBreadcrumbs,
 							onChange: function (val) { props.setAttributes({ showBreadcrumbs: val }); },
+						}),
+						el(TextControl, {
+							label: __('Aria Label', 'ekwa'),
+							help: __('Optional screen-reader label for the banner region. Leave blank for none.', 'ekwa'),
+							value: attrs.ariaLabel,
+							onChange: function (val) { props.setAttributes({ ariaLabel: val }); },
 						})
 					)
 				),
