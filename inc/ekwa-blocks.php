@@ -3367,7 +3367,12 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	}
 
 	if ( $show_dots ) {
-		$html .= '<div class="ekwa-carousel__dots" role="tablist" aria-label="' . esc_attr__( 'Slide pagination', 'ekwa' ) . '"></div>';
+		// role="group" (not "tablist"): the dots are slide-picker buttons in the
+		// basic APG carousel pattern, not tabs controlling tabpanels. "tablist"
+		// requires role="tab" children, which these <button>s are not — that
+		// mismatch is what Lighthouse flags. "group" keeps the labeled grouping
+		// without imposing required child roles.
+		$html .= '<div class="ekwa-carousel__dots" role="group" aria-label="' . esc_attr__( 'Slide pagination', 'ekwa' ) . '"></div>';
 	}
 
 	$html .= '<div class="ekwa-carousel__sr-status" aria-live="polite" aria-atomic="true"></div>';
