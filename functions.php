@@ -190,6 +190,12 @@ require_once get_template_directory() . '/inc/ekwa-cookie-banner.php';
 require_once get_template_directory() . '/inc/ekwa-chatbot.php';
 
 /**
+ * Google Analytics — injects the gtag.js tag in <head> from a Measurement ID
+ * or a full custom <script> snippet (Ekwa Settings → General).
+ */
+require_once get_template_directory() . '/inc/ekwa-analytics.php';
+
+/**
  * Lightbox (GLightbox) — class-driven lightbox for images/videos; injects the
  * library CSS/JS on first user interaction. See inc/ekwa-lightbox.php for usage.
  */

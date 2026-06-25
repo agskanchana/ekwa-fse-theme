@@ -18,6 +18,7 @@
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
+	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
 
 	var VARIANT_OPTIONS = [
 		{ label: 'Filled',  value: 'filled' },
@@ -142,7 +143,12 @@
 						__next40pxDefaultSize:  true,
 						__nextHasNoMarginBottom: true,
 					} )
-				)
+				),
+
+				CustomAttrsControl && el( CustomAttrsControl, {
+					attributes:    attributes,
+					setAttributes: setAttributes,
+				} )
 			),
 
 			/* ---------- Canvas ---------- */

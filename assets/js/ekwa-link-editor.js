@@ -17,6 +17,7 @@
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
+	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
 
 	registerBlockType( 'ekwa/link', {
 		edit: function ( props ) {
@@ -57,7 +58,11 @@
 							onChange: function ( val ) { setAttributes( { rel: val } ); },
 							help: __( 'e.g. nofollow, sponsored' ),
 						} )
-					)
+					),
+					CustomAttrsControl && el( CustomAttrsControl, {
+						attributes:    attributes,
+						setAttributes: setAttributes,
+					} )
 				),
 				el( 'span', blockProps,
 					text || __( '(Link — set text in sidebar)' )

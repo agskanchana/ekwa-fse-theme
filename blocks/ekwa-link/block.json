@@ -15,13 +15,14 @@
 		"className": true
 	},
 	"attributes": {
-		"url":      { "type": "string",  "default": "" },
-		"text":     { "type": "string",  "default": "" },
-		"newTab":   { "type": "boolean", "default": false },
-		"rel":      { "type": "string",  "default": "" },
-		"linkType": { "type": "string",  "default": "external" },
-		"pageType": { "type": "string",  "default": "page" },
-		"pageId":   { "type": "number",  "default": 0 }
+		"url":              { "type": "string",  "default": "" },
+		"text":             { "type": "string",  "default": "" },
+		"newTab":           { "type": "boolean", "default": false },
+		"rel":              { "type": "string",  "default": "" },
+		"linkType":         { "type": "string",  "default": "external" },
+		"pageType":         { "type": "string",  "default": "page" },
+		"pageId":           { "type": "number",  "default": 0 },
+		"customAttributes": { "type": "object",  "default": {} }
 	},
 	"editorScript": "ekwa-link-editor"
 }

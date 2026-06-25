@@ -481,7 +481,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-button-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-button-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-button-editor.js' ),
 		true
 	);
@@ -593,7 +593,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-link-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-link-editor.js',
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-link-editor.js' ),
 		true
 	);
@@ -3467,10 +3467,10 @@ function ekwa_render_button_block( $attrs ) {
 		$rel_attr = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
 
 		return '<a href="' . ( $url ? esc_url( $url ) : '#' ) . '"' . $target_attr . $rel_attr
-			. ' ' . $wrapper_attrs . '>' . $content . '</a>';
+			. ' ' . $wrapper_attrs . ekwa_render_custom_attributes( $attrs ) . '>' . $content . '</a>';
 	}
 
-	return '<button type="button" ' . $wrapper_attrs . '>' . $content . '</button>';
+	return '<button type="button" ' . $wrapper_attrs . ekwa_render_custom_attributes( $attrs ) . '>' . $content . '</button>';
 }
 
 
@@ -4013,6 +4013,7 @@ function ekwa_render_link_block( $attrs, $content = '' ) {
 	} elseif ( $rel_val ) {
 		$html .= ' rel="' . esc_attr( $rel_val ) . '"';
 	}
+	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . ( $content ? $content : esc_html( $text ) ) . '</a>';
 
 	return $html;

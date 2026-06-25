@@ -45,7 +45,8 @@
 		"iconPosition": { "type": "string",  "default": "left" },
 		"linkType":     { "type": "string",  "default": "external" },
 		"pageType":     { "type": "string",  "default": "page" },
-		"pageId":       { "type": "number",  "default": 0 }
+		"pageId":       { "type": "number",  "default": 0 },
+		"customAttributes": { "type": "object", "default": {} }
 	},
 	"editorScript": "ekwa-button-editor"
 }

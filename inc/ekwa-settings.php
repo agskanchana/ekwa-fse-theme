@@ -328,6 +328,30 @@ function ekwa_save_settings() {
 		update_option( 'ekwa_svg_logo_markup', $clean );
 	}
 
+	// Google Analytics — WAF-safe base64 with raw fallback. The full-snippet mode
+	// contains <script>, which some hosts strip from POST bodies; the bare
+	// Measurement ID case is unaffected but uses the same path for consistency.
+	$ga_input = null;
+	if ( isset( $_POST['ekwa_analytics_b64'] ) && '' !== $_POST['ekwa_analytics_b64'] ) {
+		$decoded = base64_decode( wp_unslash( $_POST['ekwa_analytics_b64'] ), true );
+		if ( false !== $decoded ) {
+			$ga_input = $decoded;
+		}
+	}
+	if ( null === $ga_input && isset( $_POST['ekwa_analytics'] ) ) {
+		$ga_input = wp_unslash( $_POST['ekwa_analytics'] );
+	}
+	if ( null !== $ga_input && function_exists( 'ekwa_sanitize_analytics' ) ) {
+		update_option( 'ekwa_analytics', ekwa_sanitize_analytics( $ga_input ) );
+	}
+
+	// Google Analytics placement (footer is the default; header is opt-in).
+	$ga_location = isset( $_POST['ekwa_analytics_location'] ) ? sanitize_text_field( wp_unslash( $_POST['ekwa_analytics_location'] ) ) : 'footer';
+	if ( ! in_array( $ga_location, array( 'header', 'footer' ), true ) ) {
+		$ga_location = 'footer';
+	}
+	update_option( 'ekwa_analytics_location', $ga_location );
+
 	// GitHub access token for theme updates (ignored when the constant is set).
 	if ( ! defined( 'EKWA_GITHUB_TOKEN' ) && isset( $_POST['ekwa_github_token'] ) ) {
 		update_option( 'ekwa_github_token', sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) ) );
@@ -804,6 +828,8 @@ function ekwa_render_settings_page() {
 	$contact_page  = get_option( 'ekwa_contact_page', 0 );
 	$author_page   = get_option( 'ekwa_author_page', 0 );
 	$chatbot_src   = get_option( 'ekwa_chatbot_src', '' );
+	$analytics     = get_option( 'ekwa_analytics', '' );
+	$analytics_loc = get_option( 'ekwa_analytics_location', 'footer' );
 	$appt_type     = get_option( 'ekwa_appt_type', 'page' );
 	$appt_page     = get_option( 'ekwa_appt_page', 0 );
 	$appt_url      = get_option( 'ekwa_appt_url', '' );
@@ -1026,6 +1052,56 @@ function ekwa_render_settings_page() {
 									</p>
 									<p class="description">
 										<?php esc_html_e( 'The script is injected only on the first user interaction (scroll, mouse move, touch, key press, or click) on both desktop and mobile, so it never blocks initial page load. Leave empty to disable.', 'ekwa' ); ?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+
+					<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Google Analytics', 'ekwa' ); ?></h2>
+						<table class="form-table">
+							<tr>
+								<th><label for="ekwa_analytics"><?php esc_html_e( 'Measurement ID or full code', 'ekwa' ); ?></label></th>
+								<td>
+									<textarea id="ekwa_analytics" name="ekwa_analytics" rows="3" class="large-text code" autocomplete="off" spellcheck="false" placeholder="G-NWNDT72C1E"><?php echo esc_textarea( $analytics ); ?></textarea>
+									<input type="hidden" id="ekwa_analytics_b64" name="ekwa_analytics_b64" value="" />
+									<p class="description">
+										<?php esc_html_e( 'Enter just your Measurement ID (e.g. G-NWNDT72C1E) and the standard Google tag is added for you. To use a custom snippet, paste the full <script> code instead and it is output verbatim. The tag is printed high in the <head>; the gtag loader is async so it never blocks rendering. Leave empty to disable.', 'ekwa' ); ?>
+									</p>
+									<script>
+										document.addEventListener( 'DOMContentLoaded', function () {
+											var ta  = document.getElementById( 'ekwa_analytics' );
+											var b64 = document.getElementById( 'ekwa_analytics_b64' );
+											// Ship a base64 copy on submit so WAF rules that strip raw
+											// <script>/HTML from POST bodies don't wipe a full snippet on save.
+											if ( ta && b64 && ta.form ) {
+												ta.form.addEventListener( 'submit', function () {
+													try {
+														var bytes = new TextEncoder().encode( ta.value );
+														var bin   = '';
+														for ( var i = 0; i < bytes.length; i++ ) {
+															bin += String.fromCharCode( bytes[ i ] );
+														}
+														b64.value = btoa( bin );
+													} catch ( e ) {
+														b64.value = '';
+													}
+												} );
+											}
+										} );
+									</script>
+								</td>
+							</tr>
+							<tr>
+								<th><label for="ekwa_analytics_location"><?php esc_html_e( 'Placement', 'ekwa' ); ?></label></th>
+								<td>
+									<select id="ekwa_analytics_location" name="ekwa_analytics_location">
+										<option value="footer" <?php selected( $analytics_loc, 'footer' ); ?>><?php esc_html_e( 'Footer (recommended)', 'ekwa' ); ?></option>
+										<option value="header" <?php selected( $analytics_loc, 'header' ); ?>><?php esc_html_e( 'Header', 'ekwa' ); ?></option>
+									</select>
+									<p class="description">
+										<?php esc_html_e( 'Where to print the tag. Footer keeps it out of the critical <head> for better load performance; choose Header to load it as early as possible.', 'ekwa' ); ?>
 									</p>
 								</td>
 							</tr>
