@@ -190,6 +190,12 @@ require_once get_template_directory() . '/inc/ekwa-cookie-banner.php';
 require_once get_template_directory() . '/inc/ekwa-chatbot.php';
 
 /**
+ * Delayed scripts — injects the active theme's assets/js/delayed-scripts.js on
+ * first user interaction.
+ */
+require_once get_template_directory() . '/inc/ekwa-delayed-scripts.php';
+
+/**
  * Google Analytics — injects the gtag.js tag in <head> from a Measurement ID
  * or a full custom <script> snippet (Ekwa Settings → General).
  */
