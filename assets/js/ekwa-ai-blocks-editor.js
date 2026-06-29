@@ -35,6 +35,13 @@
 			? wp.editPost.PluginMoreMenuItem
 			: null );
 
+	// Adds an "Edit with AI" item to a selected block's options (⋮) menu.
+	var PluginBlockSettingsMenuItem = ( wp.editor && wp.editor.PluginBlockSettingsMenuItem )
+		? wp.editor.PluginBlockSettingsMenuItem
+		: ( wp.editPost && wp.editPost.PluginBlockSettingsMenuItem
+			? wp.editPost.PluginBlockSettingsMenuItem
+			: null );
+
 	// Limits matching the server side (inc/ekwa-ai-generate-blocks.php).
 	var MAX_IMAGES      = 6;
 	var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -77,6 +84,62 @@
 			}
 		} catch ( e ) { /* noop */ }
 		return 'section';
+	}
+
+	/**
+	 * Build the seed for "Edit with AI" from the selected blocks: serialize them
+	 * to block markup, and pull any wrapper scopedCss out into a separate CSS
+	 * string so the model edits clean markup + a <style> (the same shape it
+	 * generates), rather than a giant CSS blob escaped inside a JSON attribute.
+	 *
+	 * @param {Array} blocks Block objects from getBlock().
+	 * @return {{ markup: string, css: string }}
+	 */
+	function prepareEditSeed( blocks ) {
+		var css = '';
+		var cleaned = ( blocks || [] ).map( function ( b ) {
+			if ( b && b.name === 'ekwa/div' && b.attributes && b.attributes.scopedCss ) {
+				css += ( css ? '\n\n' : '' ) + b.attributes.scopedCss;
+				var clone = {};
+				Object.keys( b ).forEach( function ( k ) { clone[ k ] = b[ k ]; } );
+				var attrs = {};
+				Object.keys( b.attributes ).forEach( function ( k ) {
+					if ( k !== 'scopedCss' ) { attrs[ k ] = b.attributes[ k ]; }
+				} );
+				clone.attributes = attrs;
+				return clone;
+			}
+			return b;
+		} );
+		var markup = '';
+		try { markup = wp.blocks.serialize( cleaned ); } catch ( e ) { markup = ''; }
+		return { markup: markup, css: css };
+	}
+
+	/**
+	 * Grab the rendered HTML of the selected block(s) straight from the editor
+	 * canvas, so "Edit with AI" can show a live preview of the current section
+	 * immediately (before any AI round-trip). The canvas lives in an iframe in the
+	 * site/post editor; fall back to the main document otherwise. Returns '' if it
+	 * can't be read — the modal then shows its placeholder.
+	 *
+	 * @param {Array} clientIds Selected block client ids.
+	 * @return {string}
+	 */
+	function selectionPreviewHtml( clientIds ) {
+		try {
+			var doc    = document;
+			var iframe = document.querySelector( 'iframe[name="editor-canvas"]' );
+			if ( iframe && iframe.contentDocument ) { doc = iframe.contentDocument; }
+			var html = '';
+			( clientIds || [] ).forEach( function ( id ) {
+				var node = doc.querySelector( '[data-block="' + id + '"]' );
+				if ( node ) { html += node.outerHTML; }
+			} );
+			return html;
+		} catch ( e ) {
+			return '';
+		}
 	}
 
 	function readFileAsBase64( file ) {
@@ -140,9 +203,9 @@
 		var s2  = useState( [] );            var images       = s2[0];  var setImages       = s2[1];
 		var s3  = useState( false );         var generating   = s3[0];  var setGenerating   = s3[1];
 		var s4  = useState( null );          var error        = s4[0];  var setError        = s4[1];
-		var s5  = useState( '' );            var markup       = s5[0];  var setMarkup       = s5[1];
-		var s6  = useState( '' );            var css          = s6[0];  var setCss          = s6[1];
-		var s7  = useState( '' );            var renderedHtml = s7[0];  var setRenderedHtml = s7[1];
+		var s5  = useState( props.seedMarkup || '' ); var markup    = s5[0];  var setMarkup       = s5[1];
+		var s6  = useState( props.seedCss || '' );    var css       = s6[0];  var setCss          = s6[1];
+		var s7  = useState( props.seedRendered || '' ); var renderedHtml = s7[0]; var setRenderedHtml = s7[1];
 		var s8  = useState( [] );            var warnings     = s8[0];  var setWarnings     = s8[1];
 		var s9  = useState( false );         var copiedMarkup = s9[0];  var setCopiedMarkup = s9[1];
 		var s10 = useState( false );         var copiedCss    = s10[0]; var setCopiedCss    = s10[1];
@@ -152,6 +215,9 @@
 		var s14 = useState( false );         var isFullscreen = s14[0]; var setIsFullscreen = s14[1];
 		var s15 = useState( props.context || 'section' ); var context = s15[0]; var setContext = s15[1];
 		var s16 = useState( false );         var inserted     = s16[0]; var setInserted     = s16[1];
+
+		var editMode      = !! props.editMode;
+		var editClientIds = props.editClientIds || [];
 
 		var fileRef = useRef( null );
 
@@ -256,6 +322,12 @@
 					use_child_css: useChildCss,
 					model:         model,
 					context:       context,
+					mode:          editMode ? 'edit' : 'create',
+					// The original selection is the edit baseline; the server only
+					// injects it on the first turn (history empty), then relies on
+					// the model's own prior output carried forward in history.
+					base_markup:   editMode ? ( props.seedMarkup || '' ) : '',
+					base_css:      editMode ? ( props.seedCss || '' ) : '',
 				},
 			} ).then( function ( res ) {
 				var newHistory = historyPayload.concat( [
@@ -288,9 +360,11 @@
 		}
 
 		function handleBack() {
-			setMarkup( '' );
-			setCss( '' );
-			setRenderedHtml( '' );
+			// In edit mode "Back" restores the original selection seed rather than
+			// emptying the form (which would drop the section being edited).
+			setMarkup( editMode ? ( props.seedMarkup || '' ) : '' );
+			setCss( editMode ? ( props.seedCss || '' ) : '' );
+			setRenderedHtml( editMode ? ( props.seedRendered || '' ) : '' );
 			setWarnings( [] );
 			setHistory( [] );
 			setError( null );
@@ -298,18 +372,26 @@
 			setInserted( false );
 		}
 
-		// ── Insert into editor ─────────────────────────────────────────
+		// ── Insert / apply into editor ─────────────────────────────────
 
 		function handleInsert() {
 			if ( ! markup ) { return; }
 			try {
 				var blocks = wp.blocks.parse( markup );
-				if ( blocks && blocks.length ) {
-					wp.data.dispatch( 'core/block-editor' ).insertBlocks( blocks );
-					setInserted( true );
-				} else {
+				if ( ! blocks || ! blocks.length ) {
 					setError( __( 'Nothing to insert — the markup produced no blocks.', 'ekwa' ) );
+					return;
 				}
+				// Edit mode: replace the originally selected blocks in place. The
+				// markup here is always a server result (the Apply button is gated on
+				// a completed update), so its CSS is self-contained.
+				if ( editMode && editClientIds && editClientIds.length ) {
+					wp.data.dispatch( 'core/block-editor' ).replaceBlocks( editClientIds, blocks );
+					if ( typeof onClose === 'function' ) { onClose(); }
+					return;
+				}
+				wp.data.dispatch( 'core/block-editor' ).insertBlocks( blocks );
+				setInserted( true );
 			} catch ( e ) {
 				setError( ( e && e.message ) || __( 'Could not insert blocks.', 'ekwa' ) );
 			}
@@ -322,8 +404,14 @@
 		var contextBadge = el( 'div', { key: 'ctx', className: 'ekwa-ai-context-badge' },
 			el( 'span', { className: 'ekwa-ai-context-badge__dot' } ),
 			el( 'span', null,
-				__( 'Building for: ', 'ekwa' ),
-				el( 'strong', null, CONTEXT_LABELS[ context ] || CONTEXT_LABELS.section )
+				editMode ? __( 'Editing: ', 'ekwa' ) : __( 'Building for: ', 'ekwa' ),
+				el( 'strong', null,
+					editMode
+						? ( editClientIds.length > 1
+							? ( editClientIds.length + ' ' + __( 'selected blocks', 'ekwa' ) )
+							: __( 'selected block', 'ekwa' ) )
+						: ( CONTEXT_LABELS[ context ] || CONTEXT_LABELS.section )
+				)
 			)
 		);
 
@@ -534,7 +622,7 @@
 			children.push(
 				el( 'div', { key: 'refine', className: 'ekwa-ai-refine' },
 					el( 'div', { className: 'ekwa-ai-refine-header' },
-						el( 'strong', null, __( 'Refine', 'ekwa' ) ),
+						el( 'strong', null, editMode ? __( 'Describe your change', 'ekwa' ) : __( 'Refine', 'ekwa' ) ),
 						turnCount > 0
 							? el( 'span', { className: 'ekwa-ai-refine-count' },
 								turnCount === 1 ? __( '1 turn so far', 'ekwa' ) : turnCount + ' ' + __( 'turns so far', 'ekwa' ) )
@@ -545,7 +633,9 @@
 						onChange: setPrompt,
 						rows: 3,
 						className: 'ekwa-ai-refine-prompt',
-						placeholder: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ),
+						placeholder: editMode
+							? __( 'e.g. "Make the buttons larger, and add more spacing between the cards."', 'ekwa' )
+							: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ),
 					} ),
 					el( 'div', { className: 'ekwa-ai-refine-actions' },
 						el( Button, {
@@ -554,8 +644,8 @@
 							disabled: generating || ! prompt.trim(),
 							onClick: handleGenerate,
 						}, generating
-							? el( Fragment, null, el( Spinner, null ), __( ' Refining...', 'ekwa' ) )
-							: __( 'Refine', 'ekwa' )
+							? el( Fragment, null, el( Spinner, null ), editMode ? __( ' Updating...', 'ekwa' ) : __( ' Refining...', 'ekwa' ) )
+							: ( editMode ? __( 'Update', 'ekwa' ) : __( 'Refine', 'ekwa' ) )
 						)
 					)
 				)
@@ -583,14 +673,20 @@
 					el( Button, {
 						variant: 'primary',
 						onClick: handleInsert,
-						disabled: ! markup.trim(),
-					}, inserted ? __( 'Inserted ✓ — insert again', 'ekwa' ) : __( 'Insert into editor', 'ekwa' ) )
+						// In edit mode, only allow applying once an Update has produced a
+						// self-contained server result (the original selection's CSS was
+						// split out into the seed, so the unmodified seed isn't safe to apply).
+						disabled: ! markup.trim() || ( editMode && history.length === 0 ),
+					}, editMode
+						? __( 'Apply to selected blocks', 'ekwa' )
+						: ( inserted ? __( 'Inserted ✓ — insert again', 'ekwa' ) : __( 'Insert into editor', 'ekwa' ) )
+					)
 				)
 			);
 		}
 
 		return el( Modal, {
-			title: __( 'Build with AI (Blocks)', 'ekwa' ),
+			title: editMode ? __( 'Edit with AI', 'ekwa' ) : __( 'Build with AI (Blocks)', 'ekwa' ),
 			onRequestClose: onClose,
 			className: 'ekwa-converter-modal ekwa-ai-modal ekwa-ai-blocks-modal',
 			shouldCloseOnClickOutside: false,
@@ -602,24 +698,54 @@
 	// ─── Plugin Registration ────────────────────────────────────────────────
 
 	function BlocksPlugin() {
-		var ms       = useState( false );
-		var isOpen   = ms[0];
-		var setOpen  = ms[1];
-		var cs       = useState( 'section' );
-		var ctx      = cs[0];
-		var setCtx   = cs[1];
+		var ms = useState( false );      var isOpen     = ms[0]; var setOpen       = ms[1];
+		var cs = useState( 'section' );  var ctx        = cs[0]; var setCtx        = cs[1];
+		var em = useState( false );      var editMode   = em[0]; var setEditMode   = em[1];
+		var sm = useState( '' );         var seedMarkup = sm[0]; var setSeedMarkup = sm[1];
+		var sc = useState( '' );         var seedCss    = sc[0]; var setSeedCss    = sc[1];
+		var ci = useState( [] );         var editIds    = ci[0]; var setEditIds    = ci[1];
+		var sr = useState( '' );         var seedRendered = sr[0]; var setSeedRendered = sr[1];
 
+		// Build a new section from scratch (from the editor "more" menu).
 		function open() {
+			setEditMode( false );
+			setSeedMarkup( '' );
+			setSeedCss( '' );
+			setSeedRendered( '' );
+			setEditIds( [] );
 			setCtx( detectContext() );
 			setOpen( true );
 		}
 
-		var trigger;
+		// Edit the currently selected block(s) with AI (from the block ⋮ menu).
+		function openEdit() {
+			var sel = wp.data && wp.data.select( 'core/block-editor' );
+			if ( ! sel ) { return; }
+			var ids = sel.getMultiSelectedBlockClientIds ? sel.getMultiSelectedBlockClientIds() : [];
+			if ( ( ! ids || ! ids.length ) && sel.getSelectedBlockClientId ) {
+				var one = sel.getSelectedBlockClientId();
+				if ( one ) { ids = [ one ]; }
+			}
+			if ( ! ids || ! ids.length ) { return; }
+			var blocks = ids.map( function ( id ) { return sel.getBlock( id ); } ).filter( Boolean );
+			if ( ! blocks.length ) { return; }
+			var seed = prepareEditSeed( blocks );
+			if ( ! seed.markup ) { return; }
+			setEditIds( ids );
+			setSeedMarkup( seed.markup );
+			setSeedCss( seed.css );
+			setSeedRendered( selectionPreviewHtml( ids ) );
+			setEditMode( true );
+			setCtx( detectContext() );
+			setOpen( true );
+		}
+
+		var moreTrigger;
 		if ( PluginMoreMenuItem ) {
-			trigger = el( PluginMoreMenuItem, { icon: 'layout', onClick: open },
+			moreTrigger = el( PluginMoreMenuItem, { icon: 'layout', onClick: open },
 				__( 'Build with AI (Blocks)', 'ekwa' ) );
 		} else {
-			trigger = el( Button, {
+			moreTrigger = el( Button, {
 				icon: 'layout',
 				label: __( 'Build with AI (Blocks)', 'ekwa' ),
 				onClick: open,
@@ -627,10 +753,27 @@
 			}, __( 'Blocks AI', 'ekwa' ) );
 		}
 
+		var blockMenuTrigger = PluginBlockSettingsMenuItem
+			? el( PluginBlockSettingsMenuItem, {
+				icon: 'art',
+				label: __( 'Edit with AI', 'ekwa' ),
+				onClick: openEdit,
+			} )
+			: null;
+
 		return el( Fragment, null,
-			trigger,
+			moreTrigger,
+			blockMenuTrigger,
 			isOpen
-				? el( BlocksModal, { context: ctx, onClose: function () { setOpen( false ); } } )
+				? el( BlocksModal, {
+					context: ctx,
+					editMode: editMode,
+					seedMarkup: seedMarkup,
+					seedCss: seedCss,
+					seedRendered: seedRendered,
+					editClientIds: editIds,
+					onClose: function () { setOpen( false ); },
+				} )
 				: null
 		);
 	}

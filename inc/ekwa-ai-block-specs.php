@@ -181,9 +181,9 @@ function ekwa_ai_block_spec_registry() {
 			'block'    => 'ekwa/button',
 			'type'     => 'leaf',
 			'contexts' => array(),
-			'desc'     => 'A single <a> (default) or <button>. Renders classes ekwa-btn ekwa-btn--{variant}; style those in your CSS.',
+			'desc'     => 'A single <a> (default) or <button>. Renders classes ekwa-btn ekwa-btn--{variant}; style those in your CSS. The label is the "text" attribute (NOT inner content) — a button with no "text" renders empty.',
 			'attrs'    => array(
-				'text — label',
+				'text — label (REQUIRED; without it the button is empty)',
 				'url — href (for htmlTag "a")',
 				'htmlTag — a|button (default "a")',
 				'variant — filled|outline|… → class ekwa-btn--{variant} (default "filled")',
@@ -192,7 +192,12 @@ function ekwa_ai_block_spec_registry() {
 				'newTab — bool, className',
 			),
 			'examples' => array(
+				// Primary filled CTA with a leading icon.
 				"<!-- wp:ekwa/button {\"text\":\"Book Appointment\",\"url\":\"#\",\"variant\":\"filled\",\"iconClass\":\"fa-solid fa-calendar\"} /-->",
+				// Secondary outline button, opens in a new tab.
+				"<!-- wp:ekwa/button {\"text\":\"Learn More\",\"url\":\"/services\",\"variant\":\"outline\",\"size\":\"large\"} /-->",
+				// A CTA row — two buttons side by side. Put gap/layout in CSS via the flex className.
+				"<!-- wp:ekwa/flex {\"className\":\"cta-row\"} -->\n<!-- wp:ekwa/button {\"text\":\"Get Started\",\"url\":\"#\",\"variant\":\"filled\"} /-->\n<!-- wp:ekwa/button {\"text\":\"Call Us\",\"url\":\"tel:+15551234567\",\"variant\":\"outline\",\"iconClass\":\"fa-solid fa-phone\"} /-->\n<!-- /wp:ekwa/flex -->",
 			),
 		),
 

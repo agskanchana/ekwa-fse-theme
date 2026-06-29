@@ -52,6 +52,26 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'default'  => 'section',
 				'enum'     => array( 'header', 'footer', 'section' ),
 			),
+			// Edit mode: when 'edit', the request modifies an existing selection
+			// (its serialized markup + CSS) instead of generating from scratch.
+			'mode'          => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'create',
+				'enum'     => array( 'create', 'edit' ),
+			),
+			'base_markup'   => array(
+				'required'          => false,
+				'type'              => 'string',
+				'default'           => '',
+				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+			),
+			'base_css'      => array(
+				'required'          => false,
+				'type'              => 'string',
+				'default'           => '',
+				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+			),
 		),
 	) );
 }
@@ -79,8 +99,14 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$temperature   = (float) $request->get_param( 'temperature' );
 	$model         = (string) $request->get_param( 'model' );
 	$context       = (string) $request->get_param( 'context' );
+	$mode          = (string) $request->get_param( 'mode' );
+	$base_markup   = (string) $request->get_param( 'base_markup' );
+	$base_css      = (string) $request->get_param( 'base_css' );
 	if ( ! in_array( $context, array( 'header', 'footer', 'section' ), true ) ) {
 		$context = 'section';
+	}
+	if ( ! in_array( $mode, array( 'create', 'edit' ), true ) ) {
+		$mode = 'create';
 	}
 
 	$allowed_models = ekwa_ai_generate_allowed_models();
@@ -95,14 +121,27 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		return new WP_Error( 'too_many_images', 'Up to 6 images per request.', array( 'status' => 400 ) );
 	}
 
+	// In edit mode, prepend the existing section (markup + CSS) to the prompt on the
+	// FIRST turn so the model can investigate and modify the current state. On later
+	// refine turns the prior model output already carries the section forward via
+	// $history, so we don't re-inject it (avoids duplicating it every turn).
+	$effective_prompt = $prompt;
+	if ( 'edit' === $mode && '' !== trim( $base_markup ) && empty( $history ) ) {
+		$effective_prompt  = "EXISTING SECTION TO EDIT — current block markup:\n\n" . $base_markup;
+		if ( '' !== trim( $base_css ) ) {
+			$effective_prompt .= "\n\nEXISTING SECTION CSS:\n\n" . $base_css;
+		}
+		$effective_prompt .= "\n\n---\nApply this change and return the COMPLETE updated section:\n\n" . $prompt;
+	}
+
 	// Reuse the multimodal contents builder from the HTML generator (handles
 	// history reconstruction + image validation identically).
-	$contents = ekwa_ai_generate_build_contents( $prompt, $images, $history );
+	$contents = ekwa_ai_generate_build_contents( $effective_prompt, $images, $history );
 	if ( is_wp_error( $contents ) ) {
 		return $contents;
 	}
 
-	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context );
+	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $mode );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
 	}
@@ -121,10 +160,56 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$css          = $extracted['css'];
 	$warnings     = array();
 
+	// Repair malformed attribute JSON (trailing commas, smart quotes, NBSP, …)
+	// BEFORE the markup is parsed/serialized. WordPress's block parser does not
+	// repair invalid JSON — it silently discards the whole attribute set — so a
+	// single bad comma turns into a "broken" block (e.g. a button with no text or
+	// link). Done here while the original text is still intact.
+	$repair       = ekwa_ai_repair_block_markup( $block_markup );
+	$block_markup = $repair['markup'];
+
+	// Self-check: if any blocks STILL won't parse, ask the model (best-quality
+	// model, low temperature) to fix just those, once. Keep the result only if it
+	// is no worse than what we had — never let the corrective pass regress.
+	if ( $repair['failed'] > 0 ) {
+		$corrected = ekwa_ai_blocks_self_correct( $block_markup, $api_key );
+		if ( null !== $corrected ) {
+			$re_extracted = ekwa_ai_generate_extract_css_js( ekwa_ai_generate_strip_fences( $corrected ) );
+			$re_markup    = trim( $re_extracted['html'] );
+			if ( '' !== $re_markup ) {
+				$re_repair = ekwa_ai_repair_block_markup( $re_markup );
+				if ( $re_repair['failed'] <= $repair['failed'] ) {
+					$block_markup = $re_repair['markup'];
+					$repair       = $re_repair;
+					if ( '' !== trim( $re_extracted['css'] ) ) {
+						$css = $re_extracted['css'];
+					}
+				}
+			}
+		}
+	}
+
+	if ( $repair['repaired'] > 0 ) {
+		$warnings[] = sprintf(
+			/* translators: %d: number of blocks whose attributes were auto-corrected. */
+			_n( 'Auto-corrected the attributes on %d block.', 'Auto-corrected the attributes on %d blocks.', $repair['repaired'], 'ekwa' ),
+			$repair['repaired']
+		);
+	}
+	foreach ( array_unique( $repair['failed_names'] ) as $bad_name ) {
+		$warnings[] = sprintf(
+			/* translators: %s: block name. */
+			__( 'The "%s" block has attributes that could not be auto-corrected — double-check it after inserting.', 'ekwa' ),
+			$bad_name
+		);
+	}
+
 	// Replace the AI's scoping sentinel with a real unique section id in BOTH the
 	// CSS and the markup, then embed the (scoped) CSS into the wrapper block's
 	// scopedCss attribute so the section becomes self-contained — its CSS inlines
-	// on the front end only where the block renders (ekwa_render_div_block).
+	// on the front end only where the block renders (ekwa_render_div_block). When
+	// editing an existing section the wrapper already carries a real scope class
+	// (no sentinel), so $scope stays '' and the CSS is simply re-embedded.
 	if ( false !== strpos( $block_markup, 'EKWA_SCOPE' ) || false !== strpos( $css, 'EKWA_SCOPE' ) ) {
 		$scope        = 'eai-sec-' . substr( md5( uniqid( '', true ) ), 0, 6 );
 		$css          = str_replace( 'EKWA_SCOPE', $scope, $css );
@@ -208,9 +293,11 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
  * Build the system prompt that makes Gemini emit Gutenberg block markup.
  *
  * @param string $context One of: 'header', 'footer', 'section'.
+ * @param string $mode    'create' (generate from scratch) or 'edit' (modify an
+ *                        existing section supplied in the user message).
  * @return string
  */
-function ekwa_ai_generate_blocks_system_prompt( $context = 'section' ) {
+function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'create' ) {
 	$context_cue = '';
 	if ( 'header' === $context ) {
 		$context_cue = "HEADER CONTEXT — strict rules:\n"
@@ -255,6 +342,7 @@ STYLING RULES (scoped classes + one stylesheet — IMPORTANT):
   To style the wrapper itself, use `.EKWA_SCOPE { ... }`.
 - Name any @keyframes uniquely (e.g. ekwa-fade-EKWA_SCOPE) so they never collide with other sections.
 - Apply styling by giving inner blocks a semantic `className` (BEM-ish: block__element--modifier) and targeting `.EKWA_SCOPE .that-class` in the <style>. Reuse classes/CSS variables from the SITE STYLESHEET if one is provided below.
+- COLORS & DESIGN TOKENS: When a SITE STYLESHEET is provided below, REUSE its existing CSS custom properties for colors (and for fonts, spacing, and radii where they fit) — e.g. `color: var(--brand-primary)`. Do NOT hardcode a hex/rgb value that an existing variable already represents, and do NOT declare a new color variable (in :root or on the wrapper) that duplicates one already defined in the site stylesheet. Only introduce a new variable when no suitable one exists; otherwise reference the existing var() directly.
 - DO NOT use any per-block `inlineStyle` attribute, and do NOT put a `style="..."` attribute on elements. All CSS goes in the <style> block.
 - ekwa/flex and ekwa/grid already emit their own display/flex/grid declarations from their attributes — set those via attributes, and use the className only for gap and extra styling.
 
@@ -266,6 +354,14 @@ CONTENT RULES:
 - For images use https://placehold.co/WIDTHxHEIGHT placeholders unless the user gives real URLs.
 - If the user attaches screenshots, treat them as layout references unless the prompt says otherwise.
 PROMPT;
+
+	if ( 'edit' === $mode ) {
+		$prompt .= "\n\nEDIT MODE — you are MODIFYING an existing section supplied in the user message (its current block markup, and its CSS, which may appear as a <style> block or inside the wrapper's scopedCss attribute):\n"
+			. "- First read the existing markup and CSS carefully, then apply ONLY the change the user asks for. Preserve all other text, structure, classNames, attributes, and styles exactly as they are.\n"
+			. "- Return the COMPLETE updated section (never a diff or partial snippet) in the OUTPUT FORMAT above: one <style> block holding ALL the section CSS, then the full block markup.\n"
+			. "- KEEP the scope class that is already on the top-level ekwa/div wrapper, and keep every CSS selector scoped under that exact class. Do NOT introduce the EKWA_SCOPE placeholder when the section already has a scope class.\n"
+			. "- Do not drop, reorder, or rename existing blocks unless the user explicitly asks you to.";
+	}
 
 	$prompt .= ekwa_ai_build_block_spec_section( $context );
 
@@ -334,4 +430,127 @@ function ekwa_ai_generate_blocks_render_preview( $markup ) {
 	} catch ( \Throwable $e ) {
 		return '';
 	}
+}
+
+/**
+ * Repair malformed attribute JSON in block-comment markup.
+ *
+ * LLMs frequently emit *almost*-valid JSON in block attributes — trailing
+ * commas, smart/curly quotes, non-breaking spaces. WordPress's block parser
+ * does not repair these; it silently discards the entire attribute set, so the
+ * block renders with its defaults (e.g. a button with no text or link — a
+ * "broken" button). This walks every `<!-- wp:NAME {…} -->` / `… /-->` comment
+ * and, for any whose JSON won't parse, applies safe deterministic fixes and
+ * re-serializes it with wp_json_encode().
+ *
+ * @param string $markup Block-comment markup.
+ * @return array{ markup:string, repaired:int, failed:int, failed_names:array<int,string> }
+ */
+function ekwa_ai_repair_block_markup( $markup ) {
+	$stats = array( 'repaired' => 0, 'failed' => 0, 'failed_names' => array() );
+
+	if ( '' === trim( (string) $markup ) ) {
+		return array( 'markup' => (string) $markup ) + $stats;
+	}
+
+	// Group 1: opening "<!-- wp:name " ; Group 2: name ; Group 3: balanced JSON
+	// object (string-aware, recursive via (?3)) ; Group 4: closing "-->"/"/-->".
+	$pattern = '/(<!--\s*wp:([a-z0-9-]+(?:\/[a-z0-9-]+)?)\s*)(\{(?:[^{}"]++|"(?:\\\\.|[^"\\\\])*+"|(?3))*+\})(\s*\/?-->)/i';
+
+	$out = preg_replace_callback( $pattern, function ( $m ) use ( &$stats ) {
+		$json = $m[3];
+
+		json_decode( $json );
+		if ( JSON_ERROR_NONE === json_last_error() ) {
+			return $m[0]; // Already valid — leave untouched.
+		}
+
+		$fixed = ekwa_ai_fix_json_blob( $json );
+		if ( null !== $fixed ) {
+			$decoded = json_decode( $fixed, true );
+			if ( is_array( $decoded ) ) {
+				$stats['repaired']++;
+				return $m[1] . wp_json_encode( $decoded ) . $m[4];
+			}
+		}
+
+		// Couldn't fix it deterministically — leave the original text in place so a
+		// later AI self-correct pass can still see the intended values.
+		$name = $m[2];
+		$stats['failed']++;
+		$stats['failed_names'][] = ( false === strpos( $name, '/' ) ) ? 'core/' . $name : $name;
+		return $m[0];
+	}, $markup );
+
+	// PCRE failure (e.g. backtrack limit on pathological input): keep original.
+	if ( null === $out ) {
+		return array( 'markup' => $markup ) + $stats;
+	}
+
+	return array( 'markup' => $out ) + $stats;
+}
+
+/**
+ * Apply safe, deterministic fixes to a single JSON attribute blob and return the
+ * corrected string, or null if it still won't parse.
+ *
+ * Only low-risk transforms are applied (curly quotes → straight, non-breaking
+ * spaces → spaces, trailing commas removed) so we never corrupt valid content
+ * such as URLs or apostrophes inside string values.
+ *
+ * @param string $json Raw (invalid) JSON object text, including braces.
+ * @return string|null
+ */
+function ekwa_ai_fix_json_blob( $json ) {
+	$fixed = strtr( $json, array(
+		"\xE2\x80\x9C" => '"',  // “ left double quote
+		"\xE2\x80\x9D" => '"',  // ” right double quote
+		"\xE2\x80\x9E" => '"',  // „ low double quote
+		"\xE2\x80\x98" => "'",  // ‘ left single quote
+		"\xE2\x80\x99" => "'",  // ’ right single quote
+		"\xC2\xA0"     => ' ',  // non-breaking space
+	) );
+
+	// Drop trailing commas before a closing } or ].
+	$fixed = preg_replace( '/,(\s*[}\]])/', '$1', $fixed );
+	if ( null === $fixed ) {
+		return null;
+	}
+
+	json_decode( $fixed );
+	return ( JSON_ERROR_NONE === json_last_error() ) ? $fixed : null;
+}
+
+/**
+ * Ask Gemini (best-quality model, low temperature) to fix block markup whose
+ * attribute JSON is still invalid after deterministic repair. Returns corrected
+ * block markup, or null on any failure (the caller falls back to the original).
+ *
+ * @param string $markup  Block-comment markup with one or more invalid attrs.
+ * @param string $api_key Gemini API key.
+ * @return string|null
+ */
+function ekwa_ai_blocks_self_correct( $markup, $api_key ) {
+	$system = 'You are a Gutenberg block-markup repair tool for the Ekwa WordPress theme. '
+		. 'You receive block-comment markup whose attribute JSON is malformed on one or more blocks. '
+		. 'Return the SAME markup with ONLY the invalid attribute JSON corrected to strict, valid JSON '
+		. '(double-quoted keys and string values, no trailing commas, all special characters escaped). '
+		. 'Do NOT change the block structure, the visible text, the classNames, or the styling. '
+		. 'Preserve every className exactly (including any scope class). '
+		. 'Output ONLY the corrected block markup — no prose, no Markdown code fences, no <style> block.';
+
+	$contents = array(
+		array(
+			'role'  => 'user',
+			'parts' => array( array( 'text' => $markup ) ),
+		),
+	);
+
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-pro' );
+	if ( is_wp_error( $result ) ) {
+		return null;
+	}
+
+	$fixed = trim( ekwa_ai_generate_strip_fences( $result['content'] ) );
+	return ( '' !== $fixed ) ? $fixed : null;
 }

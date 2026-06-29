@@ -208,6 +208,7 @@ CSS — YOU HAVE FULL FREEDOM:
 - Use <style>...</style> blocks for anything that needs media queries, hover/focus states, pseudo-elements, keyframes, complex selectors, or shared rules across multiple elements. Place <style> blocks at the top of your output.
 - Use inline style="..." attributes only for one-off, element-specific styling.
 - Use semantic class names (BEM-style or descriptive) so the rules in <style> can target them.
+- COLORS & DESIGN TOKENS: When a SITE STYLESHEET is provided below, reuse its existing CSS custom properties for colors (and for fonts/spacing/radii where they fit) — e.g. `color: var(--brand-primary)`. Do NOT hardcode hex/rgb values that duplicate an existing variable, and do NOT redefine color variables that the site stylesheet already declares. Only add a new variable when no suitable one exists.
 - The user will paste extracted CSS into a shared stylesheet, so feel free to use as much or as little CSS as the design needs.
 
 JS — ALSO FREE:
