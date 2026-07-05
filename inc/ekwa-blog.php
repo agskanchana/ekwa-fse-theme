@@ -238,6 +238,14 @@ function ekwa_inject_query_data( $block_content, $block ) {
 	$total      = count( get_posts( $count_args ) );
 	$max_pages  = (int) ceil( $total / $per_page );
 
+	// Cache perPage for numbered pagination so pre_get_posts can prevent 404s
+	// when the block's perPage is smaller than the Reading Settings posts_per_page.
+	// WordPress main query 404s on page N when N > ceil(total/main_per_page),
+	// even though N is valid for the block's smaller perPage.
+	if ( 'numbered' === $pagination_type ) {
+		update_option( 'ekwa_numbered_pagination_per_page', $per_page, false );
+	}
+
 	// Current page (from /page/N/ or ?paged=N) and the URL pattern for page links.
 	$paged       = max( 1, (int) get_query_var( 'paged' ), (int) get_query_var( 'page' ) );
 	$big         = 999999999;
@@ -372,6 +380,36 @@ function ekwa_track_numbered_query_blocks( $parsed_block ) {
 	return $parsed_block;
 }
 add_filter( 'render_block_data', 'ekwa_track_numbered_query_blocks' );
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX NUMBERED PAGINATION 404 — Align main query posts_per_page with block perPage.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Prevent 404 on direct URL navigation (e.g. /blog/page/12/) when the numbered-
+ * pagination block uses a smaller perPage than the global posts_per_page setting.
+ *
+ * The block perPage is cached to an option during any normal (non-paged) render
+ * of the blog page. On a paged request, we apply that value here so the main
+ * WP_Query finds posts for that page instead of returning 0 results and 404ing.
+ */
+function ekwa_fix_numbered_pagination_404( $query ) {
+	if ( is_admin() || ! $query->is_main_query() ) {
+		return;
+	}
+	if ( ! $query->is_home() && ! $query->is_archive() ) {
+		return;
+	}
+	$paged = (int) $query->get( 'paged' );
+	if ( $paged < 2 ) {
+		return;
+	}
+	$per_page = (int) get_option( 'ekwa_numbered_pagination_per_page', 0 );
+	if ( $per_page > 0 ) {
+		$query->set( 'posts_per_page', $per_page );
+	}
+}
+add_action( 'pre_get_posts', 'ekwa_fix_numbered_pagination_404' );
 
 /**
  * Make /blog/page/N/ render the right page server-side for tracked query blocks.
