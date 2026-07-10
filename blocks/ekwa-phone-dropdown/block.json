@@ -4,7 +4,7 @@
 	"name": "ekwa/phone-dropdown",
 	"version": "1.0.0",
 	"title": "Ekwa Phone Dropdown",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "phone",
 	"description": "A call button that shows a dropdown of phone numbers grouped by location with new/existing patient lines. Supports ad tracking.",
 	"textdomain": "ekwa",

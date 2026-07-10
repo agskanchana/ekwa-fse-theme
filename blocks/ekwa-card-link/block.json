@@ -4,13 +4,14 @@
 	"name": "ekwa/card-link",
 	"version": "1.0.0",
 	"title": "Ekwa Card Link",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "cover-image",
 	"description": "A linked card wrapper — the entire card is a clickable link containing inner blocks.",
 	"textdomain": "ekwa",
 	"keywords": [ "card", "link", "service", "feature", "clickable" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"color": {
 			"text": true,

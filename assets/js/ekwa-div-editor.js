@@ -10,6 +10,8 @@
 	var registerBlockType  = wp.blocks.registerBlockType;
 	var el                 = wp.element.createElement;
 	var Fragment           = wp.element.Fragment;
+	var useRef             = wp.element.useRef;
+	var useEffect          = wp.element.useEffect;
 	var InnerBlocks        = wp.blockEditor.InnerBlocks;
 	var InspectorControls  = wp.blockEditor.InspectorControls;
 	var useBlockProps      = wp.blockEditor.useBlockProps;
@@ -46,6 +48,70 @@
 		{ label: 'sup',         value: 'sup' },
 		{ label: 'sub',         value: 'sub' },
 	];
+
+	/**
+	 * Scoped-CSS editor: WP's bundled CodeMirror (same as Customizer Custom
+	 * CSS — line numbers + CSS highlighting) mounted on a textarea. The
+	 * attribute stays a plain string, so existing CSS is untouched. Falls back
+	 * to the plain TextareaControl when wp.codeEditor isn't available (user
+	 * disabled syntax highlighting in their profile).
+	 */
+	function ScopedCssEditor( props ) {
+		var value        = props.value || '';
+		var onChange     = props.onChange;
+		var wrapRef      = useRef( null );
+		var cmRef        = useRef( null );
+		var onChangeRef  = useRef( onChange );
+		onChangeRef.current = onChange;
+
+		var canCodeMirror = !! ( wp.codeEditor && window.ekwaDivCodeEditor && window.ekwaDivCodeEditor.settings );
+
+		useEffect( function () {
+			if ( ! canCodeMirror || ! wrapRef.current ) {
+				return undefined;
+			}
+			var textarea = wrapRef.current.querySelector( 'textarea' );
+			if ( ! textarea ) {
+				return undefined;
+			}
+			var instance = wp.codeEditor.initialize( textarea, window.ekwaDivCodeEditor.settings );
+			cmRef.current = instance.codemirror;
+			cmRef.current.on( 'change', function ( cm ) {
+				onChangeRef.current( cm.getValue() );
+			} );
+			return function () {
+				if ( cmRef.current && cmRef.current.toTextArea ) {
+					cmRef.current.toTextArea();
+				}
+				cmRef.current = null;
+			};
+		}, [] );
+
+		// External value changes (undo/redo, AI edit) → push into CodeMirror.
+		useEffect( function () {
+			if ( cmRef.current && cmRef.current.getValue() !== value ) {
+				cmRef.current.setValue( value );
+			}
+		}, [ value ] );
+
+		if ( ! canCodeMirror ) {
+			return el( TextareaControl, {
+				label: __( 'Scoped CSS' ),
+				help: __( 'Auto-inlined on the front end only where this block renders. Selectors are scoped to this section’s class.' ),
+				value: value,
+				rows: 8,
+				onChange: onChange,
+			} );
+		}
+
+		return el( 'div', { className: 'ekwa-div-css-editor', ref: wrapRef },
+			el( 'label', { className: 'ekwa-div-css-editor__label' }, __( 'Scoped CSS' ) ),
+			el( 'textarea', { defaultValue: value, rows: 8 } ),
+			el( 'p', { className: 'ekwa-div-css-editor__help' },
+				__( 'Auto-inlined on the front end only where this block renders. Selectors are scoped to this section’s class.' )
+			)
+		);
+	}
 
 	/**
 	 * Parse an inlineStyle string into a React style object.
@@ -275,13 +341,19 @@
 						title: __( 'Section CSS (advanced)' ),
 						initialOpen: false,
 					},
-						el( TextareaControl, {
-							label: __( 'Scoped CSS' ),
-							help: __( 'Auto-inlined on the front end only where this block renders. Selectors are scoped to this section’s class.' ),
+						el( ScopedCssEditor, {
+							key: 'scoped-css-editor',
 							value: attributes.scopedCss || '',
-							rows: 8,
 							onChange: function ( val ) { setAttributes( { scopedCss: val } ); },
-						} )
+						} ),
+						attributes.scopedCss
+							? el( ToggleControl, {
+								label: __( 'Disable this CSS in the editor canvas' ),
+								help: __( 'Editor-only: use when this section’s CSS overlaps other blocks and makes them hard to select. The front end is not affected.' ),
+								checked: !! attributes.scopedCssOffInEditor,
+								onChange: function ( val ) { setAttributes( { scopedCssOffInEditor: val } ); },
+							} )
+							: null
 					)
 				);
 			}
@@ -323,7 +395,7 @@
 			return el( Fragment, null,
 				el( InspectorControls, null, panels ),
 				el( 'div', blockProps,
-					attributes.scopedCss
+					attributes.scopedCss && ! attributes.scopedCssOffInEditor
 						? el( 'style', null, attributes.scopedCss )
 						: null,
 					tagLabel,

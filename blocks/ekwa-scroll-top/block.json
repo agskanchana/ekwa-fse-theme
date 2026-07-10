@@ -4,7 +4,7 @@
 	"name": "ekwa/scroll-top",
 	"version": "1.0.0",
 	"title": "Ekwa Scroll Up",
-	"category": "common",
+	"category": "ekwa-header-footer",
 	"icon": "arrow-up-alt",
 	"description": "Displays a scroll-to-top button that appears after the user scrolls down the page.",
 	"textdomain": "ekwa",

@@ -4,7 +4,7 @@
 	"name": "ekwa/button",
 	"version": "1.0.0",
 	"title": "Ekwa Button",
-	"category": "design",
+	"category": "ekwa-elements",
 	"icon": "button",
 	"description": "A clean button or link — outputs a single <a> or <button> element.",
 	"textdomain": "ekwa",

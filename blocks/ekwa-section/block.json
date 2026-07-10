@@ -4,13 +4,14 @@
 	"name": "ekwa/section",
 	"version": "1.0.0",
 	"title": "Ekwa Section",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "align-wide",
-	"description": "A semantic section wrapper with optional background image, overlay, and inner container.",
+	"description": "Deprecated — use Ekwa Div with CSS instead. Kept so existing content keeps rendering.",
 	"textdomain": "ekwa",
 	"keywords": [ "section", "wrapper", "layout", "cover", "hero" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"color": {
 			"text": true,

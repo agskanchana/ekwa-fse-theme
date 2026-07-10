@@ -31,6 +31,21 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 
 	$tag = strtolower( $node->nodeName );
 
+	// Explicit author tokens — data-ekwa="phone|address|hours|..." on any
+	// element forces the mapping, no heuristics needed. data-ekwa="static"
+	// opts the element OUT of all detection (escape hatch for false
+	// positives). Mockup authors can pre-tag their HTML with these.
+	if ( $node->hasAttribute( 'data-ekwa' ) ) {
+		$token = strtolower( trim( $node->getAttribute( 'data-ekwa' ) ) );
+		if ( 'static' === $token || 'ignore' === $token ) {
+			return null; // Skip every detector; normal conversion continues.
+		}
+		$result = ekwa_mc_detect_token( $node, $depth, $token );
+		if ( $result !== null ) {
+			return $result;
+		}
+	}
+
 	// Container-class detections — must run BEFORE anchor-based phone/address
 	// detectors AND before the inner <nav>/<a>/<i> children get visited so
 	// dropdown wrappers, the search block, and the header menu stay as a
@@ -74,6 +89,14 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 
 		// Maps: <a href="...maps.google.com...">
 		if ( preg_match( '/(maps\.google|google\.com\/maps|goo\.gl\/maps|maps\.apple\.com|waze\.com)/i', $href ) ) {
+			return ekwa_mc_detect_address( $node, $depth );
+		}
+
+		// Direction links whose href isn't a maps URL yet (mockups often use
+		// "#"): text like "Get Directions" → ekwa/address in link mode, which
+		// pulls the real maps URL from Ekwa Settings at render time.
+		$link_text = trim( $node->textContent );
+		if ( $link_text !== '' && preg_match( '/^(get\s+)?directions?$|^find\s+us$/i', $link_text ) ) {
 			return ekwa_mc_detect_address( $node, $depth );
 		}
 	}
@@ -120,6 +143,104 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 		}
 	}
 
+	return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPLICIT TOKENS — data-ekwa="..."
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Forced mapping via data-ekwa tokens. The element (and its subtree) is
+ * replaced by the corresponding dynamic block; real content comes from Ekwa
+ * Settings at render time.
+ *
+ * Vocabulary (put on any element in the mockup HTML):
+ *   phone, phone-dropdown, address, address-dropdown, hours, social,
+ *   copyright, logo, menu, navigation, search, hamburger, map, scroll-top,
+ *   static|ignore (handled by the orchestrator — skips detection entirely)
+ *
+ * Optional modifier attributes:
+ *   data-ekwa-location="2"        → location index (phone, address, hours)
+ *   data-ekwa-mode="full"         → address mode (icon|text|address|full)
+ *   data-ekwa-prefix="Call us:"   → phone prefix
+ *   data-ekwa-type="existing"     → phone type (new|existing)
+ *
+ * @param DOMElement $node
+ * @param int        $depth
+ * @param string     $token Lowercased data-ekwa value.
+ * @return string|null Block markup, or null for unknown tokens.
+ */
+function ekwa_mc_detect_token( $node, $depth, $token ) {
+	$indent   = str_repeat( '  ', $depth );
+	// No WP functions here — this file also runs under the CLI without WordPress.
+	$location = max( 1, (int) ( $node->getAttribute( 'data-ekwa-location' ) ?: 1 ) );
+
+	$leaf = function ( $block, $attrs = array() ) use ( $indent, $token ) {
+		$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+		ekwa_mc_warn( "data-ekwa=\"$token\" token → $block" );
+		return $indent . '<!-- wp:' . $block . $attrs_json . ' /-->' . "\n";
+	};
+
+	switch ( $token ) {
+		case 'phone':
+			$attrs = array( 'location' => $location );
+			$type  = strtolower( trim( $node->getAttribute( 'data-ekwa-type' ) ) );
+			if ( in_array( $type, array( 'new', 'existing' ), true ) ) {
+				$attrs['type'] = $type;
+			}
+			$prefix = trim( $node->getAttribute( 'data-ekwa-prefix' ) );
+			if ( $prefix !== '' ) {
+				$attrs['prefix'] = $prefix;
+			}
+			return $leaf( 'ekwa/phone', $attrs );
+
+		case 'phone-dropdown':
+			return $leaf( 'ekwa/phone-dropdown' );
+
+		case 'address':
+			$attrs = array( 'location' => $location );
+			$mode  = strtolower( trim( $node->getAttribute( 'data-ekwa-mode' ) ) );
+			if ( in_array( $mode, array( 'icon', 'text', 'address', 'full' ), true ) ) {
+				$attrs['mode'] = $mode;
+			}
+			return $leaf( 'ekwa/address', $attrs );
+
+		case 'address-dropdown':
+			return $leaf( 'ekwa/address-dropdown' );
+
+		case 'hours':
+			return $leaf( 'ekwa/hours', array( 'location' => $location ) );
+
+		case 'social':
+			return $leaf( 'ekwa/social', array( 'showShare' => false ) );
+
+		case 'copyright':
+			return $leaf( 'ekwa/copyright' );
+
+		case 'logo':
+			return $leaf( 'ekwa/svg-logo' );
+
+		case 'menu':
+			return $leaf( 'ekwa/header-menu' );
+
+		case 'navigation':
+			return $leaf( 'core/navigation' );
+
+		case 'search':
+			return $leaf( 'ekwa/search' );
+
+		case 'hamburger':
+			return $leaf( 'ekwa/hamburger-menu' );
+
+		case 'map':
+			return $leaf( 'ekwa/map' );
+
+		case 'scroll-top':
+			return $leaf( 'ekwa/scroll-top' );
+	}
+
+	ekwa_mc_warn( "Unknown data-ekwa token \"$token\" — element converted normally." );
 	return null;
 }
 

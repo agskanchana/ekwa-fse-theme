@@ -4,7 +4,7 @@
 	"name": "ekwa/toc",
 	"version": "1.0.0",
 	"title": "Ekwa Table of Contents",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "list-view",
 	"description": "Auto-generated table of contents from post headings (H2/H3).",
 	"textdomain": "ekwa",

@@ -4,7 +4,7 @@
 	"name": "ekwa/svg-logo",
 	"version": "1.0.0",
 	"title": "Ekwa SVG Logo",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "format-image",
 	"description": "Outputs the site logo as inline SVG (set the markup in Theme Settings → Branding). Links to the home page by default.",
 	"textdomain": "ekwa",

@@ -4,7 +4,7 @@
 	"name": "ekwa/search",
 	"version": "1.0.0",
 	"title": "Ekwa Search",
-	"category": "common",
+	"category": "ekwa-header-footer",
 	"icon": "search",
 	"description": "Displays a search icon. Clicking it opens a full-screen modal search overlay.",
 	"textdomain": "ekwa",

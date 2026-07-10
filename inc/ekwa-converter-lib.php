@@ -256,30 +256,12 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_raw_html( $node, $depth );
 	}
 
-	// <div> detection — check inline styles.
+	// <div> → ekwa/div. Flex/grid/max-width divs used to become the dedicated
+	// ekwa/flex, ekwa/grid, ekwa/container blocks; those are deprecated (hidden
+	// from the inserter, kept registered only for legacy content), and the div
+	// converter preserves the full inline style — including display:flex/grid
+	// and max-width — into inlineStyle, so layout fidelity is identical.
 	if ( $tag === 'div' ) {
-		$style = ekwa_mc_parse_inline_style( $node->getAttribute( 'style' ) );
-
-		// display:flex → ekwa/flex.
-		if ( isset( $style['display'] ) && $style['display'] === 'flex' ) {
-			return ekwa_mc_convert_flex_block( $node, $depth );
-		}
-
-		// display:grid → ekwa/grid.
-		if ( isset( $style['display'] ) && $style['display'] === 'grid' ) {
-			return ekwa_mc_convert_grid_block( $node, $depth );
-		}
-
-		// max-width + margin auto → ekwa/container.
-		if ( isset( $style['max-width'] ) && isset( $style['margin'] ) && strpos( $style['margin'], 'auto' ) !== false ) {
-			return ekwa_mc_convert_container_block( $node, $depth );
-		}
-		if ( isset( $style['max-width'] ) && isset( $style['margin-left'] ) && $style['margin-left'] === 'auto'
-			&& isset( $style['margin-right'] ) && $style['margin-right'] === 'auto' ) {
-			return ekwa_mc_convert_container_block( $node, $depth );
-		}
-
-		// Fallback: plain div → ekwa/div.
 		return ekwa_mc_convert_div_block( $node, $depth, 'div' );
 	}
 
@@ -374,100 +356,6 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 	return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
 	       $children .
 	       $indent . '<!-- /wp:ekwa/div -->' . "\n";
-}
-
-/**
- * Convert to ekwa/flex block.
- */
-function ekwa_mc_convert_flex_block( $node, $depth ) {
-	$indent = str_repeat( '  ', $depth );
-	$class  = $node->getAttribute( 'class' );
-	$style  = ekwa_mc_parse_inline_style( $node->getAttribute( 'style' ) );
-	$attrs  = array();
-
-	if ( $class ) { $attrs['className'] = $class; }
-
-	if ( isset( $style['flex-direction'] ) )  { $attrs['direction']      = $style['flex-direction']; }
-	if ( isset( $style['justify-content'] ) ) { $attrs['justifyContent'] = $style['justify-content']; }
-	if ( isset( $style['align-items'] ) )     { $attrs['alignItems']     = $style['align-items']; }
-	if ( isset( $style['flex-wrap'] ) )       { $attrs['wrap']           = $style['flex-wrap']; }
-
-	$tag = strtolower( $node->nodeName );
-	if ( $tag !== 'div' ) { $attrs['tagName'] = $tag; }
-
-	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
-
-	if ( ekwa_mc_has_mixed_content( $node ) ) {
-		$inner_html = ekwa_mc_get_inner_html( $node );
-		return $indent . '<!-- wp:ekwa/flex' . $attrs_json . ' -->' . "\n" .
-		       $indent . '  <!-- wp:html -->' . "\n" .
-		       $indent . '  ' . trim( $inner_html ) . "\n" .
-		       $indent . '  <!-- /wp:html -->' . "\n" .
-		       $indent . '<!-- /wp:ekwa/flex -->' . "\n";
-	}
-
-	$children = ekwa_mc_convert_children( $node, $depth + 1 );
-
-	return $indent . '<!-- wp:ekwa/flex' . $attrs_json . ' -->' . "\n" .
-	       $children .
-	       $indent . '<!-- /wp:ekwa/flex -->' . "\n";
-}
-
-/**
- * Convert to ekwa/grid block.
- */
-function ekwa_mc_convert_grid_block( $node, $depth ) {
-	$indent = str_repeat( '  ', $depth );
-	$class  = $node->getAttribute( 'class' );
-	$style  = ekwa_mc_parse_inline_style( $node->getAttribute( 'style' ) );
-	$attrs  = array();
-
-	if ( $class ) { $attrs['className'] = $class; }
-
-	if ( isset( $style['grid-template-columns'] ) ) {
-		$gtc = $style['grid-template-columns'];
-		if ( preg_match( '/repeat\(\s*(\d+)/', $gtc, $m ) ) {
-			$attrs['columns'] = (int) $m[1];
-		} else {
-			$attrs['columnWidths'] = $gtc;
-		}
-	}
-
-	if ( $node->hasAttribute( 'data-tablet-cols' ) ) {
-		$attrs['tabletColumns'] = (int) $node->getAttribute( 'data-tablet-cols' );
-	}
-	if ( $node->hasAttribute( 'data-mobile-cols' ) ) {
-		$attrs['mobileColumns'] = (int) $node->getAttribute( 'data-mobile-cols' );
-	}
-
-	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
-
-	$children = ekwa_mc_convert_children( $node, $depth + 1 );
-
-	return $indent . '<!-- wp:ekwa/grid' . $attrs_json . ' -->' . "\n" .
-	       $children .
-	       $indent . '<!-- /wp:ekwa/grid -->' . "\n";
-}
-
-/**
- * Convert to ekwa/container block.
- */
-function ekwa_mc_convert_container_block( $node, $depth ) {
-	$indent = str_repeat( '  ', $depth );
-	$class  = $node->getAttribute( 'class' );
-	$style  = ekwa_mc_parse_inline_style( $node->getAttribute( 'style' ) );
-	$attrs  = array();
-
-	if ( $class ) { $attrs['className'] = $class; }
-	if ( isset( $style['max-width'] ) ) { $attrs['maxWidth'] = $style['max-width']; }
-
-	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
-
-	$children = ekwa_mc_convert_children( $node, $depth + 1 );
-
-	return $indent . '<!-- wp:ekwa/container' . $attrs_json . ' -->' . "\n" .
-	       $children .
-	       $indent . '<!-- /wp:ekwa/container -->' . "\n";
 }
 
 /**

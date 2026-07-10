@@ -4,13 +4,14 @@
 	"name": "ekwa/container",
 	"version": "1.0.0",
 	"title": "Ekwa Container",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "align-center",
 	"description": "A centered container with configurable max-width.",
 	"textdomain": "ekwa",
 	"keywords": [ "container", "wrapper", "constrained", "center" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"spacing": {
 			"padding": true,

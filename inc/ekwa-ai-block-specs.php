@@ -41,7 +41,7 @@ function ekwa_ai_block_spec_registry() {
 			'block'    => 'ekwa/div',
 			'type'     => 'container',
 			'contexts' => array(),
-			'desc'     => 'Generic clean wrapper. Renders <tagName> with your className and children. Your primary layout building block.',
+			'desc'     => 'Generic clean wrapper. Renders <tagName> with your className and children. Your ONLY layout building block — express flex rows, grids and centered max-width containers by writing the CSS (display:flex/grid, max-width, gap, @media) under the className in the scoped stylesheet.',
 			'attrs'    => array(
 				'tagName — div|section|header|footer|nav|main|aside|article|a|span|small|strong|em|figcaption (default "div")',
 				'className — your semantic CSS class(es)',
@@ -52,54 +52,10 @@ function ekwa_ai_block_spec_registry() {
 			),
 		),
 
-		'flex' => array(
-			'block'    => 'ekwa/flex',
-			'type'     => 'container',
-			'contexts' => array(),
-			'desc'     => 'Flexbox row/column. Renders display:flex with the attributes below; gap lives in your CSS via the className.',
-			'attrs'    => array(
-				'direction — row|column (default "row")',
-				'justifyContent — flex-start|center|flex-end|space-between|space-around (default "flex-start")',
-				'alignItems — center|flex-start|flex-end|stretch (default "center")',
-				'wrap — wrap|nowrap (default "wrap")',
-				'tagName — div|nav|header|footer|aside (default "div")',
-				'className — for gap and any extra styling',
-			),
-			'examples' => array(
-				"<!-- wp:ekwa/flex {\"justifyContent\":\"space-between\",\"alignItems\":\"center\",\"wrap\":\"nowrap\",\"className\":\"header-bar\"} -->\n<!-- inner blocks -->\n<!-- /wp:ekwa/flex -->",
-			),
-		),
-
-		'grid' => array(
-			'block'    => 'ekwa/grid',
-			'type'     => 'container',
-			'contexts' => array(),
-			'desc'     => 'CSS Grid. Renders display:grid with responsive column counts. Set the gap in your CSS via the className.',
-			'attrs'    => array(
-				'columns — desktop column count (default 3)',
-				'columnWidths — optional explicit template, e.g. "2fr 1fr" (overrides columns)',
-				'tabletColumns — default 2',
-				'mobileColumns — default 1',
-				'className — for gap and extra styling',
-			),
-			'examples' => array(
-				"<!-- wp:ekwa/grid {\"columns\":3,\"tabletColumns\":2,\"mobileColumns\":1,\"className\":\"services-grid\"} -->\n<!-- one inner block per cell -->\n<!-- /wp:ekwa/grid -->",
-			),
-		),
-
-		'container' => array(
-			'block'    => 'ekwa/container',
-			'type'     => 'container',
-			'contexts' => array(),
-			'desc'     => 'Centered max-width wrapper (margin auto). Use to constrain a full-width section\'s inner content.',
-			'attrs'    => array(
-				'maxWidth — CSS length, e.g. "1280px" (default "1280px")',
-				'className',
-			),
-			'examples' => array(
-				"<!-- wp:ekwa/container {\"maxWidth\":\"1200px\",\"className\":\"footer-inner\"} -->\n<!-- inner blocks -->\n<!-- /wp:ekwa/container -->",
-			),
-		),
+		// NOTE: ekwa/flex, ekwa/grid, ekwa/container and ekwa/card-link are
+		// deprecated — do not reintroduce them here. All layout (flex rows,
+		// grids, centered max-width wrappers) is expressed as ekwa/div with the
+		// layout CSS written in the scoped stylesheet under the className.
 
 		'button-group' => array(
 			'block'    => 'ekwa/button-group',
@@ -196,8 +152,8 @@ function ekwa_ai_block_spec_registry() {
 				"<!-- wp:ekwa/button {\"text\":\"Book Appointment\",\"url\":\"#\",\"variant\":\"filled\",\"iconClass\":\"fa-solid fa-calendar\"} /-->",
 				// Secondary outline button, opens in a new tab.
 				"<!-- wp:ekwa/button {\"text\":\"Learn More\",\"url\":\"/services\",\"variant\":\"outline\",\"size\":\"large\"} /-->",
-				// A CTA row — two buttons side by side. Put gap/layout in CSS via the flex className.
-				"<!-- wp:ekwa/flex {\"className\":\"cta-row\"} -->\n<!-- wp:ekwa/button {\"text\":\"Get Started\",\"url\":\"#\",\"variant\":\"filled\"} /-->\n<!-- wp:ekwa/button {\"text\":\"Call Us\",\"url\":\"tel:+15551234567\",\"variant\":\"outline\",\"iconClass\":\"fa-solid fa-phone\"} /-->\n<!-- /wp:ekwa/flex -->",
+				// A CTA row — two buttons side by side. Write the flex/gap CSS under the className.
+				"<!-- wp:ekwa/div {\"className\":\"cta-row\"} -->\n<!-- wp:ekwa/button {\"text\":\"Get Started\",\"url\":\"#\",\"variant\":\"filled\"} /-->\n<!-- wp:ekwa/button {\"text\":\"Call Us\",\"url\":\"tel:+15551234567\",\"variant\":\"outline\",\"iconClass\":\"fa-solid fa-phone\"} /-->\n<!-- /wp:ekwa/div -->",
 			),
 		),
 

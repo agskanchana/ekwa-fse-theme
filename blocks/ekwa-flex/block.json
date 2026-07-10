@@ -4,13 +4,14 @@
 	"name": "ekwa/flex",
 	"version": "1.0.0",
 	"title": "Ekwa Flex",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "columns",
 	"description": "A flexbox container for horizontal or vertical layouts.",
 	"textdomain": "ekwa",
 	"keywords": [ "flex", "row", "layout", "horizontal", "vertical" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"color": {
 			"text": true,

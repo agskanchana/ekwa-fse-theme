@@ -4,7 +4,7 @@
 	"name": "ekwa/elfsight-review",
 	"version": "1.0.0",
 	"title": "Ekwa Elfsight Review",
-	"category": "embed",
+	"category": "ekwa-elements",
 	"description": "Paste an Elfsight widget embed code; the platform.js script is lazy-loaded via lazysizes.",
 	"textdomain": "ekwa",
 	"icon": "star-filled",

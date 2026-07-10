@@ -1,3 +1,13 @@
+<?php
+/**
+ * Title: Footer — Four Columns
+ * Slug: ekwa/footer-4col
+ * Categories: ekwa-headers-footers
+ * Block Types: core/template-part/footer
+ * Description: Logo + tagline, quick links, contact and hours columns, with copyright and social bar — all live from Ekwa Settings.
+ * Keywords: footer, columns, contact, hours, social
+ */
+?>
 <!-- wp:group {"tagName":"footer","style":{"spacing":{"padding":{"top":"var:preset|spacing|xl","bottom":"var:preset|spacing|xl","left":"var:preset|spacing|md","right":"var:preset|spacing|md"},"blockGap":"var:preset|spacing|lg"}},"backgroundColor":"foreground","textColor":"white","layout":{"type":"constrained","contentSize":"1280px"}} -->
 <footer class="wp-block-group has-white-color has-foreground-background-color has-text-color has-background" style="padding-top:var(--wp--preset--spacing--xl);padding-right:var(--wp--preset--spacing--md);padding-bottom:var(--wp--preset--spacing--xl);padding-left:var(--wp--preset--spacing--md)">
 

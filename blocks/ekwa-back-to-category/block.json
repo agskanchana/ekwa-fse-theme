@@ -4,7 +4,7 @@
 	"name": "ekwa/back-to-category",
 	"version": "1.0.0",
 	"title": "Ekwa Back to Category",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "arrow-left-alt",
 	"description": "Back-to-category link for single posts with smart category filtering.",
 	"textdomain": "ekwa",

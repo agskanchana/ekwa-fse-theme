@@ -4,7 +4,7 @@
 	"name": "ekwa/faq-question",
 	"version": "1.0.0",
 	"title": "Ekwa FAQ Question",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "editor-help",
 	"parent": [ "ekwa/faq-container" ],
 	"description": "A question heading inside an Ekwa FAQ Container.",

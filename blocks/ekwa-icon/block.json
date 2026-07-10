@@ -4,7 +4,7 @@
 	"name": "ekwa/icon",
 	"version": "1.0.0",
 	"title": "Ekwa Icon",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "star-filled",
 	"description": "Insert a standalone Font Awesome icon element.",
 	"textdomain": "ekwa",

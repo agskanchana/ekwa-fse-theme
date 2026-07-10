@@ -4,7 +4,7 @@
 	"name": "ekwa/conditional",
 	"version": "1.0.0",
 	"title": "Ekwa Conditional",
-	"category": "design",
+	"category": "ekwa-layout",
 	"description": "Wrap any blocks in display conditions: page, content type, device, user state, ad tracking, schedule, and day of week.",
 	"textdomain": "ekwa",
 	"icon": "visibility",

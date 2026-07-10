@@ -4,7 +4,7 @@
 	"name": "ekwa/faq-container",
 	"version": "1.0.0",
 	"title": "Ekwa FAQ Container",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "format-chat",
 	"description": "Content-style FAQ container with separate question + answer child blocks. Emits FAQPage schema.",
 	"textdomain": "ekwa",

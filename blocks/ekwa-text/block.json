@@ -4,7 +4,7 @@
 	"name": "ekwa/text",
 	"version": "1.0.0",
 	"title": "Ekwa Text",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "editor-textcolor",
 	"description": "An inline text element — outputs a <span>, <small>, <strong>, <em>, or other inline tag.",
 	"textdomain": "ekwa",

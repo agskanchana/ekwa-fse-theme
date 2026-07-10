@@ -4,7 +4,7 @@
 	"name": "ekwa/recent-posts",
 	"version": "1.0.0",
 	"title": "Ekwa Recent Posts",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "list-view",
 	"description": "Sidebar widget listing the latest blog posts.",
 	"textdomain": "ekwa",

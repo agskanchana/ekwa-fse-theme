@@ -4,7 +4,7 @@
 	"name": "ekwa/phone",
 	"version": "1.0.0",
 	"title": "Ekwa Phone Number",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "phone",
 	"description": "Display a clickable phone number with ad-tracking support.",
 	"textdomain": "ekwa",

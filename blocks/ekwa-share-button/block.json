@@ -4,7 +4,7 @@
 	"name": "ekwa/share-button",
 	"version": "1.0.0",
 	"title": "Ekwa Share Button",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "share-alt2",
 	"description": "Embeds the DoneForMeSocial share buttons script.",
 	"textdomain": "ekwa",

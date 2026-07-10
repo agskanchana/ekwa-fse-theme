@@ -4,7 +4,7 @@
 	"name": "ekwa/faq-item",
 	"version": "1.0.0",
 	"title": "Ekwa FAQ Item",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "editor-help",
 	"parent": [ "ekwa/faq" ],
 	"description": "A single question/answer pair inside an Ekwa FAQ block.",

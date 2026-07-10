@@ -4,7 +4,7 @@
 	"name": "ekwa/page-title",
 	"version": "1.0.0",
 	"title": "Ekwa Page Title",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "heading",
 	"description": "Conditionally displays the page title as H1 only when the menu name differs from the page title (title already shown in the inner banner).",
 	"textdomain": "ekwa",

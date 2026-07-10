@@ -4,7 +4,7 @@
 	"name": "ekwa/div",
 	"version": "1.0.0",
 	"title": "Ekwa Div",
-	"category": "common",
+	"category": "ekwa-layout",
 	"icon": "screenoptions",
 	"description": "Clean wrapper element — outputs only your tag, classes, and children. No layout styles.",
 	"textdomain": "ekwa",
@@ -29,6 +29,7 @@
 		"preloadBg":         { "type": "boolean", "default": false },
 		"inlineStyle":       { "type": "string",  "default": "" },
 		"scopedCss":         { "type": "string",  "default": "" },
+		"scopedCssOffInEditor": { "type": "boolean", "default": false },
 		"customAttributes":  { "type": "object",  "default": {} }
 	},
 	"editorScript": "ekwa-div-editor"

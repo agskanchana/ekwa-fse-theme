@@ -4,7 +4,7 @@
 	"name": "ekwa/copyright",
 	"version": "1.0.0",
 	"title": "Ekwa Copyright",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "shield",
 	"description": "Renders the site copyright line with the practice name and current year.",
 	"textdomain": "ekwa",

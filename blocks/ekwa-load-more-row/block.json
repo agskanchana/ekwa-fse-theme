@@ -4,7 +4,7 @@
 	"name": "ekwa/load-more-row",
 	"version": "1.0.0",
 	"title": "Row",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "minus",
 	"description": "A single row inside a Load More Rows block. Add any blocks inside.",
 	"textdomain": "ekwa",

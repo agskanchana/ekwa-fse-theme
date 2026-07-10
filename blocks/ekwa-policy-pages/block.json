@@ -4,7 +4,7 @@
 	"name": "ekwa/policy-pages",
 	"version": "1.0.0",
 	"title": "Policy Pages",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "shield",
 	"description": "Renders a remote policy page from policies.ekwa.com, populated with practice info from Ekwa Settings.",
 	"textdomain": "ekwa",

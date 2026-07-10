@@ -4,7 +4,7 @@
 	"name": "ekwa/faq",
 	"version": "1.0.0",
 	"title": "Ekwa FAQ",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "editor-help",
 	"description": "Collapsible FAQ list with FAQPage schema markup. Pick a design from Styles in the sidebar.",
 	"textdomain": "ekwa",

@@ -4,13 +4,14 @@
 	"name": "ekwa/grid",
 	"version": "1.0.0",
 	"title": "Ekwa Grid",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "grid-view",
 	"description": "A CSS Grid container with responsive column breakpoints.",
 	"textdomain": "ekwa",
 	"keywords": [ "grid", "columns", "layout", "responsive" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"color": {
 			"text": true,

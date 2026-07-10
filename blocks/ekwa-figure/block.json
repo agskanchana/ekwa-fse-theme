@@ -4,7 +4,7 @@
 	"name": "ekwa/figure",
 	"version": "1.0.0",
 	"title": "Ekwa Figure",
-	"category": "common",
+	"category": "ekwa-layout",
 	"icon": "format-image",
 	"description": "Clean <figure> wrapper for images + optional figcaption. Accepts any inner blocks (ekwa/image, ekwa/text, etc.).",
 	"textdomain": "ekwa",

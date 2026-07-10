@@ -4,7 +4,7 @@
 	"name": "ekwa/related-posts",
 	"version": "1.0.0",
 	"title": "Ekwa Related Posts",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "admin-post",
 	"description": "Lists blog posts whose category slug matches the current page slug. On the home page falls back to the configured featured category.",
 	"textdomain": "ekwa",

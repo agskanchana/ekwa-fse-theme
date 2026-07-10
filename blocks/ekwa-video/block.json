@@ -4,7 +4,7 @@
 	"name": "ekwa/video",
 	"version": "1.0.0",
 	"title": "Ekwa Video",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "video-alt3",
 	"description": "Clean video element — no figure wrapper, no wp-block-video class.",
 	"textdomain": "ekwa",

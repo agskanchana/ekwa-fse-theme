@@ -4,7 +4,7 @@
 	"name": "ekwa/sitemap",
 	"version": "1.0.0",
 	"title": "Ekwa Sitemap",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "admin-site-alt3",
 	"description": "Interactive collapsible sitemap with Collapse All / Expand All controls. Builds from pages automatically or from a custom nav menu.",
 	"textdomain": "ekwa",

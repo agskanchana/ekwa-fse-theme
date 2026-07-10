@@ -4,7 +4,7 @@
 	"name": "ekwa/read-time",
 	"version": "1.0.0",
 	"title": "Ekwa Read Time",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "clock",
 	"description": "Displays estimated read time for the current post.",
 	"textdomain": "ekwa",

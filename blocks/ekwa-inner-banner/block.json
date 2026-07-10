@@ -4,7 +4,7 @@
 	"name": "ekwa/inner-banner",
 	"version": "1.0.0",
 	"title": "Ekwa Inner Page Banner",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "format-image",
 	"description": "Inner page banner with smart title logic: shows menu name or page title based on whether they differ.",
 	"textdomain": "ekwa",

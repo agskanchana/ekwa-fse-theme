@@ -4,7 +4,7 @@
 	"name": "ekwa/hamburger-menu",
 	"version": "1.0.0",
 	"title": "Ekwa Hamburger Menu",
-	"category": "common",
+	"category": "ekwa-header-footer",
 	"icon": "menu",
 	"description": "Hamburger button that opens an off-canvas mobile menu powered by mmenu-light.",
 	"textdomain": "ekwa",

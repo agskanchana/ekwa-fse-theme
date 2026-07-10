@@ -4,7 +4,7 @@
 	"name": "ekwa/hours",
 	"version": "1.0.0",
 	"title": "Ekwa Working Hours",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "clock",
 	"description": "Display formatted working hours for a saved location.",
 	"textdomain": "ekwa",

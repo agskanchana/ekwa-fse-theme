@@ -223,6 +223,11 @@ require_once get_template_directory() . '/inc/ekwa-mobile-menu.php';
 require_once get_template_directory() . '/inc/ekwa-header-menu.php';
 
 /**
+ * Load editor UX: ekwa block categories/branding, Select mode (X-ray).
+ */
+require_once get_template_directory() . '/inc/ekwa-editor-ux.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
@@ -539,6 +544,9 @@ add_action( 'after_setup_theme', 'ekwa_setup' );
 function ekwa_register_pattern_categories() {
 	register_block_pattern_category( 'ekwa-patterns', array(
 		'label' => esc_html__( 'Ekwa Patterns', 'ekwa' ),
+	) );
+	register_block_pattern_category( 'ekwa-headers-footers', array(
+		'label' => esc_html__( 'Ekwa Headers & Footers', 'ekwa' ),
 	) );
 }
 add_action( 'init', 'ekwa_register_pattern_categories' );

@@ -4,7 +4,7 @@
 	"name": "ekwa/mobile-dock",
 	"version": "1.0.0",
 	"title": "Ekwa Mobile Dock",
-	"category": "common",
+	"category": "ekwa-header-footer",
 	"icon": "smartphone",
 	"description": "Floating bottom dock bar for mobile with Call, Book, Scroll Up, Services, and Find Us.",
 	"textdomain": "ekwa",

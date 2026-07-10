@@ -4,7 +4,7 @@
 	"name": "ekwa/social",
 	"version": "1.0.0",
 	"title": "Ekwa Social Icons",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "share",
 	"description": "Display social media icons with optional share button and per-icon color control.",
 	"textdomain": "ekwa",

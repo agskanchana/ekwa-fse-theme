@@ -1057,3 +1057,119 @@
 	border-radius: 4px;
 	letter-spacing: 0.3px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SELECT MODE (X-RAY) — canvas rules
+   Toggled from the editor ⋮ menu (assets/js/ekwa-select-mode.js), which adds
+   .ekwa-select-mode to the canvas <body>. In the iframed FSE canvas the body
+   itself is .editor-styles-wrapper; in the non-iframed post editor the
+   wrapper is a descendant — both selector forms below cover both cases.
+   Flattens the design CSS just enough that every block is clickable; nothing
+   here is saved or reaches the front end.
+   ══════════════════════════════════════════════════════════════════════════ */
+body.ekwa-select-mode .editor-styles-wrapper .wp-block,
+.editor-styles-wrapper.ekwa-select-mode .wp-block {
+	position: relative !important;
+	inset: auto !important;
+	z-index: auto !important;
+	transform: none !important;
+	overflow: visible !important;
+	min-height: 24px;
+	outline: 1px dashed rgba(14, 124, 107, 0.55) !important;
+	outline-offset: -1px !important;
+	opacity: 1 !important;
+	visibility: visible !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EMPTY EKWA CONTAINERS — always-on canvas affordance
+   A deselected empty container renders zero-height and is invisible /
+   unclickable under design CSS. Give the empty InnerBlocks area a visible
+   dashed drop zone with a hint. (When the block is selected, core renders
+   the + appender inside the layout, so :empty no longer matches.)
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-type="ekwa/div"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/section"] .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/container"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/flex"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/grid"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/figure"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/card-link"] .block-editor-inner-blocks > .block-editor-block-list__layout:empty,
+[data-type="ekwa/button-group"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty {
+	min-height: 48px;
+	outline: 1px dashed #a7aaad;
+	outline-offset: -1px;
+	border-radius: 4px;
+	position: relative;
+}
+
+[data-type="ekwa/div"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/section"] .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/container"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/flex"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/grid"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/figure"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/card-link"] .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before,
+[data-type="ekwa/button-group"] > .block-editor-inner-blocks > .block-editor-block-list__layout:empty::before {
+	content: "Empty container — select it to add blocks";
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	color: #757575;
+	pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EKWA/DIV — Section CSS CodeMirror (sidebar)
+   WP's bundled code editor mounted in the Inspector. Keep it compact and
+   monospaced; the sidebar is ~280px wide.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ekwa-div-css-editor {
+	margin-bottom: 12px;
+}
+.ekwa-div-css-editor__label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.4;
+	text-transform: uppercase;
+	color: #1e1e1e;
+}
+.ekwa-div-css-editor .CodeMirror {
+	height: 240px;
+	border: 1px solid #949494;
+	border-radius: 2px;
+	font-size: 12px;
+	line-height: 1.5;
+}
+.ekwa-div-css-editor .CodeMirror-focused {
+	border-color: var(--wp-admin-theme-color, #007cba);
+	box-shadow: 0 0 0 1px var(--wp-admin-theme-color, #007cba);
+}
+.ekwa-div-css-editor__help {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #757575;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EKWA BLOCKS IN THE INSERTER — brand tint
+   Loaded in the editor outer shell (this file is enqueued there too), so it
+   can style the inserter list. The blocks.registerBlockType filter in
+   inc/ekwa-editor-ux.php colors the icon chip where WP honors icon colors
+   (block card, switcher); this covers the inserter grid itself.
+   ══════════════════════════════════════════════════════════════════════════ */
+.block-editor-block-types-list__item[class*="editor-block-list-item-ekwa-"] .block-editor-block-icon {
+	color: #0e7c6b;
+	background: rgba(14, 124, 107, 0.08);
+	border-radius: 4px;
+}
+
+.block-editor-block-types-list__item[class*="editor-block-list-item-ekwa-"]:hover .block-editor-block-icon {
+	background: rgba(14, 124, 107, 0.16);
+}

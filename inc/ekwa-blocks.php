@@ -752,6 +752,17 @@ function ekwa_enqueue_editor_assets() {
 		array(),
 		wp_get_theme()->get( 'Version' )
 	);
+
+	// CodeMirror for the ekwa/div "Section CSS" panel — the same bundled code
+	// editor WP uses for Customizer Custom CSS (line numbers, CSS highlighting).
+	// Returns false when the user disabled syntax highlighting in their
+	// profile; the block then falls back to the plain textarea.
+	$code_editor_settings = wp_enqueue_code_editor( array( 'type' => 'text/css' ) );
+	wp_add_inline_script(
+		'ekwa-div-editor',
+		'window.ekwaDivCodeEditor = ' . wp_json_encode( array( 'settings' => $code_editor_settings ) ) . ';',
+		'before'
+	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_editor_assets' );
 

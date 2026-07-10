@@ -4,7 +4,7 @@
 	"name": "ekwa/load-more-rows",
 	"version": "1.0.0",
 	"title": "Load More Rows",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "excerpt-view",
 	"description": "Stack rows of content and reveal the hidden ones in batches with a Load More button.",
 	"textdomain": "ekwa",

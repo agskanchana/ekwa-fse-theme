@@ -4,7 +4,7 @@
 	"name": "ekwa/link",
 	"version": "1.0.0",
 	"title": "Ekwa Link",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "admin-links",
 	"description": "Clean anchor element — outputs only your classes, no button styles.",
 	"textdomain": "ekwa",

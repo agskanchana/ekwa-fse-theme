@@ -4,7 +4,7 @@
 	"name": "ekwa/button-group",
 	"version": "1.0.0",
 	"title": "Ekwa Button Group",
-	"category": "design",
+	"category": "ekwa-layout",
 	"icon": "button",
 	"description": "A flex wrapper for grouping buttons.",
 	"textdomain": "ekwa",

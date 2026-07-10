@@ -4,7 +4,7 @@
 	"name": "ekwa/carousel",
 	"version": "1.0.0",
 	"title": "Ekwa Carousel",
-	"category": "design",
+	"category": "ekwa-elements",
 	"icon": "images-alt2",
 	"description": "Responsive, ADA-compliant carousel. Add any blocks as slides. Configure items per view per breakpoint, arrows, dots, autoplay, and loop.",
 	"textdomain": "ekwa",

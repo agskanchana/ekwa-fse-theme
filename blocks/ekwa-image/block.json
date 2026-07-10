@@ -4,7 +4,7 @@
 	"name": "ekwa/image",
 	"version": "1.0.0",
 	"title": "Ekwa Image",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "format-image",
 	"description": "Clean image element — no figure wrapper, no wp-block-image class.",
 	"textdomain": "ekwa",

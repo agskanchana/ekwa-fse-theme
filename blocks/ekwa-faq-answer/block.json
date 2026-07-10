@@ -4,7 +4,7 @@
 	"name": "ekwa/faq-answer",
 	"version": "1.0.0",
 	"title": "Ekwa FAQ Answer",
-	"category": "design",
+	"category": "ekwa-blog",
 	"icon": "editor-paste-text",
 	"parent": [ "ekwa/faq-container" ],
 	"description": "An answer body (paragraphs, lists, headings, images) inside an Ekwa FAQ Container.",

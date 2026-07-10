@@ -4,7 +4,7 @@
 	"name": "ekwa/map",
 	"version": "1.0.0",
 	"title": "Ekwa Google Map",
-	"category": "embed",
+	"category": "ekwa-dynamic",
 	"description": "Paste a Google Maps iframe embed code to display a full-width, colorful map.",
 	"textdomain": "ekwa",
 	"icon": "location-alt",

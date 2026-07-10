@@ -4,7 +4,7 @@
 	"name": "ekwa/address",
 	"version": "1.0.0",
 	"title": "Ekwa Address",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "location-alt",
 	"description": "Display a location address with a directions link.",
 	"textdomain": "ekwa",

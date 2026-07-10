@@ -4,7 +4,7 @@
 	"name": "ekwa/categories",
 	"version": "1.0.0",
 	"title": "Ekwa Categories",
-	"category": "common",
+	"category": "ekwa-blog",
 	"icon": "category",
 	"description": "Sidebar widget listing post categories with counts.",
 	"textdomain": "ekwa",

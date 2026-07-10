@@ -4,7 +4,7 @@
 	"name": "ekwa/reveal-hidden",
 	"version": "1.0.0",
 	"title": "Ekwa Reveal Hidden",
-	"category": "common",
+	"category": "ekwa-elements",
 	"icon": "hidden",
 	"parent": [ "ekwa/reveal" ],
 	"description": "Marks a region inside an Ekwa Reveal block as hidden until the trigger button is clicked.",

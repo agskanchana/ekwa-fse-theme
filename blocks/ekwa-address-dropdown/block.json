@@ -4,7 +4,7 @@
 	"name": "ekwa/address-dropdown",
 	"version": "1.0.0",
 	"title": "Ekwa Address Dropdown",
-	"category": "common",
+	"category": "ekwa-dynamic",
 	"icon": "location-alt",
 	"description": "A directions button that shows a dropdown of all locations with addresses and direction links.",
 	"textdomain": "ekwa",
