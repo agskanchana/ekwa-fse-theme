@@ -587,6 +587,116 @@
 	margin-bottom: 2px;
 }
 
+/* ── Mockup CSS import (input step) ─────────────────────────── */
+.ekwa-mc-css {
+	margin: 4px 0 16px;
+}
+
+/* ── Assets import (manifest card) ──────────────────────────── */
+.ekwa-mc-assets-import {
+	padding-bottom: 12px;
+	margin-bottom: 12px;
+	border-bottom: 1px solid #e5e7eb;
+}
+.ekwa-mc-assets-help {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: #6b7280;
+}
+.ekwa-mc-assets-msg {
+	margin: 8px 0 0;
+	font-size: 12px;
+	font-weight: 600;
+	color: #047857;
+}
+
+/* ── Conversion report (result step) ────────────────────────── */
+.ekwa-mc-report,
+.ekwa-mc-css-extract {
+	margin-bottom: 18px;
+	padding: 14px 16px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+}
+.ekwa-mc-report-head {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	margin-bottom: 8px;
+	font-size: 13px;
+}
+.ekwa-mc-report-group {
+	margin: 6px 0;
+	padding: 6px 10px;
+	border-radius: 6px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+}
+.ekwa-mc-report-group summary {
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+}
+.ekwa-mc-report-group--warn { border-color: #fcd34d; background: #fffbeb; }
+.ekwa-mc-report-group--bad  { border-color: #fca5a5; background: #fef2f2; }
+.ekwa-mc-report-group--ok   { border-color: #a7f3d0; background: #ecfdf5; }
+
+/* ── CSS extraction chips + swatches ────────────────────────── */
+.ekwa-mc-css-saved {
+	font-size: 11px;
+	font-weight: 600;
+	color: #047857;
+}
+.ekwa-mc-css-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin: 6px 0;
+}
+.ekwa-mc-css-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #374151;
+}
+.ekwa-mc-css-hint {
+	font-size: 11px;
+	color: #6b7280;
+	font-style: italic;
+}
+.ekwa-mc-chip {
+	font-size: 11px;
+	background: #eef2ff;
+	border: 1px solid #c7d2fe;
+	color: #3730a3;
+	padding: 2px 8px;
+	border-radius: 999px;
+}
+.ekwa-mc-swatch {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 10px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 999px;
+	padding: 2px 8px 2px 3px;
+}
+.ekwa-mc-swatch i {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	display: inline-block;
+}
+.ekwa-mc-swatch code {
+	background: none;
+	padding: 0;
+	font-size: 10px;
+}
+
 /* ── Floating button fallback (site editor WP < 6.6) ───────── */
 .ekwa-converter-fab.components-button {
 	position: fixed;

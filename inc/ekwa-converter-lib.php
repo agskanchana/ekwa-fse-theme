@@ -33,6 +33,8 @@ function ekwa_mc_context( $ctx = null ) {
 			'media_by_name'  => array(),
 			'manifest'       => null,
 			'warnings'       => array(),
+			'report'         => array(),
+			'consumed'       => array(),
 			'detect_dynamic' => true,
 		);
 	}
@@ -45,11 +47,37 @@ function ekwa_mc_context( $ctx = null ) {
 /**
  * Append a warning to the converter context.
  *
+ * Every warning also lands in the structured loss report. When no explicit
+ * category is passed, one is inferred from the message so the existing
+ * detector call sites stay untouched.
+ *
+ * Report categories:
+ *   dynamic   – dynamic-data detections (settings-driven blocks emitted)
+ *   media     – unresolved images/videos (placeholder used)
+ *   converted – element rescued into a proper block (table, svg, faq…)
+ *   raw-html  – fell back to a core/html blob (fidelity kept, not editable)
+ *   dropped   – content that could not be preserved
+ *   general   – everything else
+ *
  * @param string $message
+ * @param string $category Optional explicit report category.
  */
-function ekwa_mc_warn( $message ) {
+function ekwa_mc_warn( $message, $category = '' ) {
+	if ( '' === $category ) {
+		if ( preg_match( '/^(Auto-detected|data-ekwa)/', $message ) ) {
+			$category = 'dynamic';
+		} elseif ( stripos( $message, 'manifest' ) !== false || stripos( $message, 'media' ) !== false ) {
+			$category = 'media';
+		} else {
+			$category = 'general';
+		}
+	}
 	$ctx = ekwa_mc_context();
 	$ctx['warnings'][] = $message;
+	$ctx['report'][]   = array(
+		'category' => $category,
+		'message'  => $message,
+	);
 	ekwa_mc_context( $ctx );
 }
 
@@ -83,6 +111,8 @@ function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() 
 		'media_by_name'  => $media_by_name,
 		'manifest'       => $manifest_data,
 		'warnings'       => array(),
+		'report'         => array(),
+		'consumed'       => array(),
 		'detect_dynamic' => $detect_dynamic,
 	) );
 
@@ -118,6 +148,7 @@ function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() 
 	return array(
 		'markup'   => $output,
 		'warnings' => $ctx['warnings'],
+		'report'   => $ctx['report'],
 	);
 }
 
@@ -145,16 +176,29 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return '';
 	}
 
-	// Text nodes.
+	// Text nodes. Bare significant text between elements used to be silently
+	// dropped — emit an ekwa/text span instead (layout-neutral: no paragraph
+	// margins, so mockup fidelity is preserved).
 	if ( $node->nodeType === XML_TEXT_NODE ) {
-		$text = $node->textContent;
-		if ( trim( $text ) === '' ) {
+		$text = trim( $node->textContent );
+		if ( $text === '' ) {
 			return '';
 		}
-		return '';
+		$snippet = strlen( $text ) > 60 ? substr( $text, 0, 57 ) . '…' : $text;
+		ekwa_mc_warn( 'Bare text rescued into ekwa/text: "' . $snippet . '"', 'converted' );
+		return str_repeat( '  ', $depth )
+			. '<!-- wp:ekwa/text ' . ekwa_mc_json_encode_block_attrs( array( 'text' => $text ) ) . ' /-->' . "\n";
 	}
 
 	if ( $node->nodeType !== XML_ELEMENT_NODE ) {
+		return '';
+	}
+
+	// Nodes already consumed by a sibling-run converter (e.g. a <details>
+	// accordion leader) emit nothing — checked BEFORE detection so their
+	// content can't double-emit as a dynamic block.
+	$ctx_consumed = ekwa_mc_context();
+	if ( ! empty( $ctx_consumed['consumed'][ spl_object_hash( $node ) ] ) ) {
 		return '';
 	}
 
@@ -250,10 +294,7 @@ function ekwa_mc_convert_node( $node, $depth ) {
 			}
 			return ekwa_mc_convert_raw_html( $node, $depth );
 		}
-		if ( ! ekwa_mc_has_mixed_content( $node ) || ekwa_mc_can_inline_split( $node ) ) {
-			return ekwa_mc_convert_div_block( $node, $depth, $tag );
-		}
-		return ekwa_mc_convert_raw_html( $node, $depth );
+		return ekwa_mc_convert_div_block( $node, $depth, $tag );
 	}
 
 	// <div> → ekwa/div. Flex/grid/max-width divs used to become the dedicated
@@ -273,6 +314,32 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	// Blockquote → core/quote.
 	if ( $tag === 'blockquote' ) {
 		return ekwa_mc_convert_quote( $node, $depth );
+	}
+
+	// Table → core/table (editable cells instead of a raw HTML blob).
+	if ( $tag === 'table' ) {
+		return ekwa_mc_convert_table( $node, $depth );
+	}
+
+	// <details> runs → ekwa/faq accordion (consecutive siblings grouped).
+	if ( $tag === 'details' ) {
+		return ekwa_mc_convert_details_run( $node, $depth );
+	}
+
+	// <picture> → ekwa/image from its <img> fallback (the theme regenerates
+	// WebP and srcset at render time, so <source> variants are redundant).
+	if ( $tag === 'picture' ) {
+		return ekwa_mc_convert_picture( $node, $depth );
+	}
+
+	// <audio> → core/audio.
+	if ( $tag === 'audio' ) {
+		return ekwa_mc_convert_audio( $node, $depth );
+	}
+
+	// Inline <svg> → ekwa/svg (sanitized on render).
+	if ( $tag === 'svg' ) {
+		return ekwa_mc_convert_svg_block( $node, $depth );
 	}
 
 	// Any other element — render as core/html.
@@ -322,32 +389,25 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
-	// Mixed content (text + inline elements like <i> or <span>): try to split
-	// into clean blocks (icon + ekwa/text) instead of dumping inner HTML into
-	// a wp:html block. Falls back to wp:html when children include things we
-	// can't safely inline-split.
+	// Mixed content (text + element children): convert each child on its own —
+	// bare text becomes ekwa/text, elements dispatch to their converters
+	// (tables, details, svg, picture included). A whole-wrapper wp:html blob
+	// is never emitted here anymore; unconvertible children fall back to
+	// wp:html individually, which the loss report calls out per element.
 	if ( ekwa_mc_has_mixed_content( $node ) ) {
-		if ( ekwa_mc_can_inline_split( $node ) ) {
-			$children = ekwa_mc_convert_inline_mixed_children( $node, $depth + 1 );
-			return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
-			       $children .
-			       $indent . '<!-- /wp:ekwa/div -->' . "\n";
-		}
-		$inner_html = ekwa_mc_get_inner_html( $node );
+		$children = ekwa_mc_convert_inline_mixed_children( $node, $depth + 1 );
 		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
-		       $indent . '  <!-- wp:html -->' . "\n" .
-		       $indent . '  ' . trim( $inner_html ) . "\n" .
-		       $indent . '  <!-- /wp:html -->' . "\n" .
+		       $children .
 		       $indent . '<!-- /wp:ekwa/div -->' . "\n";
 	}
 
-	// Text-only with no element children → still wp:html (no split needed).
+	// Text-only with no element children → keep the wrapper, text becomes an
+	// ekwa/text child (layout-neutral span; the wrapper keeps its classes).
 	if ( ekwa_mc_has_text_only( $node ) ) {
-		$inner_html = ekwa_mc_get_inner_html( $node );
+		$text       = trim( $node->textContent );
+		$text_attrs = array( 'text' => $text );
 		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
-		       $indent . '  <!-- wp:html -->' . "\n" .
-		       $indent . '  ' . trim( $inner_html ) . "\n" .
-		       $indent . '  <!-- /wp:html -->' . "\n" .
+		       $indent . '  <!-- wp:ekwa/text ' . ekwa_mc_json_encode_block_attrs( $text_attrs ) . ' /-->' . "\n" .
 		       $indent . '<!-- /wp:ekwa/div -->' . "\n";
 	}
 
@@ -674,9 +734,278 @@ function ekwa_mc_convert_raw_html( $node, $depth ) {
 	$indent = str_repeat( '  ', $depth );
 	$html   = ekwa_mc_get_outer_html( $node );
 
+	// Structured loss report: say WHAT fell back and why, so nothing is
+	// silently opaque. Forms get their own category (they need a form
+	// plugin/embed, not block conversion).
+	$tag = strtolower( $node->nodeName );
+	$form_tags = array( 'form', 'select', 'input', 'textarea', 'fieldset', 'label', 'option', 'button' );
+	if ( in_array( $tag, $form_tags, true ) ) {
+		ekwa_mc_warn( "<$tag> kept as raw HTML — rebuild forms with your form plugin and embed its shortcode.", 'raw-html' );
+	} else {
+		ekwa_mc_warn( "<$tag> has no block mapping — kept as raw HTML (renders identically but isn't block-editable).", 'raw-html' );
+	}
+
 	return $indent . '<!-- wp:html -->' . "\n" .
 	       $indent . trim( $html ) . "\n" .
 	       $indent . '<!-- /wp:html -->' . "\n";
+}
+
+/**
+ * Convert <table> to core/table, preserving thead/tbody/tfoot structure and
+ * cell contents so the table is editable in the block editor. Bare rows are
+ * wrapped in <tbody> (core/table sources its cells from "tbody tr").
+ */
+function ekwa_mc_convert_table( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$class  = trim( $node->getAttribute( 'class' ) );
+
+	$head_rows = array();
+	$body_rows = array();
+	$foot_rows = array();
+	$caption   = '';
+
+	$collect_rows = function ( $parent ) {
+		$rows = array();
+		foreach ( $parent->childNodes as $child ) {
+			if ( $child->nodeType === XML_ELEMENT_NODE && strtolower( $child->nodeName ) === 'tr' ) {
+				$rows[] = $child;
+			}
+		}
+		return $rows;
+	};
+
+	foreach ( $node->childNodes as $child ) {
+		if ( $child->nodeType !== XML_ELEMENT_NODE ) {
+			continue;
+		}
+		$child_tag = strtolower( $child->nodeName );
+		if ( 'thead' === $child_tag ) {
+			$head_rows = array_merge( $head_rows, $collect_rows( $child ) );
+		} elseif ( 'tfoot' === $child_tag ) {
+			$foot_rows = array_merge( $foot_rows, $collect_rows( $child ) );
+		} elseif ( 'tbody' === $child_tag ) {
+			$body_rows = array_merge( $body_rows, $collect_rows( $child ) );
+		} elseif ( 'tr' === $child_tag ) {
+			$body_rows[] = $child;
+		} elseif ( 'caption' === $child_tag ) {
+			$caption = trim( ekwa_mc_get_inner_html( $child ) );
+		}
+	}
+
+	if ( empty( $head_rows ) && empty( $body_rows ) && empty( $foot_rows ) ) {
+		return ekwa_mc_convert_raw_html( $node, $depth );
+	}
+
+	// Rebuild rows with only what core/table understands: td/th tag, cell
+	// inner HTML, and colspan/rowspan. Everything else is dropped.
+	$render_rows = function ( $rows ) {
+		$html = '';
+		foreach ( $rows as $row ) {
+			$html .= '<tr>';
+			foreach ( $row->childNodes as $cell ) {
+				if ( $cell->nodeType !== XML_ELEMENT_NODE ) {
+					continue;
+				}
+				$cell_tag = strtolower( $cell->nodeName );
+				if ( 'td' !== $cell_tag && 'th' !== $cell_tag ) {
+					continue;
+				}
+				$span = '';
+				if ( $cell->getAttribute( 'colspan' ) ) {
+					$span .= ' colspan="' . (int) $cell->getAttribute( 'colspan' ) . '"';
+				}
+				if ( $cell->getAttribute( 'rowspan' ) ) {
+					$span .= ' rowspan="' . (int) $cell->getAttribute( 'rowspan' ) . '"';
+				}
+				$html .= '<' . $cell_tag . $span . '>' . trim( ekwa_mc_get_inner_html( $cell ) ) . '</' . $cell_tag . '>';
+			}
+			$html .= '</tr>';
+		}
+		return $html;
+	};
+
+	$table_html = '';
+	if ( ! empty( $head_rows ) ) {
+		$table_html .= '<thead>' . $render_rows( $head_rows ) . '</thead>';
+	}
+	$table_html .= '<tbody>' . $render_rows( $body_rows ) . '</tbody>';
+	if ( ! empty( $foot_rows ) ) {
+		$table_html .= '<tfoot>' . $render_rows( $foot_rows ) . '</tfoot>';
+	}
+
+	// hasFixedLayout must be explicit: newer WP defaults it to true and adds a
+	// class in save(), which would invalidate our markup if omitted.
+	$attrs = array( 'hasFixedLayout' => false );
+	if ( $class ) {
+		$attrs['className'] = $class;
+	}
+
+	$figure_class = 'wp-block-table' . ( $class ? ' ' . $class : '' );
+	$caption_html = $caption ? '<figcaption class="wp-element-caption">' . $caption . '</figcaption>' : '';
+
+	ekwa_mc_warn( 'Converted <table> to an editable core/table block.', 'converted' );
+
+	return $indent . '<!-- wp:table ' . ekwa_mc_json_encode_block_attrs( $attrs ) . ' -->' . "\n" .
+	       $indent . '<figure class="' . $figure_class . '"><table>' . $table_html . '</table>' . $caption_html . '</figure>' . "\n" .
+	       $indent . '<!-- /wp:table -->' . "\n";
+}
+
+/**
+ * Convert a run of consecutive <details> siblings into ONE ekwa/faq
+ * accordion (each <details> → ekwa/faq-item, <summary> → question,
+ * remaining children → answer blocks). Non-leading members of the run
+ * return '' — the leader consumed them.
+ */
+function ekwa_mc_convert_details_run( $node, $depth ) {
+	$is_details = function ( $n ) {
+		return $n && $n->nodeType === XML_ELEMENT_NODE && strtolower( $n->nodeName ) === 'details';
+	};
+	$significant = function ( $n ) {
+		return ( $n->nodeType === XML_ELEMENT_NODE )
+			|| ( $n->nodeType === XML_TEXT_NODE && trim( $n->textContent ) !== '' );
+	};
+
+	// Already consumed by an earlier run leader?
+	$prev = $node->previousSibling;
+	while ( $prev && ! $significant( $prev ) ) {
+		$prev = $prev->previousSibling;
+	}
+	if ( $is_details( $prev ) ) {
+		return '';
+	}
+
+	// Collect the run and mark the consumed siblings so convert_node skips
+	// them entirely (including dynamic detection, which runs first).
+	$items = array( $node );
+	$next  = $node->nextSibling;
+	while ( $next ) {
+		if ( ! $significant( $next ) ) {
+			$next = $next->nextSibling;
+			continue;
+		}
+		if ( ! $is_details( $next ) ) {
+			break;
+		}
+		$items[] = $next;
+		$next    = $next->nextSibling;
+	}
+
+	$ctx = ekwa_mc_context();
+	foreach ( array_slice( $items, 1 ) as $consumed_node ) {
+		$ctx['consumed'][ spl_object_hash( $consumed_node ) ] = true;
+	}
+	ekwa_mc_context( $ctx );
+
+	$indent = str_repeat( '  ', $depth );
+	$out    = $indent . '<!-- wp:ekwa/faq -->' . "\n";
+
+	foreach ( $items as $details ) {
+		$question = '';
+		$answer   = '';
+
+		foreach ( $details->childNodes as $child ) {
+			if ( $child->nodeType === XML_ELEMENT_NODE && strtolower( $child->nodeName ) === 'summary' ) {
+				$question = trim( $child->textContent );
+				continue;
+			}
+			if ( $child->nodeType === XML_TEXT_NODE ) {
+				$text = trim( $child->textContent );
+				if ( $text !== '' ) {
+					$answer .= $indent . '    <!-- wp:paragraph -->' . "\n"
+						. $indent . '    <p>' . $text . '</p>' . "\n"
+						. $indent . '    <!-- /wp:paragraph -->' . "\n";
+				}
+				continue;
+			}
+			$answer .= ekwa_mc_convert_node( $child, $depth + 2 );
+		}
+
+		$item_attrs = array( 'question' => $question );
+		if ( $details->hasAttribute( 'open' ) ) {
+			$item_attrs['defaultOpen'] = true;
+		}
+
+		$out .= $indent . '  <!-- wp:ekwa/faq-item ' . ekwa_mc_json_encode_block_attrs( $item_attrs ) . ' -->' . "\n"
+			. $answer
+			. $indent . '  <!-- /wp:ekwa/faq-item -->' . "\n";
+	}
+
+	$out .= $indent . '<!-- /wp:ekwa/faq -->' . "\n";
+
+	ekwa_mc_warn( 'Converted ' . count( $items ) . ' <details> element(s) into an ekwa/faq accordion.', 'converted' );
+
+	return $out;
+}
+
+/**
+ * Convert <picture> to ekwa/image using its <img> fallback. The theme
+ * serves WebP and generates srcset from attachment metadata at render time,
+ * so the <source> variants are redundant.
+ */
+function ekwa_mc_convert_picture( $node, $depth ) {
+	$img = $node->getElementsByTagName( 'img' )->item( 0 );
+	if ( ! $img ) {
+		return ekwa_mc_convert_raw_html( $node, $depth );
+	}
+	ekwa_mc_warn( 'Converted <picture> to ekwa/image via its <img> fallback (WebP/srcset regenerate at render).', 'converted' );
+	return ekwa_mc_convert_image( $img, $depth );
+}
+
+/**
+ * Convert <audio> to core/audio, resolving src via the media manifest and
+ * the WP library like every other media element.
+ */
+function ekwa_mc_convert_audio( $node, $depth ) {
+	$ctx           = ekwa_mc_context();
+	$media_by_name = $ctx['media_by_name'];
+
+	$indent = str_repeat( '  ', $depth );
+	$src    = $node->getAttribute( 'src' );
+	if ( ! $src ) {
+		$sources = $node->getElementsByTagName( 'source' );
+		if ( $sources->length > 0 ) {
+			$src = $sources->item( 0 )->getAttribute( 'src' );
+		}
+	}
+	if ( ! $src ) {
+		return ekwa_mc_convert_raw_html( $node, $depth );
+	}
+
+	$filename = strtolower( basename( $src ) );
+	if ( ! empty( $media_by_name[ $filename ] ) ) {
+		$src = $media_by_name[ $filename ]['url'];
+	} elseif ( $lib = ekwa_mc_find_attachment_by_basename( $filename ) ) {
+		$src = $lib['url'];
+	} else {
+		ekwa_mc_warn( "No manifest match for '$filename' (audio src: $src)" );
+	}
+
+	ekwa_mc_warn( 'Converted <audio> to core/audio.', 'converted' );
+
+	return $indent . '<!-- wp:audio -->' . "\n" .
+	       $indent . '<figure class="wp-block-audio"><audio controls src="' . $src . '"></audio></figure>' . "\n" .
+	       $indent . '<!-- /wp:audio -->' . "\n";
+}
+
+/**
+ * Convert inline <svg> to the ekwa/svg block. The full markup goes into the
+ * block's "svg" attribute (hex-escaped by the attr encoder so it can't break
+ * the block comment) and is sanitized server-side on every render.
+ */
+function ekwa_mc_convert_svg_block( $node, $depth ) {
+	$indent = str_repeat( '  ', $depth );
+	$svg    = trim( ekwa_mc_get_outer_html( $node ) );
+
+	// Strip HTML comments inside the SVG — belt and braces for comment safety.
+	$svg = preg_replace( '/<!--.*?-->/s', '', $svg );
+
+	if ( '' === $svg ) {
+		return '';
+	}
+
+	ekwa_mc_warn( 'Converted inline <svg> to ekwa/svg (sanitized on render).', 'converted' );
+
+	return $indent . '<!-- wp:ekwa/svg ' . ekwa_mc_json_encode_block_attrs( array( 'svg' => $svg ) ) . ' /-->' . "\n";
 }
 
 /**
@@ -773,11 +1102,9 @@ function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	if ( ekwa_mc_has_mixed_content( $node ) ) {
-		$inner_html = ekwa_mc_get_inner_html( $node );
+		$children = ekwa_mc_convert_inline_mixed_children( $node, $depth + 1 );
 		return $indent . '<!-- wp:ekwa/div' . $attrs_json . ' -->' . "\n" .
-		       $indent . '  <!-- wp:html -->' . "\n" .
-		       $indent . '  ' . trim( $inner_html ) . "\n" .
-		       $indent . '  <!-- /wp:html -->' . "\n" .
+		       $children .
 		       $indent . '<!-- /wp:ekwa/div -->' . "\n";
 	}
 
@@ -851,46 +1178,11 @@ function ekwa_mc_has_mixed_content( $node ) {
 }
 
 /**
- * Decide whether a node with mixed content can be split into clean blocks.
- *
- * "Inline-splittable" means every element child is an inline tag we already
- * have a converter for (icon, text, link, image), so we can pair bare text
- * nodes with siblings as `ekwa/text` blocks instead of dumping the whole
- * inner HTML into a `wp:html` fallback. Conservative — anything outside the
- * allowlist (e.g. a div, ul, table) bails so we don't silently mangle layout.
- *
- * @param DOMElement $node
- * @return bool
- */
-function ekwa_mc_can_inline_split( $node ) {
-	$allowed = array(
-		'i', 'span', 'small', 'strong', 'em', 'mark', 'time', 'label',
-		'sup', 'sub', 'a', 'button', 'img', 'br',
-	);
-	foreach ( $node->childNodes as $child ) {
-		if ( $child->nodeType !== XML_ELEMENT_NODE ) {
-			continue;
-		}
-		$tag = strtolower( $child->nodeName );
-		if ( ! in_array( $tag, $allowed, true ) ) {
-			return false;
-		}
-		// If this child also has mixed content, recurse — every level must be
-		// splittable or we'd still need wp:html somewhere down the tree.
-		if ( ekwa_mc_has_mixed_content( $child ) && ! ekwa_mc_can_inline_split( $child ) ) {
-			return false;
-		}
-	}
-	return true;
-}
-
-/**
- * Convert mixed inline children (text + inline elements) to a sequence of
- * blocks. Bare text nodes become `ekwa/text` (tagName=span); element
- * children dispatch through the normal converter.
- *
- * Used when the wrapper would otherwise fall back to `wp:html` — see
- * ekwa_mc_can_inline_split() for the gate.
+ * Convert mixed children (text + elements) to a sequence of blocks. Bare
+ * text nodes become `ekwa/text` (tagName=span); element children dispatch
+ * through the normal converter — so tables, details, svg etc. all get their
+ * proper blocks instead of a whole-wrapper `wp:html` blob. Consecutive
+ * inline blocks reflow inline on the front end, preserving text flow.
  *
  * @param DOMElement $node
  * @param int        $depth Nesting depth for the children blocks (parent depth + 1).
@@ -992,9 +1284,15 @@ function ekwa_mc_get_outer_html( $node ) {
 
 /**
  * JSON-encode block attributes in WordPress block comment format.
+ *
+ * Mirrors core serialize_block_attributes(): <, >, &, " are hex-escaped and
+ * double hyphens are unicode-escaped, so attribute values containing markup
+ * (e.g. the ekwa/svg "svg" attribute) can never terminate the block comment
+ * early.
  */
 function ekwa_mc_json_encode_block_attrs( $attrs ) {
-	return json_encode( $attrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+	$encoded = json_encode( $attrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS );
+	return str_replace( '--', '\\u002d\\u002d', $encoded );
 }
 
 /**

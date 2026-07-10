@@ -30,6 +30,8 @@
 	var MediaUploadCheck   = wp.blockEditor.MediaUploadCheck;
 	var apiFetch           = wp.apiFetch;
 	var parse              = wp.blocks.parse;
+	var createBlock        = wp.blocks.createBlock;
+	var SelectControl      = wp.components.SelectControl;
 	var dispatch           = wp.data.dispatch;
 	var __                 = wp.i18n.__;
 
@@ -182,7 +184,40 @@
 		var s12 = useState( true );    var detectDyn   = s12[0]; var setDetectDyn   = s12[1];
 		// steps: 'input' | 'result'
 
+		// Mockup CSS import + structured report.
+		var s13 = useState( '' );        var cssValue   = s13[0]; var setCssValue   = s13[1];
+		var s14 = useState( 'extract' ); var cssMode    = s14[0]; var setCssMode    = s14[1];
+		var s15 = useState( null );      var cssExtract = s15[0]; var setCssExtract = s15[1];
+		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
+		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
+		var s18 = useState( [] );        var report     = s18[0]; var setReport     = s18[1];
+		var s19 = useState( '' );        var assetsMsg  = s19[0]; var setAssetsMsg  = s19[1];
+		var s20 = useState( false );     var assetsBusy = s20[0]; var setAssetsBusy = s20[1];
+
 		var fileRef = useRef( null );
+
+		// Save selected library items into the server-side manifest so this and
+		// every future conversion resolves the mockup's image filenames.
+		function handleAssetsImport( selection ) {
+			var ids = ( selection || [] ).map( function ( m ) { return m.id; } ).filter( Boolean );
+			if ( ! ids.length ) {
+				return;
+			}
+			setAssetsBusy( true );
+			setAssetsMsg( '' );
+			apiFetch( {
+				path: '/ekwa/v1/mc-manifest',
+				method: 'POST',
+				data: { attachment_ids: ids },
+			} ).then( function ( res ) {
+				setAssetsBusy( false );
+				setAssetsMsg( res.saved + ' ' + __( 'file(s) added — site manifest now has', 'ekwa' ) + ' ' + res.total + ' ' + __( 'entries.', 'ekwa' ) );
+				setUseServerM( true );
+			} ).catch( function ( err ) {
+				setAssetsBusy( false );
+				setAssetsMsg( __( 'Manifest save failed: ', 'ekwa' ) + ( err.message || '' ) );
+			} );
+		}
 
 		// ── Handlers ─────────────────────────────────────────────────
 
@@ -198,6 +233,11 @@
 				use_server_manifest: useServerM,
 				detect_dynamic: detectDyn,
 			};
+
+			if ( cssValue.trim() ) {
+				body.css      = cssValue;
+				body.css_mode = cssMode;
+			}
 
 			if ( ! useServerM && manifestData ) {
 				body.manifest = manifestData;
@@ -223,6 +263,10 @@
 			} ).then( function ( res ) {
 				setMarkup( res.markup || '' );
 				setWarnings( res.warnings || [] );
+				setReport( res.report || [] );
+				setCssExtract( res.css_extract || null );
+				setCssSaved( !! res.css_saved );
+				setCssScoped( res.css_scoped || '' );
 				setConverting( false );
 				setStep( 'result' );
 
@@ -251,10 +295,21 @@
 		function handleInsert() {
 			if ( ! markup ) return;
 			var blocks = parse( markup );
-			if ( blocks && blocks.length ) {
-				dispatch( 'core/block-editor' ).insertBlocks( blocks );
-				onClose();
+			if ( ! blocks || ! blocks.length ) return;
+
+			// "Attach to section" CSS mode: carry the mockup CSS in the wrapper's
+			// scopedCss attribute so it inlines only where this section renders.
+			if ( cssScoped ) {
+				if ( blocks.length === 1 && blocks[0].name === 'ekwa/div' ) {
+					var existing = blocks[0].attributes.scopedCss || '';
+					blocks[0].attributes.scopedCss = existing ? existing + '\n\n' + cssScoped : cssScoped;
+				} else {
+					blocks = [ createBlock( 'ekwa/div', { scopedCss: cssScoped, className: 'ekwa-mc-import' }, blocks ) ];
+				}
 			}
+
+			dispatch( 'core/block-editor' ).insertBlocks( blocks );
+			onClose();
 		}
 
 		function handleCopy() {
@@ -332,9 +387,56 @@
 				} )
 			);
 
+			// Mockup CSS import.
+			inputChildren.push(
+				el( 'div', { key: 'css', className: 'ekwa-mc-css' },
+					el( TextareaControl, {
+						label: __( 'Mockup CSS (optional)', 'ekwa' ),
+						value: cssValue,
+						onChange: setCssValue,
+						rows: 8,
+						className: 'ekwa-mc-textarea',
+						placeholder: '/* paste the mockup’s style.css here */',
+						help: __( 'Fonts and colors are always extracted and shown after conversion.', 'ekwa' ),
+					} ),
+					cssValue.trim() ? el( SelectControl, {
+						label: __( 'CSS destination', 'ekwa' ),
+						value: cssMode,
+						options: [
+							{ label: __( 'Just extract fonts & colors', 'ekwa' ), value: 'extract' },
+							{ label: __( 'Append to child theme style.css', 'ekwa' ), value: 'child' },
+							{ label: __( 'Attach to section as Scoped CSS (inlined only where it renders)', 'ekwa' ), value: 'scoped' },
+						],
+						onChange: setCssMode,
+					} ) : null
+				)
+			);
+
 			// Manifest settings.
 			inputChildren.push(
 				el( 'div', { key: 'manifest', className: 'ekwa-mc-manifest' },
+					el( 'div', { className: 'ekwa-mc-assets-import' },
+						el( MediaUploadCheck, null,
+							el( MediaUpload, {
+								onSelect: handleAssetsImport,
+								allowedTypes: [ 'image', 'video', 'audio' ],
+								multiple: true,
+								gallery: false,
+								render: function ( obj ) {
+									return el( Button, {
+										isSecondary: true,
+										isBusy: assetsBusy,
+										disabled: assetsBusy,
+										onClick: obj.open,
+									}, __( 'Import mockup assets → site manifest', 'ekwa' ) );
+								},
+							} )
+						),
+						el( 'p', { className: 'ekwa-mc-assets-help' },
+							__( 'Upload/select the mockup’s images & videos once — filenames then resolve automatically in every conversion.', 'ekwa' )
+						),
+						assetsMsg ? el( 'p', { className: 'ekwa-mc-assets-msg' }, assetsMsg ) : null
+					),
 					el( ToggleControl, {
 						label: __( 'Use server manifest', 'ekwa' ),
 						help: __( 'Auto-detect from wp-content/uploads/', 'ekwa' ),
@@ -481,18 +583,109 @@
 			);
 		}
 
-		// Warnings (non-media).
-		var otherWarnings = ( warnings || [] ).filter( function ( w ) {
-			return ! /No manifest match/i.test( w );
+		// CSS import results — extracted fonts/colors + destination confirmation.
+		if ( cssExtract && ( ( cssExtract.fonts || [] ).length || ( cssExtract.colors || [] ).length ) ) {
+			var cssChildren = [
+				el( 'div', { key: 'css-head', className: 'ekwa-mc-report-head' },
+					el( 'strong', null, __( 'Mockup CSS', 'ekwa' ) ),
+					cssSaved
+						? el( 'span', { className: 'ekwa-mc-css-saved' }, __( '✓ appended to child style.css', 'ekwa' ) )
+						: ( cssScoped
+							? el( 'span', { className: 'ekwa-mc-css-saved' }, __( 'will attach to the section on insert', 'ekwa' ) )
+							: null )
+				),
+			];
+			if ( ( cssExtract.fonts || [] ).length ) {
+				cssChildren.push(
+					el( 'div', { key: 'fonts', className: 'ekwa-mc-css-row' },
+						el( 'span', { className: 'ekwa-mc-css-label' }, __( 'Fonts found:', 'ekwa' ) ),
+						cssExtract.fonts.map( function ( f, i ) {
+							return el( 'code', { key: i, className: 'ekwa-mc-chip' }, f );
+						} ),
+						el( 'span', { className: 'ekwa-mc-css-hint' },
+							__( '→ self-host them via Ekwa Settings → Fonts', 'ekwa' )
+						)
+					)
+				);
+			}
+			if ( ( cssExtract.colors || [] ).length ) {
+				cssChildren.push(
+					el( 'div', { key: 'colors', className: 'ekwa-mc-css-row' },
+						el( 'span', { className: 'ekwa-mc-css-label' }, __( 'Palette:', 'ekwa' ) ),
+						cssExtract.colors.map( function ( c, i ) {
+							return el( 'span', {
+								key: i,
+								className: 'ekwa-mc-swatch',
+								title: c.value + ( c.var ? ' (' + c.var + ')' : '' ) + ' ×' + c.count,
+							},
+								el( 'i', { style: { background: c.value } } ),
+								el( 'code', null, c.var || c.value )
+							);
+						} )
+					)
+				);
+			}
+			resultChildren.push( el( 'div', { key: 'css-extract', className: 'ekwa-mc-css-extract' }, cssChildren ) );
+		}
+
+		// Conversion report — grouped by category so nothing is silently lost.
+		var reportGroups = {};
+		( report || [] ).forEach( function ( entry ) {
+			var cat = entry.category || 'general';
+			if ( ! reportGroups[ cat ] ) { reportGroups[ cat ] = []; }
+			reportGroups[ cat ].push( entry.message );
 		} );
-		if ( otherWarnings.length > 0 ) {
-			resultChildren.push(
-				el( Notice, { key: 'warnings', status: 'warning', isDismissible: false },
+		var groupMeta = {
+			'dynamic':   { label: __( 'Dynamic data detected', 'ekwa' ),      tone: 'ok' },
+			'converted': { label: __( 'Rescued into editable blocks', 'ekwa' ), tone: 'ok' },
+			'media':     { label: __( 'Media', 'ekwa' ),                      tone: 'warn' },
+			'raw-html':  { label: __( 'Raw HTML fallbacks', 'ekwa' ),         tone: 'warn' },
+			'dropped':   { label: __( 'Dropped content', 'ekwa' ),            tone: 'bad' },
+			'general':   { label: __( 'Notes', 'ekwa' ),                      tone: 'warn' },
+		};
+		var groupOrder = [ 'dropped', 'raw-html', 'media', 'general', 'converted', 'dynamic' ];
+		var reportSections = [];
+		groupOrder.forEach( function ( cat ) {
+			var msgs = reportGroups[ cat ];
+			if ( ! msgs || ! msgs.length ) { return; }
+			// Media misses are handled by the mapping UI above — skip duplicates.
+			if ( cat === 'media' ) {
+				msgs = msgs.filter( function ( m ) { return ! /No manifest match/i.test( m ); } );
+				if ( ! msgs.length ) { return; }
+			}
+			var meta = groupMeta[ cat ] || groupMeta.general;
+			reportSections.push(
+				el( 'details', { key: cat, className: 'ekwa-mc-report-group ekwa-mc-report-group--' + meta.tone, open: meta.tone !== 'ok' },
+					el( 'summary', null, meta.label + ' (' + msgs.length + ')' ),
 					el( 'ul', { className: 'ekwa-mc-warnings-list' },
-						otherWarnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
+						msgs.map( function ( m, i ) { return el( 'li', { key: i }, m ); } )
 					)
 				)
 			);
+		} );
+		if ( reportSections.length ) {
+			resultChildren.push(
+				el( 'div', { key: 'report', className: 'ekwa-mc-report' },
+					el( 'div', { className: 'ekwa-mc-report-head' },
+						el( 'strong', null, __( 'Conversion report', 'ekwa' ) )
+					),
+					reportSections
+				)
+			);
+		} else {
+			// Fallback for older responses without a structured report.
+			var otherWarnings = ( warnings || [] ).filter( function ( w ) {
+				return ! /No manifest match/i.test( w );
+			} );
+			if ( otherWarnings.length > 0 ) {
+				resultChildren.push(
+					el( Notice, { key: 'warnings', status: 'warning', isDismissible: false },
+						el( 'ul', { className: 'ekwa-mc-warnings-list' },
+							otherWarnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
+						)
+					)
+				);
+			}
 		}
 
 		// Result markup.

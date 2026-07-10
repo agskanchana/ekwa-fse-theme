@@ -174,6 +174,22 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// Inline SVG block — arbitrary sanitized SVG markup (Mockup Converter target).
+	wp_register_script(
+		'ekwa-svg-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-svg-editor.js',
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-svg-editor.js' ),
+		true
+	);
+
+	register_block_type(
+		get_template_directory() . '/blocks/ekwa-svg',
+		array(
+			'render_callback' => 'ekwa_render_svg_block',
+		)
+	);
+
 	// Social Icons block.
 	wp_register_script(
 		'ekwa-social-editor',
@@ -1237,6 +1253,72 @@ function ekwa_render_svg_logo_block( $attrs ) {
 
 	$aria = '' !== $aria_label ? ' role="img" aria-label="' . esc_attr( $aria_label ) . '"' : '';
 	return '<span' . $aria . ' ' . $wrapper . '>' . $svg . '</span>';
+}
+
+/**
+ * Server-side render callback for the ekwa/svg block.
+ *
+ * Outputs arbitrary inline SVG, sanitized on every render (scripts and
+ * event handlers stripped), with className/anchor/width/height/aria merged
+ * onto the root <svg> element — no wrapper, clean markup.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
+ */
+function ekwa_render_svg_block( $attrs ) {
+	$raw = isset( $attrs['svg'] ) ? (string) $attrs['svg'] : '';
+	$svg = function_exists( 'ekwa_sanitize_svg_markup' ) ? ekwa_sanitize_svg_markup( $raw ) : '';
+	if ( '' === trim( $svg ) || false === stripos( $svg, '<svg' ) ) {
+		return '';
+	}
+
+	$class  = trim( 'ekwa-svg ' . ( isset( $attrs['className'] ) ? (string) $attrs['className'] : '' ) );
+	$width  = isset( $attrs['width'] ) ? trim( (string) $attrs['width'] ) : '';
+	$height = isset( $attrs['height'] ) ? trim( (string) $attrs['height'] ) : '';
+	$aria   = isset( $attrs['ariaLabel'] ) ? trim( (string) $attrs['ariaLabel'] ) : '';
+	$anchor = isset( $attrs['anchor'] ) ? trim( (string) $attrs['anchor'] ) : '';
+
+	$style = '';
+	if ( '' !== $width ) {
+		$style .= 'width:' . $width . ';';
+	}
+	if ( '' !== $height ) {
+		$style .= 'height:' . $height . ';';
+	}
+
+	return preg_replace_callback(
+		'/<svg\b([^>]*)>/i',
+		function ( $m ) use ( $class, $style, $aria, $anchor ) {
+			$svg_attrs = $m[1];
+
+			if ( preg_match( '/\bclass="([^"]*)"/i', $svg_attrs, $cm ) ) {
+				$svg_attrs = str_replace( $cm[0], 'class="' . esc_attr( trim( $cm[1] . ' ' . $class ) ) . '"', $svg_attrs );
+			} else {
+				$svg_attrs .= ' class="' . esc_attr( $class ) . '"';
+			}
+
+			if ( '' !== $style ) {
+				// Author-set size wins over the mockup's inline style.
+				$svg_attrs = preg_replace( '/\sstyle="[^"]*"/i', '', $svg_attrs );
+				$svg_attrs .= ' style="' . esc_attr( $style ) . '"';
+			}
+
+			if ( '' !== $anchor ) {
+				$svg_attrs = preg_replace( '/\sid="[^"]*"/i', '', $svg_attrs );
+				$svg_attrs .= ' id="' . esc_attr( $anchor ) . '"';
+			}
+
+			if ( '' !== $aria ) {
+				$svg_attrs .= ' role="img" aria-label="' . esc_attr( $aria ) . '"';
+			} elseif ( false === stripos( $svg_attrs, 'aria-' ) && false === stripos( $svg_attrs, 'role=' ) ) {
+				$svg_attrs .= ' aria-hidden="true"';
+			}
+
+			return '<svg' . $svg_attrs . '>';
+		},
+		$svg,
+		1
+	);
 }
 
 /**

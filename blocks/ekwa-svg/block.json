@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/svg",
+	"version": "1.0.0",
+	"title": "Ekwa SVG",
+	"category": "ekwa-elements",
+	"icon": "art",
+	"description": "Inline SVG markup, sanitized on output. The Mockup Converter uses this for inline <svg> elements.",
+	"textdomain": "ekwa",
+	"keywords": [ "svg", "vector", "graphic", "inline", "icon" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"svg":       { "type": "string", "default": "" },
+		"width":     { "type": "string", "default": "" },
+		"height":    { "type": "string", "default": "" },
+		"ariaLabel": { "type": "string", "default": "" }
+	},
+	"editorScript": "ekwa-svg-editor"
+}
