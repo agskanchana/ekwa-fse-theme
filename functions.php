@@ -152,6 +152,18 @@ require_once get_template_directory() . '/inc/ekwa-block-styles.php';
 require_once get_template_directory() . '/inc/ekwa-converter-api.php';
 
 /**
+ * AI governance — role gating, per-user daily rate limits, usage logging,
+ * payload ceilings. Loaded before the AI feature modules because they share
+ * its permission callback (ekwa_ai_rest_permission).
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-governance.php';
+
+/**
+ * Persistent AI Build/Refine sessions (conversation memory), stored per user.
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-sessions.php';
+
+/**
  * Load AI HTML generator for mockup converter (Gemini multimodal API).
  */
 require_once get_template_directory() . '/inc/ekwa-ai-hints.php';
@@ -226,6 +238,16 @@ require_once get_template_directory() . '/inc/ekwa-header-menu.php';
  * Load editor UX: ekwa block categories/branding, Select mode (X-ray).
  */
 require_once get_template_directory() . '/inc/ekwa-editor-ux.php';
+
+/**
+ * Load responsive layer: per-block device visibility + configurable breakpoints.
+ */
+require_once get_template_directory() . '/inc/ekwa-responsive.php';
+
+/**
+ * Starter child-theme generator (Ekwa Settings → General).
+ */
+require_once get_template_directory() . '/inc/ekwa-child-generator.php';
 
 /**
  * Enqueue theme stylesheet and Font Awesome.
@@ -516,6 +538,11 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_interlink_editor_script
  * Register theme support.
  */
 function ekwa_setup() {
+	// Load translations: parent /languages, then the active child theme's, so a
+	// child can override or add strings. Block metadata (block.json) is loaded
+	// automatically by core; this covers the PHP __() strings.
+	load_theme_textdomain( 'ekwa', get_template_directory() . '/languages' );
+
 	register_nav_menus( array(
 		'main_menu'       => __( 'Main Menu', 'ekwa' ),
 		'primary'         => __( 'Primary Menu', 'ekwa' ),

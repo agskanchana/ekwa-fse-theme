@@ -16,6 +16,7 @@
 	var el              = wp.element.createElement;
 	var Fragment        = wp.element.Fragment;
 	var useState        = wp.element.useState;
+	var useEffect       = wp.element.useEffect;
 	var useRef          = wp.element.useRef;
 	var createPortal    = wp.element.createPortal;
 	var registerPlugin  = wp.plugins.registerPlugin;
@@ -219,9 +220,94 @@
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
 
+		// Persistent conversation memory (create mode only — an edit session is
+		// tied to a specific existing selection, not a reusable conversation).
+		var ss1 = useState( null ); var sessionId   = ss1[0]; var setSessionId   = ss1[1];
+		var ss2 = useState( [] );   var sessions    = ss2[0]; var setSessions    = ss2[1];
+		var ss3 = useState( false ); var showSessions = ss3[0]; var setShowSessions = ss3[1];
+		var ss4 = useState( false ); var restoring   = ss4[0]; var setRestoring   = ss4[1];
+		var sessionsEnabled = ! editMode;
+
 		var fileRef = useRef( null );
 
 		var step = markup ? 'result' : 'generate';
+
+		// Load the recent-sessions index once when the modal mounts.
+		useEffect( function () {
+			if ( ! sessionsEnabled ) { return; }
+			apiFetch( { path: '/ekwa/v1/ai-sessions' } ).then( function ( res ) {
+				if ( res && Array.isArray( res.sessions ) ) { setSessions( res.sessions ); }
+			} ).catch( function () { /* non-fatal */ } );
+		}, [] );
+
+		// Persist the current conversation after a generate/refine turn. Upserts
+		// by sessionId; stores the returned id and refreshes the index.
+		function persistSession( turns, newMarkup, newCss ) {
+			if ( ! sessionsEnabled ) { return; }
+			apiFetch( {
+				path: '/ekwa/v1/ai-sessions',
+				method: 'POST',
+				data: {
+					id:      sessionId,
+					turns:   turns,
+					markup:  newMarkup,
+					css:     newCss,
+					context: context,
+				},
+			} ).then( function ( res ) {
+				if ( ! res || ! res.id ) { return; }
+				if ( ! sessionId ) { setSessionId( res.id ); }
+				// Move/insert this session at the top of the local index.
+				setSessions( function ( prev ) {
+					var without = ( prev || [] ).filter( function ( s ) { return s.id !== res.id; } );
+					return [ { id: res.id, title: res.title, context: context, updated: res.updated } ].concat( without );
+				} );
+			} ).catch( function () { /* saving memory is best-effort */ } );
+		}
+
+		// Restore a saved session: load its full turn history + result and drop
+		// the user straight into the result view to keep refining.
+		function restoreSession( id ) {
+			setRestoring( true );
+			apiFetch( { path: '/ekwa/v1/ai-sessions/' + encodeURIComponent( id ) } ).then( function ( data ) {
+				setHistory( Array.isArray( data.turns ) ? data.turns : [] );
+				setMarkup( data.markup || '' );
+				setCss( data.css || '' );
+				setRenderedHtml( '' );
+				setWarnings( [] );
+				setContext( data.context || 'section' );
+				setSessionId( data.id );
+				setError( null );
+				setInserted( false );
+				setShowSessions( false );
+				setRestoring( false );
+			} ).catch( function () {
+				setError( __( 'Could not load that session.', 'ekwa' ) );
+				setRestoring( false );
+			} );
+		}
+
+		function deleteSession( id ) {
+			apiFetch( { path: '/ekwa/v1/ai-sessions/' + encodeURIComponent( id ), method: 'DELETE' } )
+				.then( function () {
+					setSessions( function ( prev ) {
+						return ( prev || [] ).filter( function ( s ) { return s.id !== id; } );
+					} );
+					if ( id === sessionId ) { setSessionId( null ); }
+				} ).catch( function () { /* non-fatal */ } );
+		}
+
+		function startNewSession() {
+			setSessionId( null );
+			setHistory( [] );
+			setMarkup( '' );
+			setCss( '' );
+			setRenderedHtml( '' );
+			setWarnings( [] );
+			setError( null );
+			setInserted( false );
+			setShowSessions( false );
+		}
 
 		// ── Image handling ─────────────────────────────────────────────
 
@@ -340,6 +426,14 @@
 				setRenderedHtml( res.rendered_html || '' );
 				setWarnings( res.warnings || [] );
 
+				// Persist this turn to conversation memory (best-effort). Drop the
+				// heavy base64 image payloads from stored turns to stay small.
+				var storedHistory = newHistory.map( function ( t ) {
+					if ( t.role === 'user' ) { return { role: 'user', text: t.text }; }
+					return t;
+				} );
+				persistSession( storedHistory, res.block_markup || '', res.extracted_css || '' );
+
 				setPrompt( '' );
 				images.forEach( function ( img ) {
 					if ( img.previewUrl ) {
@@ -370,6 +464,9 @@
 			setError( null );
 			setIsFullscreen( false );
 			setInserted( false );
+			// Emptying the conversation starts a fresh session, so the next
+			// generation gets a new id instead of overwriting the saved one.
+			if ( ! editMode ) { setSessionId( null ); }
 		}
 
 		// ── Insert / apply into editor ─────────────────────────────────
@@ -417,6 +514,50 @@
 
 		if ( step === 'generate' ) {
 			children.push( contextBadge );
+
+			// Recent sessions (conversation memory).
+			if ( sessionsEnabled && sessions.length ) {
+				var sessionRows = sessions.map( function ( sObj ) {
+					return el( 'li', { key: sObj.id, className: 'ekwa-ai-session-row' },
+						el( 'button', {
+							type: 'button',
+							className: 'ekwa-ai-session-restore',
+							disabled: restoring,
+							onClick: function () { restoreSession( sObj.id ); },
+						},
+							el( 'span', { className: 'ekwa-ai-session-title' }, sObj.title || __( 'Untitled', 'ekwa' ) ),
+							el( 'span', { className: 'ekwa-ai-session-meta' },
+								( CONTEXT_LABELS[ sObj.context ] || CONTEXT_LABELS.section ) + ' · ' + ( sObj.updated || '' )
+							)
+						),
+						el( Button, {
+							className: 'ekwa-ai-session-del',
+							icon: 'trash',
+							label: __( 'Delete session', 'ekwa' ),
+							isDestructive: true,
+							isSmall: true,
+							onClick: function () { deleteSession( sObj.id ); },
+						} )
+					);
+				} );
+
+				children.push(
+					el( 'div', { key: 'sessions', className: 'ekwa-ai-sessions' },
+						el( 'div', { className: 'ekwa-ai-sessions-head' },
+							el( Button, {
+								isLink: true,
+								onClick: function () { setShowSessions( ! showSessions ); },
+							}, ( showSessions ? '▾ ' : '▸ ' ) + __( 'Recent sessions', 'ekwa' ) + ' (' + sessions.length + ')' ),
+							sessionId ? el( Button, {
+								isSecondary: true,
+								isSmall: true,
+								onClick: startNewSession,
+							}, __( 'New session', 'ekwa' ) ) : null
+						),
+						showSessions ? el( 'ul', { className: 'ekwa-ai-sessions-list' }, sessionRows ) : null
+					)
+				);
+			}
 
 			children.push(
 				el( 'p', { key: 'desc', className: 'ekwa-ai-desc' },
@@ -616,6 +757,30 @@
 					}, copiedCss ? __( 'Copied!', 'ekwa' ) : __( 'Copy CSS', 'ekwa' ) )
 				)
 			);
+
+			// Conversation thread — the visible chat history for this session.
+			if ( history.length ) {
+				var threadItems = history.map( function ( turn, i ) {
+					if ( turn.role === 'user' ) {
+						return el( 'div', { key: i, className: 'ekwa-ai-msg ekwa-ai-msg--user' },
+							el( 'span', { className: 'ekwa-ai-msg__who' }, __( 'You', 'ekwa' ) ),
+							el( 'div', { className: 'ekwa-ai-msg__body' }, turn.text || '' )
+						);
+					}
+					return el( 'div', { key: i, className: 'ekwa-ai-msg ekwa-ai-msg--ai' },
+						el( 'span', { className: 'ekwa-ai-msg__who' }, __( 'AI', 'ekwa' ) ),
+						el( 'div', { className: 'ekwa-ai-msg__body' },
+							i <= 1 ? __( 'Built the section.', 'ekwa' ) : __( 'Updated the section.', 'ekwa' )
+						)
+					);
+				} );
+				children.push(
+					el( 'div', { key: 'thread', className: 'ekwa-ai-thread' },
+						el( 'div', { className: 'ekwa-ai-thread__head' }, __( 'Conversation', 'ekwa' ) ),
+						threadItems
+					)
+				);
+			}
 
 			// Refine section.
 			var turnCount = Math.floor( history.length / 2 );

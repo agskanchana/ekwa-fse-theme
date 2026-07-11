@@ -72,6 +72,11 @@ function ekwa_admin_enqueue( $hook ) {
 		'webpRegenUrl'     => esc_url_raw( rest_url( 'ekwa/v1/webp-regen-batch' ) ),
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
 		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
+		'aiTestKeyUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ai-test-key' ) ),
+		'aiTestStrings'    => array(
+			'testing' => __( 'Testing…', 'ekwa' ),
+			'error'   => __( 'Request failed.', 'ekwa' ),
+		),
 		'webpStrings'      => array(
 			'starting'  => __( 'Starting…', 'ekwa' ),
 			'progress'  => __( '%1$s of %2$s processed', 'ekwa' ),
@@ -266,7 +271,6 @@ function ekwa_save_settings() {
 		'ekwa_share_image'      => 'absint',
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
-		'ekwa_gemini_api_key'   => 'sanitize_text_field',
 		'ekwa_interlink_enabled'      => 'sanitize_text_field',
 		'ekwa_interlink_refine_model' => 'sanitize_text_field',
 		'ekwa_chatbot_src'      => 'ekwa_sanitize_chatbot_src',
@@ -283,6 +287,28 @@ function ekwa_save_settings() {
 	foreach ( $fields as $key => $sanitize ) {
 		$value = isset( $_POST[ $key ] ) ? call_user_func( $sanitize, wp_unslash( $_POST[ $key ] ) ) : '';
 		update_option( $key, $value );
+	}
+
+	// Gemini API key — masked field. Only overwrite when a real new value is
+	// typed; a blank submit (or the •••• placeholder) keeps the stored key.
+	if ( isset( $_POST['ekwa_gemini_api_key'] ) ) {
+		$submitted = sanitize_text_field( wp_unslash( $_POST['ekwa_gemini_api_key'] ) );
+		if ( '' !== $submitted && false === strpos( $submitted, '•' ) ) {
+			update_option( 'ekwa_gemini_api_key', $submitted );
+		}
+	}
+
+	// AI governance — minimum role + per-user daily request cap.
+	$ai_role = isset( $_POST['ekwa_ai_min_role'] ) ? sanitize_text_field( wp_unslash( $_POST['ekwa_ai_min_role'] ) ) : 'contributor';
+	if ( ! in_array( $ai_role, array( 'administrator', 'editor', 'author', 'contributor' ), true ) ) {
+		$ai_role = 'contributor';
+	}
+	update_option( 'ekwa_ai_min_role', $ai_role );
+	update_option( 'ekwa_ai_daily_limit', isset( $_POST['ekwa_ai_daily_limit'] ) ? max( 0, absint( $_POST['ekwa_ai_daily_limit'] ) ) : 100 );
+
+	// Project memory — standing context injected into every AI prompt.
+	if ( isset( $_POST['ekwa_ai_project_memory'] ) ) {
+		update_option( 'ekwa_ai_project_memory', sanitize_textarea_field( wp_unslash( $_POST['ekwa_ai_project_memory'] ) ) );
 	}
 
 	// Related Posts template HTML — keep raw markup but normalize line endings.
@@ -385,6 +411,15 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_lean_head', isset( $_POST['ekwa_perf_lean_head'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_image_dimensions', isset( $_POST['ekwa_perf_image_dimensions'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_preload_banner', isset( $_POST['ekwa_perf_preload_banner'] ) ? 1 : 0 );
+
+	// Responsive breakpoints (global). Clamp + keep mobile < tablet so the
+	// three visibility bands never overlap or invert.
+	$bp_tablet = isset( $_POST['ekwa_bp_tablet'] ) ? absint( $_POST['ekwa_bp_tablet'] ) : 1199;
+	$bp_mobile = isset( $_POST['ekwa_bp_mobile'] ) ? absint( $_POST['ekwa_bp_mobile'] ) : 599;
+	$bp_tablet = max( 480, min( 1920, $bp_tablet ) );
+	$bp_mobile = max( 320, min( $bp_tablet - 1, $bp_mobile ) );
+	update_option( 'ekwa_bp_tablet', $bp_tablet );
+	update_option( 'ekwa_bp_mobile', $bp_mobile );
 
 	// Critical CSS — opt-in inline of above-the-fold styles. The pasted code is
 	// stored raw (it's output inside <style>), so neutralise any style/script
@@ -1108,6 +1143,8 @@ function ekwa_render_settings_page() {
 						</table>
 					</div>
 
+				<?php if ( function_exists( "ekwa_child_generator_card" ) ) { ekwa_child_generator_card(); } ?>
+
 				</div><!-- /general -->
 
 			<!-- ========== BRANDING TAB ========== -->
@@ -1416,8 +1453,24 @@ function ekwa_render_settings_page() {
 					$preload_banner_val = get_option( 'ekwa_perf_preload_banner', 0 );
 					$critical_css_val  = get_option( 'ekwa_perf_critical_css', 0 );
 					$critical_css_code = (string) get_option( 'ekwa_perf_critical_css_code', '' );
+					$bp_tablet_val     = (int) get_option( 'ekwa_bp_tablet', 1199 );
+					$bp_mobile_val     = (int) get_option( 'ekwa_bp_mobile', 599 );
 					?>
 					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Responsive breakpoints', 'ekwa' ); ?></th>
+							<td>
+								<label style="display:inline-block;margin-right:16px;">
+									<?php esc_html_e( 'Tablet up to', 'ekwa' ); ?>
+									<input type="number" name="ekwa_bp_tablet" value="<?php echo esc_attr( $bp_tablet_val ); ?>" min="480" max="1920" step="1" style="width:90px;" /> px
+								</label>
+								<label style="display:inline-block;">
+									<?php esc_html_e( 'Mobile up to', 'ekwa' ); ?>
+									<input type="number" name="ekwa_bp_mobile" value="<?php echo esc_attr( $bp_mobile_val ); ?>" min="320" max="1919" step="1" style="width:90px;" /> px
+								</label>
+								<p class="description"><?php esc_html_e( 'Drives the per-block “Responsive visibility” control (hide on desktop / tablet / mobile). Desktop = wider than the tablet value; tablet = between the two; mobile = up to the mobile value. Defaults 1199 / 599 match the previous hardcoded breakpoints.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
 						<tr>
 							<th><?php esc_html_e( 'Lazy loading mode', 'ekwa' ); ?></th>
 							<td>
@@ -1646,16 +1699,24 @@ function ekwa_render_settings_page() {
 						<tr>
 							<th><label for="ekwa_gemini_api_key"><?php esc_html_e( 'Gemini API Key', 'ekwa' ); ?></label></th>
 							<td>
-								<?php $gemini_key = get_option( 'ekwa_gemini_api_key', '' ); ?>
-								<input type="password" id="ekwa_gemini_api_key" name="ekwa_gemini_api_key" value="<?php echo esc_attr( $gemini_key ); ?>" class="regular-text" autocomplete="off" />
+								<?php
+								$gemini_key    = get_option( 'ekwa_gemini_api_key', '' );
+								$key_via_const = defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY;
+								$key_masked    = ( ! $key_via_const && $gemini_key && function_exists( 'ekwa_ai_mask_key' ) ) ? ekwa_ai_mask_key( $gemini_key ) : '';
+								?>
+								<input type="password" id="ekwa_gemini_api_key" name="ekwa_gemini_api_key" value="" class="regular-text" autocomplete="off" placeholder="<?php echo $key_masked ? esc_attr( $key_masked . '  —  ' . __( 'leave blank to keep', 'ekwa' ) ) : esc_attr__( 'Paste your key…', 'ekwa' ); ?>" <?php echo $key_via_const ? 'disabled' : ''; ?> />
+								<?php if ( ! $key_via_const ) : ?>
+									<button type="button" class="button" id="ekwa-ai-test-key"<?php echo ( $gemini_key ) ? '' : ' disabled'; ?>><?php esc_html_e( 'Test key', 'ekwa' ); ?></button>
+									<span id="ekwa-ai-test-key-status" style="margin-left:8px;"></span>
+								<?php endif; ?>
 								<p class="description">
 									<?php
-									if ( defined( 'EKWA_GEMINI_API_KEY' ) && EKWA_GEMINI_API_KEY ) {
+									if ( $key_via_const ) {
 										esc_html_e( 'API key is set via wp-config.php (EKWA_GEMINI_API_KEY). This field is ignored.', 'ekwa' );
 									} else {
 										printf(
 											/* translators: %s: link to Google AI Studio */
-											esc_html__( 'Get a free API key from %s. Used by the editor\'s "Generate with AI" tool to produce HTML from prompts and screenshots.', 'ekwa' ),
+											esc_html__( 'Get a free API key from %s. The stored key is never shown in full — leave the field blank to keep the current key.', 'ekwa' ),
 											'<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>'
 										);
 									}
@@ -1663,7 +1724,104 @@ function ekwa_render_settings_page() {
 								</p>
 							</td>
 						</tr>
+						<tr>
+							<th><label for="ekwa_ai_min_role"><?php esc_html_e( 'Minimum role for AI', 'ekwa' ); ?></label></th>
+							<td>
+								<?php $ai_min_role = get_option( 'ekwa_ai_min_role', 'contributor' ); ?>
+								<select id="ekwa_ai_min_role" name="ekwa_ai_min_role">
+									<option value="administrator" <?php selected( $ai_min_role, 'administrator' ); ?>><?php esc_html_e( 'Administrators only', 'ekwa' ); ?></option>
+									<option value="editor" <?php selected( $ai_min_role, 'editor' ); ?>><?php esc_html_e( 'Editors and up', 'ekwa' ); ?></option>
+									<option value="author" <?php selected( $ai_min_role, 'author' ); ?>><?php esc_html_e( 'Authors and up', 'ekwa' ); ?></option>
+									<option value="contributor" <?php selected( $ai_min_role, 'contributor' ); ?>><?php esc_html_e( 'Contributors and up (default)', 'ekwa' ); ?></option>
+								</select>
+								<p class="description"><?php esc_html_e( 'Who can trigger the billable AI features (Generate/Build/Edit with AI, alt text, internal-link refine). Lower roles are blocked at the API level.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_ai_daily_limit"><?php esc_html_e( 'Daily requests per user', 'ekwa' ); ?></label></th>
+							<td>
+								<?php
+								$ai_daily = (int) get_option( 'ekwa_ai_daily_limit', 100 );
+								$totals   = function_exists( 'ekwa_ai_usage_totals_today' ) ? ekwa_ai_usage_totals_today() : array( 'requests' => 0, 'tokens' => 0 );
+								?>
+								<input type="number" id="ekwa_ai_daily_limit" name="ekwa_ai_daily_limit" value="<?php echo esc_attr( $ai_daily ); ?>" min="0" step="1" style="width:100px;" />
+								<p class="description">
+									<?php esc_html_e( 'Caps how many AI calls each non-admin user can make per day (resets at midnight). 0 = unlimited. Administrators are never capped.', 'ekwa' ); ?>
+									<br>
+									<?php
+									printf(
+										/* translators: 1: request count, 2: token count */
+										esc_html__( 'Today across all users: %1$d requests, ~%2$s tokens.', 'ekwa' ),
+										(int) $totals['requests'],
+										esc_html( number_format_i18n( (int) $totals['tokens'] ) )
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_ai_project_memory"><?php esc_html_e( 'Project memory', 'ekwa' ); ?></label></th>
+							<td>
+								<?php $project_memory = (string) get_option( 'ekwa_ai_project_memory', '' ); ?>
+								<textarea id="ekwa_ai_project_memory" name="ekwa_ai_project_memory" rows="6" class="large-text" placeholder="<?php esc_attr_e( 'e.g. This site is a dental clinic in Ohio. Tone: warm, professional. Use the brand fonts and teal palette. Never invent phone numbers or hours. Avoid stock-photo clichés.', 'ekwa' ); ?>"><?php echo esc_textarea( $project_memory ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'Standing context about this site (industry, brand voice, preferred fonts/colors, dos & don\'ts). Injected into every AI Build / Generate / Refine prompt so you don\'t re-type it each time. Up to ~4000 characters.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
 					</table>
+
+					<?php
+					$usage_log = get_option( 'ekwa_ai_usage_log', array() );
+					if ( is_array( $usage_log ) && ! empty( $usage_log ) ) :
+						$recent = array_slice( array_reverse( $usage_log ), 0, 20 );
+						?>
+						<h3><?php esc_html_e( 'Recent AI usage', 'ekwa' ); ?></h3>
+						<table class="widefat striped" style="max-width:720px;">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'When', 'ekwa' ); ?></th>
+									<th><?php esc_html_e( 'User', 'ekwa' ); ?></th>
+									<th><?php esc_html_e( 'Feature', 'ekwa' ); ?></th>
+									<th><?php esc_html_e( 'Model', 'ekwa' ); ?></th>
+									<th style="text-align:right;"><?php esc_html_e( 'Tokens', 'ekwa' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $recent as $row ) : ?>
+									<tr>
+										<td><?php echo esc_html( isset( $row['time'] ) ? $row['time'] : '' ); ?></td>
+										<td><?php echo esc_html( isset( $row['user'] ) ? $row['user'] : '' ); ?></td>
+										<td><code><?php echo esc_html( isset( $row['feature'] ) ? $row['feature'] : '' ); ?></code></td>
+										<td><?php echo esc_html( isset( $row['model'] ) ? $row['model'] : '' ); ?></td>
+										<td style="text-align:right;"><?php echo esc_html( number_format_i18n( isset( $row['tokens'] ) ? (int) $row['tokens'] : 0 ) ); ?></td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+					<script>
+					document.addEventListener( 'DOMContentLoaded', function () {
+						var btn = document.getElementById( 'ekwa-ai-test-key' );
+						if ( ! btn || typeof ekwaAdmin === 'undefined' ) { return; }
+						var status = document.getElementById( 'ekwa-ai-test-key-status' );
+						btn.addEventListener( 'click', function () {
+							btn.disabled = true;
+							status.textContent = ekwaAdmin.aiTestStrings.testing;
+							status.style.color = '#646970';
+							fetch( ekwaAdmin.aiTestKeyUrl, {
+								method: 'POST',
+								headers: { 'X-WP-Nonce': ekwaAdmin.webpRestNonce },
+							} ).then( function ( r ) { return r.json(); } ).then( function ( res ) {
+								btn.disabled = false;
+								status.textContent = res.message || '';
+								status.style.color = res.ok ? '#008a20' : '#d63638';
+							} ).catch( function () {
+								btn.disabled = false;
+								status.textContent = ekwaAdmin.aiTestStrings.error;
+								status.style.color = '#d63638';
+							} );
+						} );
+					} );
+					</script>
 				</div>
 				<div class="ekwa-section">
 						<h2><?php esc_html_e( 'Internal Linking Suggestions', 'ekwa' ); ?></h2>

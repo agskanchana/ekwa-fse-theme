@@ -27,9 +27,7 @@ function ekwa_ai_generate_register_routes() {
 	register_rest_route( 'ekwa/v1', '/ai-generate-html', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_generate_handle_request',
-		'permission_callback' => function () {
-			return current_user_can( 'edit_posts' );
-		},
+		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args' => array(
 			'prompt' => array(
 				'required'          => true,
@@ -92,6 +90,9 @@ function ekwa_ai_generate_allowed_models() {
  * @return WP_REST_Response|WP_Error
  */
 function ekwa_ai_generate_handle_request( $request ) {
+	if ( function_exists( 'ekwa_ai_current_feature' ) ) {
+		ekwa_ai_current_feature( 'html' );
+	}
 	$api_key = ekwa_get_ai_api_key();
 	if ( ! $api_key ) {
 		return new WP_Error(
@@ -239,6 +240,10 @@ PROMPT;
 
 	if ( function_exists( 'ekwa_ai_build_hints_section' ) ) {
 		$prompt .= ekwa_ai_build_hints_section( $context );
+	}
+
+	if ( function_exists( 'ekwa_ai_project_memory_block' ) ) {
+		$prompt .= ekwa_ai_project_memory_block();
 	}
 
 	return $context_cue . $prompt;
@@ -456,7 +461,15 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 		return new WP_Error( 'gemini_empty', 'Gemini returned an empty response.' );
 	}
 
-	return array( 'content' => $content );
+	// Usage accounting: every billable call bumps the caller's daily counter
+	// and appends to the rolling log (inc/ekwa-ai-governance.php).
+	$tokens = isset( $data['usageMetadata']['totalTokenCount'] ) ? (int) $data['usageMetadata']['totalTokenCount'] : 0;
+	if ( function_exists( 'ekwa_ai_record_usage' ) ) {
+		$feature = function_exists( 'ekwa_ai_current_feature' ) ? ekwa_ai_current_feature() : 'ai';
+		ekwa_ai_record_usage( $tokens, $feature, $model );
+	}
+
+	return array( 'content' => $content, 'tokens' => $tokens );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

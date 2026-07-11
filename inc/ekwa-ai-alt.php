@@ -21,9 +21,7 @@ function ekwa_ai_alt_register_routes() {
 	register_rest_route( 'ekwa/v1', '/generate-alt', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_alt_handle_request',
-		'permission_callback' => function () {
-			return current_user_can( 'edit_posts' );
-		},
+		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args'                => array(
 			'attachment_id' => array(
 				'required' => true,
@@ -99,6 +97,9 @@ function ekwa_ai_alt_image_base64( $attachment_id ) {
  * @return WP_REST_Response|WP_Error
  */
 function ekwa_ai_alt_handle_request( $request ) {
+	if ( function_exists( 'ekwa_ai_current_feature' ) ) {
+		ekwa_ai_current_feature( 'alt-text' );
+	}
 	$api_key = ekwa_get_ai_api_key();
 	if ( ! $api_key ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key is not configured (Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );

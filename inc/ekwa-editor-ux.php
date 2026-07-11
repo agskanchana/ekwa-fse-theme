@@ -111,6 +111,15 @@ function ekwa_enqueue_select_mode_script() {
 			'hasChildTheme'     => get_template_directory() !== get_stylesheet_directory(),
 		)
 	);
+
+	// Design overlay — pixel-perfect reference image over the canvas.
+	wp_enqueue_script(
+		'ekwa-design-overlay',
+		get_template_directory_uri() . '/assets/js/ekwa-design-overlay.js',
+		array( 'wp-plugins', 'wp-editor', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-design-overlay.js' ),
+		true
+	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_select_mode_script' );
 

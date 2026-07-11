@@ -942,6 +942,108 @@
 	padding: 8px 12px;
 }
 
+/* AI Block Builder — conversation thread (visible chat history) */
+.ekwa-ai-thread {
+	margin: 12px 0;
+	padding: 12px 14px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	max-height: 260px;
+	overflow-y: auto;
+}
+.ekwa-ai-thread__head {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #64748b;
+	margin-bottom: 8px;
+}
+.ekwa-ai-msg {
+	display: flex;
+	gap: 8px;
+	padding: 6px 0;
+	border-top: 1px solid #eef2f6;
+	font-size: 13px;
+	line-height: 1.5;
+}
+.ekwa-ai-msg:first-of-type {
+	border-top: none;
+}
+.ekwa-ai-msg__who {
+	flex-shrink: 0;
+	width: 34px;
+	font-size: 11px;
+	font-weight: 700;
+	padding-top: 1px;
+}
+.ekwa-ai-msg--user .ekwa-ai-msg__who { color: #0e7c6b; }
+.ekwa-ai-msg--ai .ekwa-ai-msg__who   { color: #6b7280; }
+.ekwa-ai-msg--ai .ekwa-ai-msg__body  { color: #6b7280; font-style: italic; }
+.ekwa-ai-msg__body {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* AI Block Builder — recent sessions (conversation memory) */
+.ekwa-ai-sessions {
+	margin: 4px 0 14px;
+	padding: 10px 12px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+}
+.ekwa-ai-sessions-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.ekwa-ai-sessions-list {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	max-height: 220px;
+	overflow-y: auto;
+}
+.ekwa-ai-session-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	border-top: 1px solid #eef2f6;
+}
+.ekwa-ai-session-restore {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	padding: 8px 6px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	text-align: left;
+	border-radius: 4px;
+}
+.ekwa-ai-session-restore:hover {
+	background: #eef2f6;
+}
+.ekwa-ai-session-restore:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.ekwa-ai-session-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: #1e1e1e;
+}
+.ekwa-ai-session-meta {
+	font-size: 11px;
+	color: #6b7280;
+}
+
 /* AI Block Builder — auto-detected context badge */
 .ekwa-ai-blocks-modal .ekwa-ai-result-header {
 	display: flex;
@@ -1265,6 +1367,33 @@ body.ekwa-select-mode .editor-styles-wrapper .wp-block,
 	margin: 6px 0 0;
 	font-size: 12px;
 	color: #757575;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE VISIBILITY — editor indicator
+   Blocks hidden on some screen size get a corner badge (D/T/M) so the choice
+   is visible while editing, without actually hiding the block in the canvas.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ekwa-has-hidden {
+	position: relative;
+	outline: 1px dashed rgba(14, 124, 107, 0.5);
+	outline-offset: -1px;
+}
+.ekwa-has-hidden::after {
+	content: "👁 " attr(data-ekwa-hidden);
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 20;
+	padding: 1px 6px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.6;
+	letter-spacing: 0.04em;
+	color: #fff;
+	background: #0e7c6b;
+	border-bottom-left-radius: 4px;
+	pointer-events: none;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

@@ -32,9 +32,7 @@ function ekwa_ai_generate_blocks_register_routes() {
 	register_rest_route( 'ekwa/v1', '/ai-generate-blocks', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_generate_blocks_handle_request',
-		'permission_callback' => function () {
-			return current_user_can( 'edit_posts' );
-		},
+		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args' => array(
 			'prompt' => array(
 				'required'          => true,
@@ -83,6 +81,9 @@ function ekwa_ai_generate_blocks_register_routes() {
  * @return WP_REST_Response|WP_Error
  */
 function ekwa_ai_generate_blocks_handle_request( $request ) {
+	if ( function_exists( 'ekwa_ai_current_feature' ) ) {
+		ekwa_ai_current_feature( 'edit' === $request->get_param( 'mode' ) ? 'blocks-edit' : 'blocks' );
+	}
 	$api_key = ekwa_get_ai_api_key();
 	if ( ! $api_key ) {
 		return new WP_Error(
@@ -298,11 +299,18 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
  * @return string
  */
 function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'create' ) {
+	// Site breakpoints (Ekwa Settings) so generated media queries match the
+	// theme's responsive visibility bands.
+	$bp          = function_exists( 'ekwa_responsive_breakpoints' ) ? ekwa_responsive_breakpoints() : array( 'tablet' => 1199, 'mobile' => 599 );
+	$tablet_max  = $bp['tablet'];
+	$mobile_max  = $bp['mobile'];
+	$desktop_min = $tablet_max + 1;
+
 	$context_cue = '';
 	if ( 'header' === $context ) {
 		$context_cue = "HEADER CONTEXT — strict rules:\n"
-			. "1. DESKTOP ONLY. The site has a separate mobile header. The whole header is your single top-level ekwa/div (className \"EKWA_SCOPE\"); hide it on smaller screens with this rule in your <style>: `@media (max-width: 1199.98px){ .EKWA_SCOPE{ display:none !important; } }`.\n"
-			. "2. NO mobile markup — no hamburger, no off-canvas drawer, no mobile toggle. Assume viewport ≥ 1200px.\n"
+			. "1. DESKTOP ONLY. The site has a separate mobile header. The whole header is your single top-level ekwa/div (className \"EKWA_SCOPE\"); hide it on smaller screens with this rule in your <style>: `@media (max-width: {$tablet_max}px){ .EKWA_SCOPE{ display:none !important; } }`.\n"
+			. "2. NO mobile markup — no hamburger, no off-canvas drawer, no mobile toggle. Assume viewport ≥ {$desktop_min}px.\n"
 			. "3. Use ekwa/header-menu for the PRIMARY navigation (never type menu items). Use core/site-logo OR ekwa/svg-logo for the logo. Every requested element (logo, menu, phone, search, address, social, button) MUST appear as its block.\n"
 			. "4. Keep it a compact header bar — no hero, no page body.\n\n";
 	} elseif ( 'footer' === $context ) {
@@ -345,6 +353,7 @@ STYLING RULES (scoped classes + one stylesheet — IMPORTANT):
 - COLORS & DESIGN TOKENS: When a SITE STYLESHEET is provided below, REUSE its existing CSS custom properties for colors (and for fonts, spacing, and radii where they fit) — e.g. `color: var(--brand-primary)`. Do NOT hardcode a hex/rgb value that an existing variable already represents, and do NOT declare a new color variable (in :root or on the wrapper) that duplicates one already defined in the site stylesheet. Only introduce a new variable when no suitable one exists; otherwise reference the existing var() directly.
 - DO NOT use any per-block `inlineStyle` attribute, and do NOT put a `style="..."` attribute on elements. All CSS goes in the <style> block.
 - LAYOUT: ekwa/div is the only layout container — do NOT use ekwa/flex, ekwa/grid, ekwa/container or ekwa/card-link (deprecated). Express flex rows, grids and centered max-width wrappers by writing display:flex / display:grid / max-width CSS under the wrapper's className in the <style> block, with @media rules for responsive column changes.
+- RESPONSIVE BREAKPOINTS — this site's bands are: mobile ≤ {$mobile_max}px, tablet {$mobile_max}–{$tablet_max}px, desktop ≥ {$desktop_min}px. Use these exact widths in your @media rules (e.g. `@media (max-width: {$tablet_max}px)` for tablet-and-down, `@media (max-width: {$mobile_max}px)` for mobile).
 
 DATA BLOCKS (content filled at runtime):
 - Blocks like ekwa/phone, ekwa/address, ekwa/hours, ekwa/copyright, ekwa/social, ekwa/svg-logo, ekwa/header-menu, ekwa/phone-dropdown, ekwa/address-dropdown, core/site-logo, core/navigation pull their real content from Theme Settings / the assigned menu at render time. Emit the block with presentation attributes only — NEVER type fake phone numbers, addresses, hours, or menu items into them.
@@ -364,6 +373,10 @@ PROMPT;
 	}
 
 	$prompt .= ekwa_ai_build_block_spec_section( $context );
+
+	if ( function_exists( 'ekwa_ai_project_memory_block' ) ) {
+		$prompt .= ekwa_ai_project_memory_block();
+	}
 
 	return $context_cue . $prompt;
 }
