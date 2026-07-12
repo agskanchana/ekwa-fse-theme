@@ -97,8 +97,9 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 			return ekwa_mc_detect_phone( $node, $depth );
 		}
 
-		// Maps: <a href="...maps.google.com...">
-		if ( preg_match( '/(maps\.google|google\.com\/maps|goo\.gl\/maps|maps\.apple\.com|waze\.com)/i', $href ) ) {
+		// Maps: <a href="...maps.google.com..."> — covers the modern short links
+		// maps.app.goo.gl/… and goo.gl/maps/… as well as full maps URLs.
+		if ( preg_match( '/(maps\.google|google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|maps\.apple\.com|waze\.com)/i', $href ) ) {
 			return ekwa_mc_detect_address( $node, $depth );
 		}
 
@@ -227,13 +228,17 @@ function ekwa_mc_detect_canonical( $node, $depth, $tag ) {
 		}
 	}
 
-	// Simple wrapper-class → block leaves.
+	// Simple wrapper-class → block leaves. The image logo maps to core's
+	// site-logo (its rendered markup: div.wp-block-site-logo > a.custom-logo-link
+	// > img.custom-logo); the inline SVG logo maps to ekwa/svg-logo.
 	static $map = array(
 		'ekwa-phone-number'  => 'ekwa/phone',
 		'ekwa-working-hours' => 'ekwa/hours',
 		'ekwa-social-icons'  => 'ekwa/social',
 		'ekwa-copyright'     => 'ekwa/copyright',
 		'ekwa-svg-logo'      => 'ekwa/svg-logo',
+		'wp-block-site-logo' => 'site-logo',
+		'custom-logo-link'   => 'site-logo',
 		'ekwa-hamburger-btn' => 'ekwa/hamburger-menu',
 	);
 	foreach ( $map as $sig => $block ) {

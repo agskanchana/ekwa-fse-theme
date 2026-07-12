@@ -88,16 +88,22 @@ function ekwa_mockup_canonical_snippets() {
 		),
 
 		'logo' => array(
-			'label'     => __( 'Logo', 'ekwa' ),
-			'block'     => 'ekwa/svg-logo',
-			'token'     => 'logo',
-			'group'     => 'header',
-			'expected'  => 'header',
-			'signature' => 'ekwa-svg-logo',
-			'snippet'   => '<a href="/" class="ekwa-svg-logo" aria-label="Practice name">
+			'label'      => __( 'Logo (image)', 'ekwa' ),
+			'block'      => 'core/site-logo',
+			'token'      => 'logo',
+			'group'      => 'header',
+			'expected'   => 'header',
+			'signature'  => 'custom-logo-link',
+			'snippet'    => '<div class="wp-block-site-logo">
+  <a href="/" class="custom-logo-link" rel="home">
+    <img class="custom-logo" src="practice-logo.webp" alt="Practice name" width="320" height="89">
+  </a>
+</div>',
+			'alt_label'  => __( 'SVG logo variant', 'ekwa' ),
+			'alt_snippet' => '<a href="/" class="ekwa-svg-logo" aria-label="Practice name">
   <svg viewBox="0 0 200 48"><!-- logo paths --></svg>
 </a>',
-			'notes'     => __( 'The real SVG comes from Ekwa Settings → Branding at render time; the mockup SVG is a stand-in for styling.', 'ekwa' ),
+			'notes'      => __( 'Most logos are an image → this maps to core/site-logo (the real logo comes from the WordPress site logo / Ekwa Settings → Branding; the mockup image is a stand-in for styling — style .custom-logo). A simple <a class="logo"><img></a> is also auto-detected. Use the SVG variant below only for an inline vector logo (renders as ekwa/svg-logo).', 'ekwa' ),
 		),
 
 		'phone' => array(
@@ -426,9 +432,21 @@ function ekwa_mockup_readiness_check( $html ) {
 		);
 	}
 
+	// ── Logo (image → core/site-logo, or SVG → ekwa/svg-logo). ────────────
+	$logo_spec  = $snippets['logo'];
+	$logo_canon = isset( $classes['custom-logo-link'] ) || isset( $classes['wp-block-site-logo'] ) || isset( $classes['ekwa-svg-logo'] );
+	$logo_block = isset( $emitted['core/site-logo'] ) || isset( $emitted['ekwa/svg-logo'] );
+	if ( $logo_canon ) {
+		$sections[] = array( 'id' => 'logo', 'label' => $logo_spec['label'], 'status' => 'pass', 'message' => __( 'Canonical logo markup found (image → core/site-logo, or SVG → ekwa/svg-logo).', 'ekwa' ) );
+	} elseif ( $logo_block ) {
+		$sections[] = array( 'id' => 'logo', 'label' => $logo_spec['label'], 'status' => 'pass', 'message' => __( 'Logo auto-detected. For 1:1 CSS reuse, use the canonical markup below (style .custom-logo).', 'ekwa' ), 'fix' => $logo_spec['snippet'] );
+	} else {
+		$sections[] = array( 'id' => 'logo', 'label' => $logo_spec['label'], 'status' => 'warn', 'message' => __( 'No logo found in the header. Use the canonical image-logo markup below (or the SVG variant for a vector logo).', 'ekwa' ), 'fix' => $logo_spec['snippet'] );
+	}
+
 	// ── Other dynamic elements. ───────────────────────────────────────────
 	foreach ( $snippets as $id => $spec ) {
-		if ( 'menu' === $id ) {
+		if ( 'menu' === $id || 'logo' === $id ) {
 			continue; // Handled above.
 		}
 		$canonical = isset( $classes[ $spec['signature'] ] );
@@ -614,6 +632,10 @@ function ekwa_mockup_build_guide_html() {
 		if ( ! empty( $spec['megamenu'] ) ) {
 			$out .= '<p class="sub"><strong>' . esc_html__( 'Megamenu variant', 'ekwa' ) . '</strong> — ' . esc_html__( 'replace a normal dropdown item with this to get a megamenu:', 'ekwa' ) . '</p>'
 				. '<pre><code>' . esc_html( $spec['megamenu'] ) . '</code></pre>';
+		}
+		if ( ! empty( $spec['alt_snippet'] ) ) {
+			$out .= '<p class="sub"><strong>' . esc_html( $spec['alt_label'] ) . '</strong></p>'
+				. '<pre><code>' . esc_html( $spec['alt_snippet'] ) . '</code></pre>';
 		}
 		$out .= '<p class="alt">' . sprintf( esc_html__( 'Fallback: add data-ekwa="%s" to any element to force this mapping.', 'ekwa' ), esc_html( $spec['token'] ) ) . '</p>'
 			. '</section>';
