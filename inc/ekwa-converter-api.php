@@ -72,6 +72,25 @@ function ekwa_register_converter_routes() {
 		),
 	) );
 
+	// Mockup Ready Check — whole-file pre-flight analysis against the mockup
+	// contract (surfaced in Ekwa Settings → Design Setup).
+	register_rest_route( 'ekwa/v1', '/mockup-check', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_rest_mockup_check',
+		'permission_callback' => function () {
+			return current_user_can( 'edit_posts' );
+		},
+		'args' => array(
+			'html' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'sanitize_callback' => function ( $v ) {
+					return wp_unslash( $v );
+				},
+			),
+		),
+	) );
+
 	// Save selected media-library items into the server-side manifest
 	// (uploads/ekwa-media-manifest.json) so conversions resolve mockup image
 	// filenames automatically — replaces hand-crafting the manifest file.
@@ -94,6 +113,26 @@ function ekwa_register_converter_routes() {
 			),
 		),
 	) );
+}
+
+/**
+ * Handle the mockup-check REST request.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_rest_mockup_check( $request ) {
+	require_once get_template_directory() . '/inc/ekwa-mockup-contract.php';
+
+	$html = (string) $request->get_param( 'html' );
+	if ( '' === trim( $html ) ) {
+		return new WP_Error( 'empty_html', __( 'Paste the mockup HTML first.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+	if ( strlen( $html ) > 3000000 ) {
+		return new WP_Error( 'too_large', __( 'The file is too large to analyze.', 'ekwa' ), array( 'status' => 413 ) );
+	}
+
+	return rest_ensure_response( ekwa_mockup_readiness_check( $html ) );
 }
 
 /**
@@ -159,7 +198,7 @@ function ekwa_rest_convert_markup( $request ) {
 			: ( function_exists( 'ekwa_tokens_mockup_css' ) ? trim( ekwa_tokens_mockup_css() ) : '' );
 
 		if ( '' === $source_css ) {
-			$response['warnings'][] = __( 'AI CSS extraction skipped — paste the mockup CSS or save it in Ekwa Settings → Design Tokens first.', 'ekwa' );
+			$response['warnings'][] = __( 'AI CSS extraction skipped — paste the mockup CSS or save it in Ekwa Settings → Design Setup first.', 'ekwa' );
 		} else {
 			$extracted_css = ekwa_mc_ai_extract_section_css( $html, $source_css );
 			if ( is_wp_error( $extracted_css ) ) {

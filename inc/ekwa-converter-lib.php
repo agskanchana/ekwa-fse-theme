@@ -81,6 +81,26 @@ function ekwa_mc_warn( $message, $category = '' ) {
 	ekwa_mc_context( $ctx );
 }
 
+/**
+ * Reduce a full HTML document to its body content. Section pastes (no
+ * doctype/html/head/body tags) are returned unchanged.
+ *
+ * @param string $html
+ * @return string
+ */
+function ekwa_mc_extract_body( $html ) {
+	if ( preg_match( '/<body[^>]*>(.*)<\/body>/is', $html, $m ) ) {
+		return $m[1];
+	}
+	if ( ! preg_match( '/<!DOCTYPE|<html[\s>]|<head[\s>]/i', $html ) ) {
+		return $html;
+	}
+	$html = preg_replace( '/<!DOCTYPE[^>]*>/i', '', $html );
+	$html = preg_replace( '/<head[^>]*>.*?<\/head>/is', '', $html );
+	$html = preg_replace( '/<\/?(?:html|body)[^>]*>/i', '', $html );
+	return $html;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN ENTRY POINT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -96,6 +116,13 @@ function ekwa_mc_warn( $message, $category = '' ) {
  * }
  */
 function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() ) {
+	// Full-document input (a pasted index.html) would be mangled by the
+	// synthetic <div> root below — a DOCTYPE/<html>/<head> inside a div makes
+	// libxml restructure the tree (content after the header can silently
+	// vanish) and head tags degrade to raw-HTML blobs. Reduce to body content
+	// first; plain section pastes pass through unchanged.
+	$html = ekwa_mc_extract_body( $html );
+
 	// Reset context.
 	$media_by_name  = array();
 	$detect_dynamic = isset( $options['detect_dynamic'] ) ? (bool) $options['detect_dynamic'] : true;

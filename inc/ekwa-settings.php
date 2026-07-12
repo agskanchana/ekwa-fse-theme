@@ -846,7 +846,7 @@ function ekwa_settings_tabs() {
 		'locations'     => __( 'Locations', 'ekwa' ),
 		'related-posts' => __( 'Related Posts', 'ekwa' ),
 		'fonts'         => __( 'Fonts', 'ekwa' ),
-		'tokens'        => __( 'Design Tokens', 'ekwa' ),
+		'tokens'        => __( 'Design Setup', 'ekwa' ),
 		'performance'   => __( 'Performance', 'ekwa' ),
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),

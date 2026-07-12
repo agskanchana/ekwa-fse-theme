@@ -256,6 +256,12 @@ require_once get_template_directory() . '/inc/ekwa-responsive.php';
 require_once get_template_directory() . '/inc/ekwa-child-generator.php';
 
 /**
+ * Mockup contract: canonical snippet library, readiness checker, and the
+ * Author Guide / starter-template downloads (Ekwa Settings → Design Setup).
+ */
+require_once get_template_directory() . '/inc/ekwa-mockup-contract.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {

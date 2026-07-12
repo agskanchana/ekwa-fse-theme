@@ -639,15 +639,15 @@ function ekwa_fonts_read_child_stylesheet() {
 	$parent_dir = get_template_directory();
 	$child_dir  = get_stylesheet_directory();
 	if ( $parent_dir === $child_dir ) {
-		return new WP_Error( 'ekwa_fonts_no_child', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_no_child', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Setup first.', 'ekwa' ) );
 	}
 	$path = $child_dir . '/style.css';
 	if ( ! is_readable( $path ) ) {
-		return new WP_Error( 'ekwa_fonts_no_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_no_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Setup first.', 'ekwa' ) );
 	}
 	$css = file_get_contents( $path );
 	if ( false === $css || '' === trim( $css ) ) {
-		return new WP_Error( 'ekwa_fonts_empty_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_empty_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Setup first.', 'ekwa' ) );
 	}
 	$max = 120000; // ~120 KB is plenty for a hand-written theme sheet.
 	if ( strlen( $css ) > $max ) {

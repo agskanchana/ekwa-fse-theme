@@ -225,13 +225,173 @@ function ekwa_tokens_render_tab() {
 	$colors     = ekwa_tokens_colors();
 	$bgimages   = ekwa_tokens_bgimages();
 	$bp         = ekwa_fonts_conditional_bp();
+
+	$guide_url   = wp_nonce_url( add_query_arg( 'action', 'ekwa_mockup_guide', admin_url( 'admin-post.php' ) ), 'ekwa_mockup_kit' );
+	$starter_url = wp_nonce_url( add_query_arg( 'action', 'ekwa_mockup_starter', admin_url( 'admin-post.php' ) ), 'ekwa_mockup_kit' );
 	?>
+	<div class="ekwa-section">
+		<h2><?php esc_html_e( 'Mockup authoring kit', 'ekwa' ); ?></h2>
+		<p class="description" style="margin-bottom:1em;">
+			<?php esc_html_e( 'Give these to whoever builds the mockups. Mockups written with the canonical structures convert 100% into the dynamic blocks, and the mockup CSS styles the live site 1:1 — because the snippets are the exact markup the blocks render.', 'ekwa' ); ?>
+		</p>
+		<p>
+			<a href="<?php echo esc_url( $guide_url ); ?>" class="button button-secondary"><?php esc_html_e( 'Download Author Guide (.html)', 'ekwa' ); ?></a>
+			<a href="<?php echo esc_url( $starter_url ); ?>" class="button button-secondary" style="margin-left:8px;"><?php esc_html_e( 'Download starter template (.html)', 'ekwa' ); ?></a>
+		</p>
+	</div>
+
+	<div class="ekwa-section">
+		<h2><?php esc_html_e( 'Mockup Ready Check', 'ekwa' ); ?></h2>
+		<p class="description" style="margin-bottom:1em;">
+			<?php esc_html_e( 'Paste the WHOLE mockup file (index.html) and check it before converting: header/footer structure, whether the menu and dynamic elements will map to the right blocks, media resolution, and CSS setup — with copyable fix-it snippets for anything that won\'t convert cleanly.', 'ekwa' ); ?>
+		</p>
+		<textarea id="ekwa-mrc-html" rows="8" class="large-text code" placeholder="<!DOCTYPE html>… paste the full mockup HTML …"></textarea>
+		<p>
+			<button type="button" class="button button-primary" id="ekwa-mrc-run"><?php esc_html_e( 'Check mockup', 'ekwa' ); ?></button>
+			<span id="ekwa-mrc-status" style="margin-left:8px;"></span>
+		</p>
+		<div id="ekwa-mrc-results" style="max-width:860px;"></div>
+		<style>
+		.ekwa-mrc-row{border:1px solid #d6dde4;border-radius:6px;margin:8px 0;padding:10px 14px;background:#fff}
+		.ekwa-mrc-row--pass{border-left:4px solid #00a32a}
+		.ekwa-mrc-row--warn{border-left:4px solid #dba617;background:#fffbf0}
+		.ekwa-mrc-row--fail{border-left:4px solid #d63638;background:#fcf0f1}
+		.ekwa-mrc-row strong{display:inline-block;min-width:180px}
+		.ekwa-mrc-fix{margin-top:8px}
+		.ekwa-mrc-fix pre{background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;overflow-x:auto;font-size:12px;line-height:1.5;max-height:260px}
+		.ekwa-mrc-fix summary{cursor:pointer;font-size:12px;color:#2271b1}
+		</style>
+		<script>
+		( function () {
+			var btn = document.getElementById( 'ekwa-mrc-run' );
+			if ( ! btn ) { return; }
+			var ta      = document.getElementById( 'ekwa-mrc-html' );
+			var status  = document.getElementById( 'ekwa-mrc-status' );
+			var results = document.getElementById( 'ekwa-mrc-results' );
+			var restUrl = '<?php echo esc_url_raw( rest_url( 'ekwa/v1/mockup-check' ) ); ?>';
+			var icons   = { pass: '✓', warn: '⚠', fail: '✗' };
+
+			function esc( s ) {
+				var d = document.createElement( 'div' );
+				d.textContent = s || '';
+				return d.innerHTML;
+			}
+
+			btn.addEventListener( 'click', function () {
+				if ( ! ta.value.trim() ) {
+					status.textContent = '<?php echo esc_js( __( 'Paste the mockup HTML first.', 'ekwa' ) ); ?>';
+					status.style.color = '#d63638';
+					return;
+				}
+				var nonce = ( window.ekwaAdmin && ekwaAdmin.webpRestNonce ) ? ekwaAdmin.webpRestNonce : '';
+				btn.disabled = true;
+				status.textContent = '<?php echo esc_js( __( 'Checking…', 'ekwa' ) ); ?>';
+				status.style.color = '#646970';
+				results.innerHTML = '';
+				fetch( restUrl, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+					body: JSON.stringify( { html: ta.value } ),
+				} ).then( function ( r ) { return r.json(); } ).then( function ( res ) {
+					btn.disabled = false;
+					if ( ! res || ! Array.isArray( res.sections ) ) {
+						status.textContent = ( res && res.message ) ? res.message : '<?php echo esc_js( __( 'Check failed.', 'ekwa' ) ); ?>';
+						status.style.color = '#d63638';
+						return;
+					}
+					var warns = res.sections.filter( function ( s ) { return s.status !== 'pass'; } ).length;
+					status.textContent = warns
+						? warns + ' <?php echo esc_js( __( 'item(s) need attention.', 'ekwa' ) ); ?>'
+						: '<?php echo esc_js( __( 'Mockup is ready to convert.', 'ekwa' ) ); ?>';
+					status.style.color = warns ? '#996800' : '#008a20';
+					res.sections.forEach( function ( s ) {
+						var row = document.createElement( 'div' );
+						row.className = 'ekwa-mrc-row ekwa-mrc-row--' + ( s.status || 'warn' );
+						var fix = s.fix
+							? '<details class="ekwa-mrc-fix"><summary><?php echo esc_js( __( 'Show canonical snippet', 'ekwa' ) ); ?></summary><pre><code>' + esc( s.fix ) + '</code></pre></details>'
+							: '';
+						row.innerHTML = '<strong>' + icons[ s.status ] + ' ' + esc( s.label ) + '</strong> ' + esc( s.message ) + fix;
+						results.appendChild( row );
+					} );
+				} ).catch( function () {
+					btn.disabled = false;
+					status.textContent = '<?php echo esc_js( __( 'Check failed.', 'ekwa' ) ); ?>';
+					status.style.color = '#d63638';
+				} );
+			} );
+		} )();
+		</script>
+	</div>
+
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Mockup stylesheet', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
 			<?php esc_html_e( 'Paste the mockup\'s style.css here once. It is never output to the page — it feeds font detection (Fonts tab), the AI generators\' stylesheet context, and the converter\'s "Extract section CSS with AI".', 'ekwa' ); ?>
 		</p>
 		<textarea name="ekwa_mockup_css" rows="10" class="large-text code" placeholder="/* paste the full mockup stylesheet */"><?php echo esc_textarea( $mockup_css ); ?></textarea>
+	</div>
+
+	<div class="ekwa-section">
+		<h2><?php esc_html_e( 'Import mockup assets', 'ekwa' ); ?></h2>
+		<p class="description" style="margin-bottom:1em;">
+			<?php esc_html_e( 'Upload the mockup\'s images and videos to the media library once. Their filenames are saved to the site manifest, so the Mockup Converter resolves <img src="assets/photo.jpg"> to the right file automatically — no per-page "missing media" mapping.', 'ekwa' ); ?>
+		</p>
+		<p>
+			<button type="button" class="button button-secondary" id="ekwa-tokens-assets-import"><?php esc_html_e( 'Select / upload mockup assets', 'ekwa' ); ?></button>
+			<span id="ekwa-tokens-assets-status" style="margin-left:8px;"></span>
+		</p>
+		<script>
+		( function () {
+			var btn = document.getElementById( 'ekwa-tokens-assets-import' );
+			if ( ! btn ) { return; }
+			var status  = document.getElementById( 'ekwa-tokens-assets-status' );
+			var restUrl = '<?php echo esc_url_raw( rest_url( 'ekwa/v1/mc-manifest' ) ); ?>';
+			var frame   = null; // Built lazily on first click, after wp.media has loaded.
+
+			function ensureFrame() {
+				if ( frame || ! window.wp || ! wp.media ) { return frame; }
+				frame = wp.media( {
+					title: '<?php echo esc_js( __( 'Select or upload mockup assets', 'ekwa' ) ); ?>',
+					button: { text: '<?php echo esc_js( __( 'Add to manifest', 'ekwa' ) ); ?>' },
+					multiple: true,
+					library: { type: [ 'image', 'video', 'audio' ] },
+				} );
+				frame.on( 'select', function () {
+					var ids = frame.state().get( 'selection' ).toJSON().map( function ( a ) { return a.id; } ).filter( Boolean );
+					if ( ! ids.length ) { return; }
+					var nonce = ( window.ekwaAdmin && ekwaAdmin.webpRestNonce ) ? ekwaAdmin.webpRestNonce : ( window.wpApiSettings ? wpApiSettings.nonce : '' );
+					status.textContent = '<?php echo esc_js( __( 'Saving…', 'ekwa' ) ); ?>';
+					status.style.color = '#646970';
+					fetch( restUrl, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+						body: JSON.stringify( { attachment_ids: ids } ),
+					} ).then( function ( r ) { return r.json(); } ).then( function ( res ) {
+						if ( res && typeof res.saved !== 'undefined' ) {
+							status.textContent = res.saved + ' <?php echo esc_js( __( 'added — manifest now has', 'ekwa' ) ); ?> ' + res.total + ' <?php echo esc_js( __( 'entries.', 'ekwa' ) ); ?>';
+							status.style.color = '#008a20';
+						} else {
+							status.textContent = ( res && res.message ) ? res.message : '<?php echo esc_js( __( 'Save failed.', 'ekwa' ) ); ?>';
+							status.style.color = '#d63638';
+						}
+					} ).catch( function () {
+						status.textContent = '<?php echo esc_js( __( 'Save failed.', 'ekwa' ) ); ?>';
+						status.style.color = '#d63638';
+					} );
+				} );
+				return frame;
+			}
+
+			btn.addEventListener( 'click', function () {
+				if ( ! ensureFrame() ) {
+					status.textContent = '<?php echo esc_js( __( 'Media library still loading — try again in a moment.', 'ekwa' ) ); ?>';
+					status.style.color = '#d63638';
+					return;
+				}
+				frame.open();
+			} );
+		} )();
+		</script>
 	</div>
 
 	<div class="ekwa-section">

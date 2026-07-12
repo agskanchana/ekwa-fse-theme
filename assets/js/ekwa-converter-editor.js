@@ -192,33 +192,8 @@
 		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
 		var s18 = useState( [] );        var report     = s18[0]; var setReport     = s18[1];
-		var s19 = useState( '' );        var assetsMsg  = s19[0]; var setAssetsMsg  = s19[1];
-		var s20 = useState( false );     var assetsBusy = s20[0]; var setAssetsBusy = s20[1];
 
 		var fileRef = useRef( null );
-
-		// Save selected library items into the server-side manifest so this and
-		// every future conversion resolves the mockup's image filenames.
-		function handleAssetsImport( selection ) {
-			var ids = ( selection || [] ).map( function ( m ) { return m.id; } ).filter( Boolean );
-			if ( ! ids.length ) {
-				return;
-			}
-			setAssetsBusy( true );
-			setAssetsMsg( '' );
-			apiFetch( {
-				path: '/ekwa/v1/mc-manifest',
-				method: 'POST',
-				data: { attachment_ids: ids },
-			} ).then( function ( res ) {
-				setAssetsBusy( false );
-				setAssetsMsg( res.saved + ' ' + __( 'file(s) added — site manifest now has', 'ekwa' ) + ' ' + res.total + ' ' + __( 'entries.', 'ekwa' ) );
-				setUseServerM( true );
-			} ).catch( function ( err ) {
-				setAssetsBusy( false );
-				setAssetsMsg( __( 'Manifest save failed: ', 'ekwa' ) + ( err.message || '' ) );
-			} );
-		}
 
 		// ── Handlers ─────────────────────────────────────────────────
 
@@ -408,7 +383,7 @@
 					} ),
 					el( ToggleControl, {
 						label: __( 'Extract this section’s CSS with AI → attach as Scoped CSS', 'ekwa' ),
-						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables. Uses the field above, or the stylesheet saved in Ekwa Settings → Design Tokens when empty.', 'ekwa' ),
+						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables. Uses the field above, or the stylesheet saved in Ekwa Settings → Design Setup when empty.', 'ekwa' ),
 						checked: aiExtract,
 						onChange: setAiExtract,
 					} ),
@@ -425,31 +400,11 @@
 				)
 			);
 
-			// Manifest settings.
+			// Manifest settings. (Import the mockup's images/videos once from
+			// Ekwa Settings → Design Setup → "Import mockup assets"; the server
+			// manifest then resolves their filenames automatically here.)
 			inputChildren.push(
 				el( 'div', { key: 'manifest', className: 'ekwa-mc-manifest' },
-					el( 'div', { className: 'ekwa-mc-assets-import' },
-						el( MediaUploadCheck, null,
-							el( MediaUpload, {
-								onSelect: handleAssetsImport,
-								allowedTypes: [ 'image', 'video', 'audio' ],
-								multiple: true,
-								gallery: false,
-								render: function ( obj ) {
-									return el( Button, {
-										isSecondary: true,
-										isBusy: assetsBusy,
-										disabled: assetsBusy,
-										onClick: obj.open,
-									}, __( 'Import mockup assets → site manifest', 'ekwa' ) );
-								},
-							} )
-						),
-						el( 'p', { className: 'ekwa-mc-assets-help' },
-							__( 'Upload/select the mockup’s images & videos once — filenames then resolve automatically in every conversion.', 'ekwa' )
-						),
-						assetsMsg ? el( 'p', { className: 'ekwa-mc-assets-msg' }, assetsMsg ) : null
-					),
 					el( ToggleControl, {
 						label: __( 'Use server manifest', 'ekwa' ),
 						help: __( 'Auto-detect from wp-content/uploads/', 'ekwa' ),

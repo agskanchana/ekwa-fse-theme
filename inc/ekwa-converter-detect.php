@@ -46,6 +46,16 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 		}
 	}
 
+	// Canonical rendered-markup signatures — a mockup written with the EXACT
+	// structures the dynamic blocks render (see the Mockup Author Guide in
+	// Ekwa Settings → Design Setup) maps straight back to those blocks, and
+	// the mockup's own CSS then styles the live output 1:1. Checked before
+	// every heuristic.
+	$result = ekwa_mc_detect_canonical( $node, $depth, $tag );
+	if ( $result !== null ) {
+		return $result;
+	}
+
 	// Container-class detections — must run BEFORE anchor-based phone/address
 	// detectors AND before the inner <nav>/<a>/<i> children get visited so
 	// dropdown wrappers, the search block, and the header menu stay as a
@@ -141,6 +151,104 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 		if ( $result !== null ) {
 			return $result;
 		}
+	}
+
+	return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CANONICAL RENDERED-MARKUP SIGNATURES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Whether an element carries the given class (whole-token match, so
+ * "ekwa-phone-number" never matches "ekwa-phone-number__link").
+ *
+ * @param DOMElement $node
+ * @param string     $class
+ * @return bool
+ */
+function ekwa_mc_node_has_class( $node, $class ) {
+	$attr = $node->getAttribute( 'class' );
+	return $attr && preg_match( '/(^|\s)' . preg_quote( $class, '/' ) . '(\s|$)/', $attr );
+}
+
+/**
+ * Whether the node has a descendant of the given tag carrying the class.
+ *
+ * @param DOMElement $node
+ * @param string     $tag
+ * @param string     $class
+ * @return bool
+ */
+function ekwa_mc_has_class_descendant( $node, $tag, $class ) {
+	foreach ( $node->getElementsByTagName( $tag ) as $el ) {
+		if ( ekwa_mc_node_has_class( $el, $class ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Canonical detection: the classes every dynamic block RENDERS double as
+ * converter signatures. A mockup built from the Author Guide's snippets
+ * (nav.ekwa-header-nav menus, span.ekwa-phone-number, a.ekwa-address,
+ * div.ekwa-working-hours, …) converts 100% into the matching dynamic blocks,
+ * whole subtree consumed. Anything else falls through to the heuristics.
+ *
+ * @param DOMElement $node
+ * @param int        $depth
+ * @param string     $tag   Lowercased tag name.
+ * @return string|null Block markup, '' to consume silently, null to continue.
+ */
+function ekwa_mc_detect_canonical( $node, $depth, $tag ) {
+	$indent = str_repeat( '  ', $depth );
+
+	$leaf = function ( $block, $attrs = array() ) use ( $indent ) {
+		$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+		ekwa_mc_warn( "Canonical markup → $block", 'dynamic' );
+		return $indent . '<!-- wp:' . $block . $attrs_json . ' /-->' . "\n";
+	};
+
+	if ( 'nav' === $tag ) {
+		// The header menu: nav.ekwa-header-nav, or any nav wrapping
+		// ul.ekwa-header-menu. Consumes the whole subtree — including the
+		// div.ekwa-megamenu variant, which the live block re-renders from the
+		// assigned WP menu's item meta.
+		if ( ekwa_mc_node_has_class( $node, 'ekwa-header-nav' )
+			|| ekwa_mc_has_class_descendant( $node, 'ul', 'ekwa-header-menu' ) ) {
+			return $leaf( 'ekwa/header-menu' );
+		}
+		// nav.ekwa-mobile-nav is rendered BY ekwa/hamburger-menu — emit nothing.
+		if ( ekwa_mc_node_has_class( $node, 'ekwa-mobile-nav' ) ) {
+			ekwa_mc_warn( 'Canonical markup: nav.ekwa-mobile-nav skipped — ekwa/hamburger-menu renders it.', 'dynamic' );
+			return '';
+		}
+	}
+
+	// Simple wrapper-class → block leaves.
+	static $map = array(
+		'ekwa-phone-number'  => 'ekwa/phone',
+		'ekwa-working-hours' => 'ekwa/hours',
+		'ekwa-social-icons'  => 'ekwa/social',
+		'ekwa-copyright'     => 'ekwa/copyright',
+		'ekwa-svg-logo'      => 'ekwa/svg-logo',
+		'ekwa-hamburger-btn' => 'ekwa/hamburger-menu',
+	);
+	foreach ( $map as $sig => $block ) {
+		if ( ekwa_mc_node_has_class( $node, $sig ) ) {
+			return $leaf( $block );
+		}
+	}
+
+	// Address: the mode travels in the ekwa-address--{mode} modifier class.
+	if ( ekwa_mc_node_has_class( $node, 'ekwa-address' ) ) {
+		$attrs = array();
+		if ( preg_match( '/(^|\s)ekwa-address--(icon|text|address|full)(\s|$)/', $node->getAttribute( 'class' ), $m ) ) {
+			$attrs['mode'] = $m[2];
+		}
+		return $leaf( 'ekwa/address', $attrs );
 	}
 
 	return null;
