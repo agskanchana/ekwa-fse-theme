@@ -494,4 +494,23 @@
 		$aiResults.hide().empty();
 	} );
 
+	/* -- Conditional loading toggle -------------------------------------- */
+	$list.on( 'change', '.ekwa-fonts-conditional', function () {
+		var $cb     = $( this );
+		var $row    = $cb.closest( '.ekwa-fonts-row' );
+		var $status = $row.find( '.ekwa-fonts-conditional-status' );
+		$status.text( '…' );
+		$.post( ekwaFonts.ajaxUrl, {
+			action:      'ekwa_fonts_set_conditional',
+			nonce:       ekwaFonts.nonce,
+			id:          $row.data( 'id' ),
+			conditional: $cb.is( ':checked' ) ? '1' : '0',
+		} ).done( function ( res ) {
+			$status.text( res && res.success ? 'Saved' : 'Failed' );
+			setTimeout( function () { $status.text( '' ); }, 1500 );
+		} ).fail( function () {
+			$status.text( 'Failed' );
+		} );
+	} );
+
 } )( jQuery, window.ekwaFonts );

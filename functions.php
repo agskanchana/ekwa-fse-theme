@@ -87,6 +87,12 @@ add_action( 'admin_notices', 'ekwa_github_rate_limit_notice' );
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * Load design tokens (color/bg-image variables, saved mockup CSS, conditional
+ * font breakpoint) — before fonts, which reads the breakpoint helper.
+ */
+require_once get_template_directory() . '/inc/ekwa-tokens.php';
+
+/**
  * Load custom fonts registry (Fonts tab + frontend output + theme.json filter).
  */
 require_once get_template_directory() . '/inc/ekwa-fonts.php';

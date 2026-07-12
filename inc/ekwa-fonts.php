@@ -524,6 +524,20 @@ function ekwa_fonts_render_row( $id, $font ) {
 			&nbsp;|&nbsp;
 			<?php esc_html_e( 'Fallback', 'ekwa' ); ?>: <?php echo esc_html( $fallback ); ?>
 		</p>
+		<p>
+			<?php $conditional = ! isset( $font['conditional'] ) || (bool) $font['conditional']; ?>
+			<label style="font-size:12px;">
+				<input type="checkbox" class="ekwa-fonts-conditional" <?php checked( $conditional ); ?> />
+				<?php
+				printf(
+					/* translators: %d: breakpoint in px */
+					esc_html__( 'Conditional loading — web-safe fallback below %dpx, custom font above (never downloads on mobile)', 'ekwa' ),
+					function_exists( 'ekwa_fonts_conditional_bp' ) ? (int) ekwa_fonts_conditional_bp() : 767
+				);
+				?>
+			</label>
+			<span class="ekwa-fonts-conditional-status" style="margin-left:6px;color:#008a20;font-size:11px;"></span>
+		</p>
 		<div class="ekwa-fonts-weights-list">
 			<?php foreach ( $weights as $weight => $filename ) : ?>
 				<span class="ekwa-fonts-weight-chip" title="<?php echo esc_attr( $filename ); ?>">
@@ -602,23 +616,38 @@ add_action( 'wp_ajax_ekwa_fonts_catalog', 'ekwa_fonts_ajax_catalog' );
  * ------------------------------------------------------------------------ */
 
 /**
- * Read the active (child) theme's style.css, capped for the prompt budget.
+ * The stylesheet to scan for fonts: the saved mockup stylesheet (Design
+ * Tokens tab) is preferred — the workflow goal is to not use the child
+ * style.css at all. Falls back to the child stylesheet for older setups.
  *
- * @return string|WP_Error CSS contents, or error when there's no child sheet.
+ * @return string|WP_Error CSS contents, or error when neither source exists.
  */
 function ekwa_fonts_read_child_stylesheet() {
+	// 1. Saved mockup stylesheet (Design Tokens tab).
+	if ( function_exists( 'ekwa_tokens_mockup_css' ) ) {
+		$css = trim( ekwa_tokens_mockup_css() );
+		if ( '' !== $css ) {
+			$max = 120000;
+			if ( strlen( $css ) > $max ) {
+				$css = substr( $css, 0, $max ) . "\n\n/* …truncated for AI analysis */";
+			}
+			return $css;
+		}
+	}
+
+	// 2. Legacy fallback: the active child theme's style.css.
 	$parent_dir = get_template_directory();
 	$child_dir  = get_stylesheet_directory();
 	if ( $parent_dir === $child_dir ) {
-		return new WP_Error( 'ekwa_fonts_no_child', __( 'No child theme is active, so there is no stylesheet to scan.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_no_child', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
 	}
 	$path = $child_dir . '/style.css';
 	if ( ! is_readable( $path ) ) {
-		return new WP_Error( 'ekwa_fonts_no_css', __( 'The child theme stylesheet could not be read.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_no_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
 	}
 	$css = file_get_contents( $path );
 	if ( false === $css || '' === trim( $css ) ) {
-		return new WP_Error( 'ekwa_fonts_empty_css', __( 'The child theme stylesheet is empty.', 'ekwa' ) );
+		return new WP_Error( 'ekwa_fonts_empty_css', __( 'No stylesheet to scan — paste the mockup stylesheet in Ekwa Settings → Design Tokens first.', 'ekwa' ) );
 	}
 	$max = 120000; // ~120 KB is plenty for a hand-written theme sheet.
 	if ( strlen( $css ) > $max ) {
@@ -1034,6 +1063,26 @@ function ekwa_fonts_ajax_rename() {
 }
 add_action( 'wp_ajax_ekwa_fonts_rename', 'ekwa_fonts_ajax_rename' );
 
+/**
+ * Toggle a font's conditional-loading flag (web-safe below the breakpoint).
+ */
+function ekwa_fonts_ajax_set_conditional() {
+	check_ajax_referer( 'ekwa_fonts', 'nonce' );
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Permission denied.', 'ekwa' ) ), 403 );
+	}
+	$id = isset( $_POST['id'] ) ? sanitize_text_field( wp_unslash( $_POST['id'] ) ) : '';
+	$on = isset( $_POST['conditional'] ) && '1' === $_POST['conditional'];
+	$fonts = ekwa_fonts_get_all();
+	if ( $id && isset( $fonts[ $id ] ) ) {
+		$fonts[ $id ]['conditional'] = $on;
+		ekwa_fonts_save_all( $fonts );
+		wp_send_json_success( array( 'conditional' => $on ) );
+	}
+	wp_send_json_error( array( 'message' => __( 'Invalid request.', 'ekwa' ) ) );
+}
+add_action( 'wp_ajax_ekwa_fonts_set_conditional', 'ekwa_fonts_ajax_set_conditional' );
+
 /* ------------------------------------------------------------------------
  * Frontend + editor: emit @font-face + :root vars
  * ------------------------------------------------------------------------ */
@@ -1047,10 +1096,11 @@ function ekwa_fonts_build_css() {
 	if ( empty( $fonts ) ) {
 		return '';
 	}
-	$url_base   = ekwa_fonts_dir_url();
-	$dir_base   = ekwa_fonts_dir_path();
-	$face_rules = '';
-	$root_rules = '';
+	$url_base    = ekwa_fonts_dir_url();
+	$dir_base    = ekwa_fonts_dir_path();
+	$face_rules  = '';
+	$root_rules  = '';
+	$cond_rules  = ''; // Variables that switch to the custom font at the breakpoint.
 	foreach ( $fonts as $font ) {
 		$family   = (string) ( $font['family']   ?? '' );
 		$fallback = ekwa_fonts_sanitize_fallback( $font['fallback'] ?? 'sans-serif' );
@@ -1075,12 +1125,31 @@ function ekwa_fonts_build_css() {
 				$format
 			);
 		}
-		$root_rules .= sprintf( "--%s:'%s',%s;", $var, str_replace( "'", '', $family ), ekwa_fonts_fallback_stack( $fallback ) );
+
+		$custom_stack = sprintf( "'%s',%s", str_replace( "'", '', $family ), ekwa_fonts_fallback_stack( $fallback ) );
+
+		// Conditional loading (default ON): below the breakpoint the variable
+		// resolves to the web-safe fallback only, so no rendered text ever
+		// references the custom family there — browsers then never download the
+		// font files on mobile. From the breakpoint up, the variable switches to
+		// the custom font. (@font-face alone triggers no download; usage does.)
+		$conditional = ! isset( $font['conditional'] ) || (bool) $font['conditional'];
+		if ( $conditional ) {
+			$root_rules .= sprintf( '--%s:%s;', $var, ekwa_fonts_fallback_stack( $fallback ) );
+			$cond_rules .= sprintf( '--%s:%s;', $var, $custom_stack );
+		} else {
+			$root_rules .= sprintf( '--%s:%s;', $var, $custom_stack );
+		}
 	}
 	if ( '' === $face_rules && '' === $root_rules ) {
 		return '';
 	}
-	return $face_rules . ":root{" . $root_rules . "}";
+	$css = $face_rules . ':root{' . $root_rules . '}';
+	if ( '' !== $cond_rules ) {
+		$bp   = function_exists( 'ekwa_fonts_conditional_bp' ) ? ekwa_fonts_conditional_bp() : 767;
+		$css .= '@media screen and (min-width:' . $bp . 'px){:root{' . $cond_rules . '}}';
+	}
+	return $css;
 }
 
 /**
@@ -1129,10 +1198,21 @@ function ekwa_fonts_print_preloads() {
 		$ext  = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
 		$type = 'woff2' === $ext ? 'font/woff2' : ( 'woff' === $ext ? 'font/woff' : ( 'ttf' === $ext ? 'font/ttf' : 'font/otf' ) );
 
+		// Conditionally-loaded fonts must not be preloaded on mobile — that
+		// would force the download the variable swap avoids. A media attribute
+		// makes the preload itself conditional.
+		$conditional = ! isset( $font['conditional'] ) || (bool) $font['conditional'];
+		$media_attr  = '';
+		if ( $conditional ) {
+			$bp         = function_exists( 'ekwa_fonts_conditional_bp' ) ? ekwa_fonts_conditional_bp() : 767;
+			$media_attr = ' media="(min-width: ' . $bp . 'px)"';
+		}
+
 		printf(
-			"<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"%s\" crossorigin>\n",
+			"<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"%s\"%s crossorigin>\n",
 			esc_url( $url_base . $filename ),
-			esc_attr( $type )
+			esc_attr( $type ),
+			$media_attr // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		);
 	}
 }

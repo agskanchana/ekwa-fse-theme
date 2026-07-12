@@ -311,6 +311,11 @@ function ekwa_save_settings() {
 		update_option( 'ekwa_ai_project_memory', sanitize_textarea_field( wp_unslash( $_POST['ekwa_ai_project_memory'] ) ) );
 	}
 
+	// Design tokens (mockup CSS, colors, background variables, font breakpoint).
+	if ( function_exists( 'ekwa_tokens_save_settings' ) ) {
+		ekwa_tokens_save_settings();
+	}
+
 	// Related Posts template HTML — keep raw markup but normalize line endings.
 	// Many shared hosts run mod_security / WAF rules that strip or block POST
 	// fields containing raw HTML (<article>, <a href=, etc.), which silently
@@ -841,6 +846,7 @@ function ekwa_settings_tabs() {
 		'locations'     => __( 'Locations', 'ekwa' ),
 		'related-posts' => __( 'Related Posts', 'ekwa' ),
 		'fonts'         => __( 'Fonts', 'ekwa' ),
+		'tokens'        => __( 'Design Tokens', 'ekwa' ),
 		'performance'   => __( 'Performance', 'ekwa' ),
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
@@ -1427,6 +1433,11 @@ function ekwa_render_settings_page() {
 			<div class="ekwa-tab-pane <?php echo 'fonts' === $active_tab ? 'active' : ''; ?>" data-tab="fonts">
 				<?php if ( function_exists( 'ekwa_fonts_render_tab' ) ) { ekwa_fonts_render_tab(); } ?>
 			</div><!-- /fonts -->
+
+			<!-- ========== DESIGN TOKENS TAB ========== -->
+			<div class="ekwa-tab-pane <?php echo 'tokens' === $active_tab ? 'active' : ''; ?>" data-tab="tokens">
+				<?php if ( function_exists( 'ekwa_tokens_render_tab' ) ) { ekwa_tokens_render_tab(); } ?>
+			</div><!-- /tokens -->
 
 			<!-- ========== PERFORMANCE TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'performance' === $active_tab ? 'active' : ''; ?>" data-tab="performance">

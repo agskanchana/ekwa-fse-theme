@@ -187,6 +187,7 @@
 		// Mockup CSS import + structured report.
 		var s13 = useState( '' );        var cssValue   = s13[0]; var setCssValue   = s13[1];
 		var s14 = useState( 'extract' ); var cssMode    = s14[0]; var setCssMode    = s14[1];
+		var s21 = useState( false );     var aiExtract  = s21[0]; var setAiExtract  = s21[1];
 		var s15 = useState( null );      var cssExtract = s15[0]; var setCssExtract = s15[1];
 		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
@@ -237,6 +238,12 @@
 			if ( cssValue.trim() ) {
 				body.css      = cssValue;
 				body.css_mode = cssMode;
+			}
+			if ( aiExtract ) {
+				// Server extracts this section's rules from the pasted CSS (or
+				// the saved Design Tokens mockup stylesheet when none pasted)
+				// and returns them as css_scoped for the wrapper block.
+				body.css_ai_extract = true;
 			}
 
 			if ( ! useServerM && manifestData ) {
@@ -399,7 +406,13 @@
 						placeholder: '/* paste the mockup’s style.css here */',
 						help: __( 'Fonts and colors are always extracted and shown after conversion.', 'ekwa' ),
 					} ),
-					cssValue.trim() ? el( SelectControl, {
+					el( ToggleControl, {
+						label: __( 'Extract this section’s CSS with AI → attach as Scoped CSS', 'ekwa' ),
+						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables. Uses the field above, or the stylesheet saved in Ekwa Settings → Design Tokens when empty.', 'ekwa' ),
+						checked: aiExtract,
+						onChange: setAiExtract,
+					} ),
+					( cssValue.trim() && ! aiExtract ) ? el( SelectControl, {
 						label: __( 'CSS destination', 'ekwa' ),
 						value: cssMode,
 						options: [

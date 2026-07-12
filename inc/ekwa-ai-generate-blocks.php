@@ -378,6 +378,10 @@ PROMPT;
 		$prompt .= ekwa_ai_project_memory_block();
 	}
 
+	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
+		$prompt .= ekwa_tokens_ai_context();
+	}
+
 	return $context_cue . $prompt;
 }
 

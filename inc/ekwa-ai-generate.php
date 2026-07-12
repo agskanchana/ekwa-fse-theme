@@ -246,6 +246,10 @@ PROMPT;
 		$prompt .= ekwa_ai_project_memory_block();
 	}
 
+	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
+		$prompt .= ekwa_tokens_ai_context();
+	}
+
 	return $context_cue . $prompt;
 }
 
@@ -260,21 +264,35 @@ PROMPT;
  * @return string Empty string when no child stylesheet is available.
  */
 function ekwa_ai_generate_child_stylesheet_context() {
-	// Only meaningful when a child theme is active (parent != stylesheet).
-	$parent_dir = get_template_directory();
-	$child_dir  = get_stylesheet_directory();
-	if ( $parent_dir === $child_dir ) {
-		return '';
+	$css    = '';
+	$source = '';
+
+	// Preferred source: the saved mockup stylesheet (Design Tokens tab) — the
+	// workflow goal is to not use the child style.css at all.
+	if ( function_exists( 'ekwa_tokens_mockup_css' ) ) {
+		$css = trim( ekwa_tokens_mockup_css() );
+		if ( '' !== $css ) {
+			$source = 'saved mockup stylesheet';
+		}
 	}
 
-	$path = $child_dir . '/style.css';
-	if ( ! is_readable( $path ) ) {
-		return '';
-	}
-
-	$css = file_get_contents( $path );
-	if ( false === $css || '' === trim( $css ) ) {
-		return '';
+	// Legacy fallback: the active child theme's style.css.
+	if ( '' === $css ) {
+		$parent_dir = get_template_directory();
+		$child_dir  = get_stylesheet_directory();
+		if ( $parent_dir === $child_dir ) {
+			return '';
+		}
+		$path = $child_dir . '/style.css';
+		if ( ! is_readable( $path ) ) {
+			return '';
+		}
+		$file_css = file_get_contents( $path );
+		if ( false === $file_css || '' === trim( $file_css ) ) {
+			return '';
+		}
+		$css    = $file_css;
+		$source = 'child theme';
 	}
 
 	$max = 80000;
@@ -282,7 +300,7 @@ function ekwa_ai_generate_child_stylesheet_context() {
 		$css = substr( $css, 0, $max ) . "\n\n/* …truncated for prompt budget */";
 	}
 
-	return "\n\n---\n\nSITE STYLESHEET (child theme — reuse these classes, CSS variables, and patterns when they fit the design):\n\n```css\n" . $css . "\n```\n";
+	return "\n\n---\n\nSITE STYLESHEET (" . $source . " — reuse these classes, CSS variables, and patterns when they fit the design):\n\n```css\n" . $css . "\n```\n";
 }
 
 /**
