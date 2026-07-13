@@ -183,6 +183,11 @@ require_once get_template_directory() . '/inc/ekwa-ai-block-specs.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate-blocks.php';
 
 /**
+ * AI Convert — semantic HTML → blocks with dynamic mapping (Mockup Converter).
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-convert.php';
+
+/**
  * AI alt-text generation for the ekwa/image block (Gemini multimodal).
  */
 require_once get_template_directory() . '/inc/ekwa-ai-alt.php';

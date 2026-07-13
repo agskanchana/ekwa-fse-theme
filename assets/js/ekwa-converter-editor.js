@@ -182,6 +182,7 @@
 		var s10 = useState( {} );     var mediaMaps    = s10[0]; var setMediaMaps   = s10[1];
 		var s11 = useState( 'input' ); var step        = s11[0]; var setStep        = s11[1];
 		var s12 = useState( true );    var detectDyn   = s12[0]; var setDetectDyn   = s12[1];
+		var s22 = useState( false );   var aiConvert   = s22[0]; var setAiConvert   = s22[1];
 		// steps: 'input' | 'result'
 
 		// Mockup CSS import + structured report.
@@ -203,6 +204,36 @@
 			setWarnings( [] );
 			setMarkup( '' );
 			setCopied( false );
+
+			// AI Convert — semantic conversion. The whole HTML goes to Gemini,
+			// which maps dynamic content to the dynamic blocks and preserves the
+			// rest. No heuristic media-mapping/CSS-mode step (CSS is handled via
+			// Design Setup). Returns markup + warnings only.
+			if ( aiConvert ) {
+				apiFetch( {
+					path: '/ekwa/v1/ai-convert',
+					method: 'POST',
+					data: { html: htmlValue },
+				} ).then( function ( res ) {
+					setMarkup( res.markup || '' );
+					setWarnings( res.warnings || [] );
+					setReport( [] );
+					setCssExtract( null );
+					setCssSaved( false );
+					setCssScoped( '' );
+					setMediaMaps( {} );
+					setConverting( false );
+					setStep( 'result' );
+				} ).catch( function ( err ) {
+					var msg = err.message || 'AI conversion failed.';
+					if ( err.code === 'ekwa_ai_rate_limited' || err.code === 'ekwa_ai_forbidden' ) {
+						msg = err.message;
+					}
+					setError( msg );
+					setConverting( false );
+				} );
+				return;
+			}
 
 			var body = {
 				html: htmlValue,
@@ -432,16 +463,32 @@
 				)
 			);
 
-			// Dynamic data detection toggle.
+			// AI Convert toggle — the foolproof semantic path.
 			inputChildren.push(
-				el( ToggleControl, {
-					key: 'detect-dynamic',
-					label: __( 'Detect dynamic data', 'ekwa' ),
-					help: __( 'Auto-replace phone, email, hours, social links with dynamic shortcodes.', 'ekwa' ),
-					checked: detectDyn,
-					onChange: setDetectDyn,
-				} )
+				el( 'div', { key: 'ai-convert', className: 'ekwa-mc-aiconvert' },
+					el( ToggleControl, {
+						label: __( 'Convert with AI (semantic — best for headers, footers & complex layouts)', 'ekwa' ),
+						help: aiConvert
+							? __( 'The AI reads the whole HTML and maps phone, address, hours, social, copyright, logo, menu and map to the dynamic blocks — without over-capturing or dropping content. Slower, uses your AI quota. Handle CSS via Design Setup.', 'ekwa' )
+							: __( 'Uses Gemini to understand the layout instead of pattern-matching. Turn on for headers/footers or any dense section the fast converter mis-maps.', 'ekwa' ),
+						checked: aiConvert,
+						onChange: setAiConvert,
+					} )
+				)
 			);
+
+			// Dynamic data detection toggle (deterministic path only).
+			if ( ! aiConvert ) {
+				inputChildren.push(
+					el( ToggleControl, {
+						key: 'detect-dynamic',
+						label: __( 'Detect dynamic data', 'ekwa' ),
+						help: __( 'Auto-replace phone, email, hours, social links with dynamic shortcodes.', 'ekwa' ),
+						checked: detectDyn,
+						onChange: setDetectDyn,
+					} )
+				);
+			}
 
 			// Error.
 			if ( error ) {
@@ -462,8 +509,8 @@
 						onClick: handleConvert,
 						className: 'ekwa-mc-convert-btn',
 					}, converting
-						? el( Fragment, null, el( Spinner, null ), __( ' Converting...', 'ekwa' ) )
-						: __( 'Convert to Blocks', 'ekwa' )
+						? el( Fragment, null, el( Spinner, null ), aiConvert ? __( ' Converting with AI…', 'ekwa' ) : __( ' Converting...', 'ekwa' ) )
+						: ( aiConvert ? __( 'Convert with AI', 'ekwa' ) : __( 'Convert to Blocks', 'ekwa' ) )
 					)
 				)
 			);

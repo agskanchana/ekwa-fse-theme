@@ -621,6 +621,25 @@ function ekwa_mc_detect_hours( $node, $depth ) {
 		return null;
 	}
 
+	// Mixed-container guard: a real hours widget holds ONLY hours. If this
+	// container also contains a phone (tel:), a maps/directions link, a form,
+	// or a button/CTA, it's a mixed block — e.g. a footer contact band with
+	// address + phone + hours + "Book" side by side. Matching it here would
+	// SWALLOW those siblings into a single ekwa/hours. Skip so the inner
+	// elements convert individually (their own detectors still fire).
+	foreach ( $node->getElementsByTagName( 'a' ) as $a ) {
+		$href = $a->getAttribute( 'href' );
+		if ( stripos( $href, 'tel:' ) === 0
+			|| preg_match( '/(maps\.google|google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/i', $href ) ) {
+			return null;
+		}
+	}
+	if ( $node->getElementsByTagName( 'button' )->length > 0
+		|| $node->getElementsByTagName( 'form' )->length > 0
+		|| $node->getElementsByTagName( 'input' )->length > 0 ) {
+		return null;
+	}
+
 	$indent = str_repeat( '  ', $depth );
 
 	ekwa_mc_warn( 'Auto-detected working hours → ekwa/hours (' . $day_count . ' days found)' );
