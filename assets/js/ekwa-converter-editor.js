@@ -207,20 +207,28 @@
 
 			// AI Convert — semantic conversion. The whole HTML goes to Gemini,
 			// which maps dynamic content to the dynamic blocks and preserves the
-			// rest. No heuristic media-mapping/CSS-mode step (CSS is handled via
-			// Design Setup). Returns markup + warnings only.
+			// rest. The CSS workflow (extract / child / scoped / AI-extract) is
+			// the same as the deterministic path.
 			if ( aiConvert ) {
+				var aiBody = { html: htmlValue };
+				if ( cssValue.trim() ) {
+					aiBody.css      = cssValue;
+					aiBody.css_mode = cssMode;
+				}
+				if ( aiExtract ) {
+					aiBody.css_ai_extract = true;
+				}
 				apiFetch( {
 					path: '/ekwa/v1/ai-convert',
 					method: 'POST',
-					data: { html: htmlValue },
+					data: aiBody,
 				} ).then( function ( res ) {
 					setMarkup( res.markup || '' );
 					setWarnings( res.warnings || [] );
 					setReport( [] );
-					setCssExtract( null );
-					setCssSaved( false );
-					setCssScoped( '' );
+					setCssExtract( res.css_extract || null );
+					setCssSaved( !! res.css_saved );
+					setCssScoped( res.css_scoped || '' );
 					setMediaMaps( {} );
 					setConverting( false );
 					setStep( 'result' );
@@ -469,7 +477,7 @@
 					el( ToggleControl, {
 						label: __( 'Convert with AI (semantic — best for headers, footers & complex layouts)', 'ekwa' ),
 						help: aiConvert
-							? __( 'The AI reads the whole HTML and maps phone, address, hours, social, copyright, logo, menu and map to the dynamic blocks — without over-capturing or dropping content. Slower, uses your AI quota. Handle CSS via Design Setup.', 'ekwa' )
+							? __( 'The AI reads the whole HTML and maps phone, address, hours, social, copyright, logo, menu and map to the dynamic blocks — without over-capturing or dropping content. Slower, uses your AI quota. The CSS options above work the same as the fast path.', 'ekwa' )
 							: __( 'Uses Gemini to understand the layout instead of pattern-matching. Turn on for headers/footers or any dense section the fast converter mis-maps.', 'ekwa' ),
 						checked: aiConvert,
 						onChange: setAiConvert,

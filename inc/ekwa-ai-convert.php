@@ -48,6 +48,25 @@ function ekwa_ai_convert_register_routes() {
 				'type'     => 'string',
 				'default'  => 'gemini-2.5-flash',
 			),
+			// Same CSS workflow as /convert-markup (extract / child / scoped /
+			// AI-extract) — handled by the shared ekwa_mc_apply_css_options().
+			'css' => array(
+				'required'          => false,
+				'type'              => 'string',
+				'default'           => '',
+				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+			),
+			'css_mode' => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'extract',
+				'enum'     => array( 'extract', 'child', 'scoped' ),
+			),
+			'css_ai_extract' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 }
@@ -75,6 +94,15 @@ DYNAMIC DATA — replace the mockup's placeholder with the matching dynamic bloc
 - A search icon/trigger → <!-- wp:ekwa/search /-->.
 NEVER type a real or fake phone/address/hours into these blocks. NEVER wrap them around other content — a dynamic block replaces ONLY its own element, leaving its siblings (other items in the same row/band) as their own blocks.
 A dynamic block is ALWAYS a standalone block among its siblings — NEVER place it inside a core/paragraph, core/heading, or any other block's HTML. If the mockup wrapped the dynamic content in a tag (e.g. <p>Call: (847) 349-4306</p>, or <p>addr<br>addr</p>), REPLACE that entire wrapping tag with the dynamic block(s); do not keep the <p> around the block. Two phone numbers in one <p> separated by <br> become two consecutive ekwa/phone blocks (no <p>, no <br>).
+
+CUSTOM TEMPLATES — pixel-parity for dynamic blocks. ekwa/phone, ekwa/address, ekwa/hours, ekwa/social and ekwa/copyright accept a "customTemplate" attribute: the block renders THAT markup with the live data injected. When the mockup's markup for one of these elements is anything other than trivial, PRESERVE it by setting customTemplate to the mockup's own HTML for that element, with the concrete data replaced by placeholders:
+- ekwa/phone: {{prefix}} {{number}} {{tel}} (tel: href value) {{icon}} (icon class). Example from <p><a href="tel:+1555..."><i class="fas fa-phone"></i> New: (555) 123-4567</a></p> →
+  <!-- wp:ekwa/phone {"type":"new","customTemplate":"<p><a href=\"tel:{{tel}}\"><i class=\"fas fa-phone\"></i> {{prefix}} {{number}}</a></p>"} /-->
+- ekwa/address: {{street}} {{city}} {{state}} {{zip}} {{city_state}} {{full}} {{maps_url}}. Keep the mockup's tag/classes, e.g. customTemplate:"<a class=\"ft-addr\" href=\"{{maps_url}}\" target=\"_blank\">{{street}}<br>{{city_state}} {{zip}}</a>".
+- ekwa/hours: repeat a row with {{#rows}}…{{/rows}} containing {{day}}, {{time}}, and {{closed_class}} (adds " is-closed" on closed days). E.g. customTemplate:"<ul class=\"hrs\">{{#rows}}<li class=\"hrs-row{{closed_class}}\"><span>{{day}}</span><span>{{time}}</span></li>{{/rows}}</ul>". Emit ONE row template — it repeats per day automatically.
+- ekwa/social: {{#links}}…{{/links}} with {{url}}, {{name}}, {{icon}}. E.g. customTemplate:"<div class=\"ft-soc\">{{#links}}<a href=\"{{url}}\" aria-label=\"{{name}}\" target=\"_blank\"><i class=\"{{icon}}\"></i></a>{{/links}}</div>".
+- ekwa/copyright: {{year}} {{name}}. E.g. customTemplate:"<span>© {{year}} {{name}}. All rights reserved.</span>".
+Template rules: copy the mockup's classes/structure EXACTLY (so the mockup CSS applies unchanged); replace every concrete value (numbers, addresses, day/time text, social URLs, years, names) with the placeholders; include NO <script>, no event handlers, and no HTML comments inside the template; escape the double quotes for JSON. When the mockup element is trivial or matches the block's canonical output, omit customTemplate.
 
 EVERYTHING ELSE — structure:
 - Containers (<div>, <section>, <header>, <footer>, <nav>, <main>, <aside>) → ekwa/div with {"tagName":"…"} and {"className":"…"} copied VERBATIM from the source (so the mockup CSS still targets them). Keep the nesting exactly.
@@ -187,9 +215,20 @@ function ekwa_ai_convert_handle_request( $request ) {
 	$warnings      = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $block_markup ) );
 	$rendered_html = ekwa_ai_generate_blocks_render_preview( $block_markup );
 
-	return rest_ensure_response( array(
+	$response = array(
 		'markup'        => $block_markup,
 		'rendered_html' => $rendered_html,
 		'warnings'      => $warnings,
-	) );
+	);
+
+	// Shared CSS workflow (extract tokens / append to child / attach scoped /
+	// AI-extract) — identical to the deterministic converter path.
+	if ( function_exists( 'ekwa_mc_apply_css_options' ) ) {
+		$response = ekwa_mc_apply_css_options( $request, $html, $response );
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+	}
+
+	return rest_ensure_response( $response );
 }

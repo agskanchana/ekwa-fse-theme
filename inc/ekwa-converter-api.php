@@ -187,6 +187,30 @@ function ekwa_rest_convert_markup( $request ) {
 	);
 
 	// ── Optional mockup CSS handling ─────────────────────────────────────
+	$response = ekwa_mc_apply_css_options( $request, $html, $response );
+	if ( is_wp_error( $response ) ) {
+		return $response;
+	}
+
+	return rest_ensure_response( $response );
+}
+
+/**
+ * Apply the shared CSS options (extract tokens / append-to-child / attach as
+ * scoped / AI-extract) to a converter response. Used by BOTH conversion
+ * endpoints — /convert-markup and /ai-convert — so the CSS workflow behaves
+ * identically whichever converter produced the markup.
+ *
+ * @param WP_REST_Request $request  Carries css, css_mode, css_ai_extract.
+ * @param string          $html     The section HTML (for AI extraction).
+ * @param array           $response Response payload so far (warnings array present).
+ * @return array|WP_Error Amended response payload.
+ */
+function ekwa_mc_apply_css_options( $request, $html, array $response ) {
+	if ( ! isset( $response['warnings'] ) || ! is_array( $response['warnings'] ) ) {
+		$response['warnings'] = array();
+	}
+
 	$css        = trim( (string) $request->get_param( 'css' ) );
 	$css_mode   = $request->get_param( 'css_mode' );
 	$ai_extract = (bool) $request->get_param( 'css_ai_extract' );
@@ -225,7 +249,7 @@ function ekwa_rest_convert_markup( $request ) {
 		}
 	}
 
-	return rest_ensure_response( $response );
+	return $response;
 }
 
 /**

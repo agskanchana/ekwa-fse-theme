@@ -364,8 +364,14 @@ function ekwa_inline_block_assets( $block_content, $block ) {
 
 	$prepend = '';
 
+	// Templated dynamic blocks render the author's own markup — the canonical
+	// block stylesheet targets structure that isn't there, so skip inlining it.
+	$has_custom_template = ! empty( $block['attrs']['customTemplate'] )
+		&& function_exists( 'ekwa_tpl_supported_blocks' )
+		&& array_key_exists( $name, ekwa_tpl_supported_blocks() );
+
 	$map = ekwa_inline_asset_map();
-	if ( isset( $map[ $name ] ) ) {
+	if ( isset( $map[ $name ] ) && ! $has_custom_template ) {
 		if ( ! empty( $map[ $name ]['css'] ) ) {
 			$prepend .= ekwa_inline_get_style( $map[ $name ]['css'] );
 		}

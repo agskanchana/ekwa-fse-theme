@@ -21,6 +21,8 @@ $ekwa_theme_updater = PucFactory::buildUpdateChecker(
 	'ekwa'
 );
 
+$ekwa_theme_updater->setBranch('dev');  
+
 /**
  * Authenticate GitHub update checks with a Personal Access Token when one is
  * available, lifting the API limit from 60/hr (anonymous) to 5000/hr. The
@@ -265,6 +267,12 @@ require_once get_template_directory() . '/inc/ekwa-child-generator.php';
  * Author Guide / starter-template downloads (Ekwa Settings → Design Setup).
  */
 require_once get_template_directory() . '/inc/ekwa-mockup-contract.php';
+
+/**
+ * Templated dynamic blocks — optional customTemplate attribute on the data
+ * blocks so they render the mockup's own markup with live settings data.
+ */
+require_once get_template_directory() . '/inc/ekwa-block-templates.php';
 
 /**
  * Enqueue theme stylesheet and Font Awesome.
