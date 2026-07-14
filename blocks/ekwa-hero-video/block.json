@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/hero-video",
+	"version": "1.0.0",
+	"title": "Ekwa Hero Video",
+	"category": "ekwa-elements",
+	"icon": "video-alt3",
+	"description": "Full-bleed background video hero with an overlay and caption content on top. Muted, looped, mobile-safe autoplay with an accessible pause button.",
+	"textdomain": "ekwa",
+	"keywords": [ "video", "hero", "background", "banner" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "full", "wide" ],
+		"className": true
+	},
+	"attributes": {
+		"videoUrl":        { "type": "string",  "default": "" },
+		"videoId":         { "type": "number",  "default": 0 },
+		"posterUrl":       { "type": "string",  "default": "" },
+		"posterId":        { "type": "number",  "default": 0 },
+		"overlayColor":    { "type": "string",  "default": "#0b1622" },
+		"overlayOpacity":  { "type": "number",  "default": 40 },
+		"minHeight":       { "type": "string",  "default": "80vh" },
+		"contentAlign":    { "type": "string",  "default": "left" },
+		"showPauseButton": { "type": "boolean", "default": true }
+	},
+	"editorScript": "ekwa-hero-video-editor"
+}

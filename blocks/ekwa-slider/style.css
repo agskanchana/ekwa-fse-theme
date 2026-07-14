@@ -1,0 +1,173 @@
+/* Ekwa Slider — frontend. Inlined only on pages where the block renders. */
+
+.ekwa-slider {
+	position: relative;
+	overflow: hidden;
+	min-height: var(--ekwa-slider-h, 80vh);
+	outline: none;
+}
+
+.ekwa-slider__track {
+	position: relative;
+	height: 100%;
+	min-height: inherit;
+}
+
+/* ── Slides ────────────────────────────────────────────────────────────── */
+.ekwa-slide {
+	position: absolute;
+	inset: 0;
+	background-size: cover;
+	background-repeat: no-repeat;
+	display: flex;
+	align-items: center;
+	opacity: 0;
+	visibility: hidden;
+	z-index: 1;
+}
+.ekwa-slide.is-active {
+	opacity: 1;
+	visibility: visible;
+	z-index: 2;
+}
+
+.ekwa-slide__overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.ekwa-slide__inner {
+	position: relative;
+	z-index: 3;
+	width: 100%;
+	max-width: 1180px;
+	margin: 0 auto;
+	padding: 64px 24px;
+}
+.ekwa-slide--center .ekwa-slide__inner { text-align: center; }
+.ekwa-slide--right  .ekwa-slide__inner { text-align: right; }
+
+/* ── Transition: fade ──────────────────────────────────────────────────── */
+.ekwa-slider--fade .ekwa-slide {
+	transition: opacity 1s ease, visibility 1s ease;
+}
+
+/* ── Transition: zoom (fade + slow scale on the incoming slide) ────────── */
+.ekwa-slider--zoom .ekwa-slide {
+	transition: opacity 1.1s ease, visibility 1.1s ease;
+	transform: scale(1.06);
+}
+.ekwa-slider--zoom .ekwa-slide.is-active {
+	transform: scale(1);
+	transition: opacity 1.1s ease, visibility 1.1s ease, transform 6s linear;
+}
+
+/* ── Transition: slide (horizontal push) ───────────────────────────────── */
+.ekwa-slider--slide .ekwa-slide {
+	transition: transform .7s cubic-bezier(.65, 0, .35, 1), opacity .7s ease, visibility .7s;
+	transform: translateX(100%);
+	opacity: 1;
+}
+.ekwa-slider--slide .ekwa-slide.is-active   { transform: translateX(0); visibility: visible; }
+.ekwa-slider--slide .ekwa-slide.is-leaving  { transform: translateX(-100%); visibility: visible; z-index: 1; }
+.ekwa-slider--slide .ekwa-slide.is-leaving.from-next { transform: translateX(100%); }
+.ekwa-slider--slide .ekwa-slide.from-prev   { transform: translateX(-100%); }
+
+/* ── Arrows ────────────────────────────────────────────────────────────── */
+.ekwa-slider__arrow {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 10;
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	border: 1px solid rgba(255, 255, 255, .35);
+	background: rgba(10, 16, 24, .25);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: background .25s, border-color .25s, opacity .25s;
+	backdrop-filter: blur(2px);
+}
+.ekwa-slider__arrow:hover,
+.ekwa-slider__arrow:focus-visible {
+	background: rgba(10, 16, 24, .55);
+	border-color: rgba(255, 255, 255, .7);
+}
+.ekwa-slider__arrow--prev { left: 18px; }
+.ekwa-slider__arrow--next { right: 18px; }
+.ekwa-slider__arrow[disabled] { opacity: .35; cursor: default; }
+
+/* ── Dots ──────────────────────────────────────────────────────────────── */
+.ekwa-slider__dots {
+	position: absolute;
+	bottom: 22px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10;
+	display: flex;
+	gap: 10px;
+}
+.ekwa-slider__dot {
+	width: 26px;
+	height: 4px;
+	border-radius: 2px;
+	border: none;
+	padding: 0;
+	background: rgba(255, 255, 255, .4);
+	cursor: pointer;
+	transition: background .25s, width .25s;
+}
+.ekwa-slider__dot.is-active {
+	background: #fff;
+	width: 38px;
+}
+
+/* ── Content entrance animations ───────────────────────────────────────── */
+/* Content stays put until JS marks the slider ready (no-JS = just visible). */
+.ekwa-slider--ready .ekwa-slide-content[data-anim] {
+	opacity: 0;
+}
+.ekwa-slider--ready .ekwa-slide-content.ekwa-animate {
+	animation-fill-mode: both;
+	animation-timing-function: cubic-bezier(.22, .61, .36, 1);
+}
+
+.ekwa-slide-content.ekwa-animate[data-anim="fadeIn"]      { animation-name: ekwaFadeIn; }
+.ekwa-slide-content.ekwa-animate[data-anim="fadeInUp"]    { animation-name: ekwaFadeInUp; }
+.ekwa-slide-content.ekwa-animate[data-anim="fadeInDown"]  { animation-name: ekwaFadeInDown; }
+.ekwa-slide-content.ekwa-animate[data-anim="fadeInLeft"]  { animation-name: ekwaFadeInLeft; }
+.ekwa-slide-content.ekwa-animate[data-anim="fadeInRight"] { animation-name: ekwaFadeInRight; }
+.ekwa-slide-content.ekwa-animate[data-anim="zoomIn"]      { animation-name: ekwaZoomIn; }
+.ekwa-slide-content.ekwa-animate[data-anim="slideInUp"]   { animation-name: ekwaSlideInUp; }
+.ekwa-slide-content.ekwa-animate[data-anim="blurIn"]      { animation-name: ekwaBlurIn; }
+
+@keyframes ekwaFadeIn      { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ekwaFadeInUp    { from { opacity: 0; transform: translateY(36px); }  to { opacity: 1; transform: none; } }
+@keyframes ekwaFadeInDown  { from { opacity: 0; transform: translateY(-36px); } to { opacity: 1; transform: none; } }
+@keyframes ekwaFadeInLeft  { from { opacity: 0; transform: translateX(-44px); } to { opacity: 1; transform: none; } }
+@keyframes ekwaFadeInRight { from { opacity: 0; transform: translateX(44px); }  to { opacity: 1; transform: none; } }
+@keyframes ekwaZoomIn      { from { opacity: 0; transform: scale(.82); }        to { opacity: 1; transform: none; } }
+@keyframes ekwaSlideInUp   { from { opacity: 0; transform: translateY(100%); }  to { opacity: 1; transform: none; } }
+@keyframes ekwaBlurIn      { from { opacity: 0; filter: blur(12px); }           to { opacity: 1; filter: blur(0); } }
+
+/* ── Reduced motion: no entrances, instant transitions ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+	.ekwa-slider .ekwa-slide,
+	.ekwa-slider--zoom .ekwa-slide.is-active { transition: none; transform: none; }
+	.ekwa-slider--ready .ekwa-slide-content[data-anim] { opacity: 1; }
+	.ekwa-slide-content.ekwa-animate { animation: none !important; }
+}
+
+/* ── Small screens ─────────────────────────────────────────────────────── */
+@media (max-width: 599px) {
+	.ekwa-slider { min-height: min(var(--ekwa-slider-h, 80vh), 70vh); }
+	.ekwa-slider__arrow { width: 38px; height: 38px; }
+	.ekwa-slider__arrow--prev { left: 8px; }
+	.ekwa-slider__arrow--next { right: 8px; }
+	.ekwa-slide__inner { padding: 48px 18px; }
+}

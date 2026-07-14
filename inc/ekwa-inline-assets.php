@@ -60,6 +60,8 @@ function ekwa_inline_asset_map() {
 		'ekwa/reveal'           => array( 'css' => 'blocks/ekwa-reveal/style.css',            'js' => 'blocks/ekwa-reveal/view.js' ),
 		'ekwa/reveal-hidden'    => array( 'css' => 'blocks/ekwa-reveal/style.css' ),
 		'ekwa/carousel'         => array( 'css' => 'blocks/ekwa-carousel/style.css',          'js' => 'blocks/ekwa-carousel/view.js' ),
+		'ekwa/slider'           => array( 'css' => 'blocks/ekwa-slider/style.css',            'js' => 'blocks/ekwa-slider/view.js' ),
+		'ekwa/hero-video'       => array( 'css' => 'blocks/ekwa-hero-video/style.css',        'js' => 'blocks/ekwa-hero-video/view.js' ),
 		'ekwa/load-more-rows'   => array( 'css' => 'blocks/ekwa-load-more-rows/style.css',    'js' => 'blocks/ekwa-load-more-rows/view.js' ),
 
 		// Blog blocks — all share the (page-level) blog stylesheet; dedupe keeps

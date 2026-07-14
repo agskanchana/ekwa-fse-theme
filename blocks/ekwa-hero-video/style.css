@@ -1,0 +1,68 @@
+/* Ekwa Hero Video — frontend. Inlined only on pages where the block renders. */
+
+.ekwa-hero-video {
+	position: relative;
+	overflow: hidden;
+	min-height: var(--ekwa-hero-h, 80vh);
+	display: flex;
+	align-items: center;
+}
+
+.ekwa-hero-video__media {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	z-index: 1;
+}
+
+.ekwa-hero-video__overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+}
+
+.ekwa-hero-video__content {
+	position: relative;
+	z-index: 3;
+	width: 100%;
+	max-width: 1180px;
+	margin: 0 auto;
+	padding: 64px 24px;
+}
+.ekwa-hero-video--center .ekwa-hero-video__content { text-align: center; }
+.ekwa-hero-video--right  .ekwa-hero-video__content { text-align: right; }
+
+/* Accessible pause/play toggle */
+.ekwa-hero-video__toggle {
+	position: absolute;
+	bottom: 18px;
+	right: 18px;
+	z-index: 10;
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	border: 1px solid rgba(255, 255, 255, .4);
+	background: rgba(10, 16, 24, .35);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: background .25s;
+	backdrop-filter: blur(2px);
+}
+.ekwa-hero-video__toggle:hover,
+.ekwa-hero-video__toggle:focus-visible {
+	background: rgba(10, 16, 24, .65);
+}
+.ekwa-hero-video__toggle .ekwa-hero-video__ico-play  { display: none; }
+.ekwa-hero-video__toggle[data-state="paused"] .ekwa-hero-video__ico-pause { display: none; }
+.ekwa-hero-video__toggle[data-state="paused"] .ekwa-hero-video__ico-play  { display: block; }
+
+@media (max-width: 599px) {
+	.ekwa-hero-video { min-height: min(var(--ekwa-hero-h, 80vh), 70vh); }
+	.ekwa-hero-video__content { padding: 48px 18px; }
+}

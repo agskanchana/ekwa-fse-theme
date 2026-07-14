@@ -1370,6 +1370,107 @@ body.ekwa-select-mode .editor-styles-wrapper .wp-block,
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   EKWA SLIDER + HERO VIDEO — editor-only preview
+   Slides are stacked (not cycling) so each stays editable; the animation
+   badge mirrors the front-end settings.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ekwa-slider--editor {
+	border: 2px dashed #7c3aed;
+	border-radius: 10px;
+	padding: 26px 14px 14px;
+	position: relative;
+}
+.ekwa-slider__editor-notice {
+	color: #646970;
+	font-size: 12px;
+	font-style: italic;
+	margin: 0 0 10px;
+}
+.ekwa-slide--editor {
+	position: relative;
+	min-height: 260px;
+	border: 1px dashed #c3c4c7;
+	border-radius: 8px;
+	margin-bottom: 12px;
+	background-color: #2c3338;
+	background-size: cover;
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+}
+.ekwa-slide__editor-overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.ekwa-slide__editor-inner {
+	position: relative;
+	z-index: 2;
+	width: 100%;
+	padding: 28px 22px;
+}
+.ekwa-slide__editor-inner.ekwa-slide--center { text-align: center; }
+.ekwa-slide__editor-inner.ekwa-slide--right  { text-align: right; }
+
+.ekwa-slide-content--editor {
+	position: relative;
+	border: 1px dashed rgba(255, 255, 255, 0.55);
+	border-radius: 6px;
+	padding: 26px 12px 10px;
+	margin: 8px 0;
+}
+.ekwa-slide-content__badge {
+	position: absolute;
+	top: 4px;
+	left: 8px;
+	font-size: 10px;
+	font-weight: 600;
+	color: #fff;
+	background: rgba(14, 124, 107, 0.9);
+	padding: 1px 8px;
+	border-radius: 999px;
+	pointer-events: none;
+}
+.ekwa-slide-content__badge em {
+	font-style: normal;
+	opacity: 0.8;
+}
+
+.ekwa-hero-video--editor {
+	position: relative;
+	display: flex;
+	align-items: center;
+	border: 2px dashed #c3c4c7;
+	border-radius: 10px;
+	background-color: #2c3338;
+	overflow: hidden;
+}
+.ekwa-hero-video__editor-overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.ekwa-hero-video__editor-empty {
+	position: absolute;
+	top: 10px;
+	left: 12px;
+	z-index: 3;
+	color: #fff;
+	font-size: 12px;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 3px 10px;
+	border-radius: 999px;
+}
+.ekwa-hero-video__editor-content {
+	position: relative;
+	z-index: 2;
+	width: 100%;
+	padding: 40px 24px;
+}
+.ekwa-hero-video__editor-content.ekwa-hero-video--center { text-align: center; }
+.ekwa-hero-video__editor-content.ekwa-hero-video--right  { text-align: right; }
+
+/* ══════════════════════════════════════════════════════════════════════════
    RESPONSIVE VISIBILITY — editor indicator
    Blocks hidden on some screen size get a corner badge (D/T/M) so the choice
    is visible while editing, without actually hiding the block in the canvas.

@@ -1,0 +1,29 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/slider",
+	"version": "1.0.0",
+	"title": "Ekwa Slider",
+	"category": "ekwa-elements",
+	"icon": "slides",
+	"description": "Premium hero slider — background-image slides with animated content, arrows, dots, keyboard and touch navigation. Assets inline only on pages that use it.",
+	"textdomain": "ekwa",
+	"keywords": [ "slider", "hero", "carousel", "banner", "slideshow" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "full", "wide" ],
+		"className": true
+	},
+	"attributes": {
+		"transition":   { "type": "string",  "default": "fade" },
+		"autoplay":     { "type": "boolean", "default": true },
+		"interval":     { "type": "number",  "default": 6000 },
+		"showArrows":   { "type": "boolean", "default": true },
+		"showDots":     { "type": "boolean", "default": true },
+		"loop":         { "type": "boolean", "default": true },
+		"pauseOnHover": { "type": "boolean", "default": true },
+		"minHeight":    { "type": "string",  "default": "80vh" }
+	},
+	"editorScript": "ekwa-slider-editor"
+}

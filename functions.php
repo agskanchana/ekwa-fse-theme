@@ -275,6 +275,12 @@ require_once get_template_directory() . '/inc/ekwa-mockup-contract.php';
 require_once get_template_directory() . '/inc/ekwa-block-templates.php';
 
 /**
+ * Ekwa Slider + Hero Video blocks (hero slider with animated content;
+ * background-video hero). Assets inline per page via ekwa-inline-assets.
+ */
+require_once get_template_directory() . '/inc/ekwa-slider.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {

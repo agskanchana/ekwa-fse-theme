@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/slide-content",
+	"version": "1.0.0",
+	"title": "Slider Content",
+	"category": "ekwa-elements",
+	"icon": "controls-play",
+	"parent": [ "ekwa/slide" ],
+	"description": "An animated content group inside a slide — pick an entrance animation and delay; it replays every time the slide becomes active.",
+	"textdomain": "ekwa",
+	"keywords": [ "animation", "caption", "content", "entrance" ],
+	"supports": {
+		"html": false,
+		"className": true
+	},
+	"attributes": {
+		"animation": { "type": "string", "default": "fadeInUp" },
+		"delay":     { "type": "number", "default": 0 },
+		"duration":  { "type": "number", "default": 800 }
+	},
+	"editorScript": "ekwa-slider-editor"
+}

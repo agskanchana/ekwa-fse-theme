@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/slide",
+	"version": "1.0.0",
+	"title": "Ekwa Slide",
+	"category": "ekwa-elements",
+	"icon": "format-image",
+	"parent": [ "ekwa/slider" ],
+	"description": "One slide: a background image (WebP served automatically, original as fallback) with an optional overlay and animated content.",
+	"textdomain": "ekwa",
+	"keywords": [ "slide", "hero", "background" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"bgImage":        { "type": "string",  "default": "" },
+		"bgImageId":      { "type": "number",  "default": 0 },
+		"bgPosition":     { "type": "string",  "default": "center center" },
+		"overlayColor":   { "type": "string",  "default": "#0b1622" },
+		"overlayOpacity": { "type": "number",  "default": 35 },
+		"contentAlign":   { "type": "string",  "default": "left" }
+	},
+	"editorScript": "ekwa-slider-editor"
+}
