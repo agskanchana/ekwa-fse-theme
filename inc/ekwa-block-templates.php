@@ -46,7 +46,7 @@ function ekwa_tpl_supported_blocks() {
 		),
 		'ekwa/social'    => array(
 			'label'        => __( 'Social', 'ekwa' ),
-			'placeholders' => '{{#links}} {{url}} {{name}} {{icon}} {{/links}}',
+			'placeholders' => '{{#links}} {{url}} {{name}} {{icon}} {{/links}} {{share_button}}',
 		),
 		'ekwa/copyright' => array(
 			'label'        => __( 'Copyright', 'ekwa' ),
@@ -231,7 +231,12 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 			}
 			$closed_label = __( 'Closed', 'ekwa' );
 			$rows         = array();
-			foreach ( $raw as $day => $wh ) {
+			// Rows are a NUMERIC list; the day name lives inside each row
+			// ({"day":"Monday","open_hour":…}) — never use the array index.
+			foreach ( $raw as $wh ) {
+				if ( ! is_array( $wh ) ) {
+					continue;
+				}
 				$is_closed = ! empty( $wh['closed'] );
 				$time      = $is_closed
 					? $closed_label
@@ -241,7 +246,7 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 							. ekwa_wh_format_time( $wh['close_hour'] ?? '', $wh['close_min'] ?? '', $wh['close_period'] ?? '' )
 						: '' );
 				$rows[] = array(
-					'day'          => esc_html( ucfirst( $day ) ),
+					'day'          => esc_html( ucfirst( (string) ( $wh['day'] ?? '' ) ) ),
 					'time'         => esc_html( $time ),
 					'closed_class' => $is_closed ? ' is-closed' : '',
 				);
@@ -273,7 +278,11 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 			if ( empty( $rows ) ) {
 				return null;
 			}
-			return array( 'vars' => array(), 'loops' => array( 'links' => $rows ) );
+			$show_share = ! isset( $attrs['showShare'] ) || (bool) $attrs['showShare'];
+			return array(
+				'vars'  => array( 'share_button' => $show_share ? ekwa_tpl_share_button_html() : '' ),
+				'loops' => array( 'links' => $rows ),
+			);
 
 		case 'ekwa/copyright':
 			$practice = get_option( 'ekwa_practice_name', '' );
@@ -290,6 +299,42 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 	}
 
 	return null;
+}
+
+/**
+ * The canonical share button (same classes and toggle behavior as the
+ * ekwa/social block renders) for the {{share_button}} placeholder. Injected
+ * as a variable AFTER template sanitization — it is trusted server output.
+ *
+ * @return string
+ */
+function ekwa_tpl_share_button_html() {
+	static $uid = 0;
+	$uid++;
+	$id    = 'tpl-' . $uid;
+	$js_fn = 'ekwaTplShareToggle' . $uid;
+
+	$permalink = rawurlencode( (string) get_permalink() );
+	$title     = rawurlencode( (string) get_the_title() );
+
+	return '<button class="addthis" aria-label="' . esc_attr__( 'Toggle Share', 'ekwa' ) . '" onclick="' . esc_js( $js_fn ) . '()" type="button">'
+		. '<i class="fa-solid fa-share-nodes"></i>'
+		. '<span class="hide">' . esc_html__( 'Share', 'ekwa' ) . '</span>'
+		. '<div id="share-toggle-' . esc_attr( $id ) . '" class="share-toggle">'
+		. '<a aria-label="' . esc_attr__( 'Share on Facebook', 'ekwa' ) . '" class="share-facebook" rel="noopener noreferrer"'
+		. ' href="https://www.facebook.com/sharer/sharer.php?u=' . $permalink . '&amp;t=' . $title . '"'
+		. ' onclick="window.open(this.href,\'\',\'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,height=300,width=600\');return false;"'
+		. ' target="_blank"><i class="fa-brands fa-facebook-f"></i></a>'
+		. '<a aria-label="' . esc_attr__( 'Share on X / Twitter', 'ekwa' ) . '" class="share-twit" rel="noopener noreferrer"'
+		. ' href="https://twitter.com/share?url=' . $permalink . '&amp;text=' . $title . '"'
+		. ' onclick="window.open(this.href,\'\',\'menubar=no,toolbar=no,resizable=yes,scrollbars=yes,height=300,width=600\');return false;"'
+		. ' target="_blank"><i class="fa-brands fa-x-twitter"></i></a>'
+		. '<a aria-label="' . esc_attr__( 'Share on Pinterest', 'ekwa' ) . '" class="share-pinterest" rel="noopener noreferrer"'
+		. ' href="https://www.pinterest.com/pin/create/button/?url=' . $permalink . '"'
+		. ' target="_blank"><i class="fa-brands fa-pinterest-p"></i></a>'
+		. '</div>'
+		. '</button>'
+		. '<script>function ' . esc_js( $js_fn ) . '(){var el=document.getElementById("share-toggle-' . esc_js( $id ) . '");if(el){el.classList.toggle("active");}}</script>';
 }
 
 /**

@@ -98,6 +98,53 @@ function ekwa_ai_block_spec_registry() {
 			),
 		),
 
+		'slider' => array(
+			'block'    => 'ekwa/slider',
+			'type'     => 'container',
+			'contexts' => array( 'section' ),
+			'desc'     => 'Full-width HERO slider. Children are ekwa/slide blocks (background image + overlay); each slide holds ekwa/slide-content groups with entrance animations. Arrows/dots/keyboard/swipe/autoplay are built in — never hand-build slider chrome.',
+			'attrs'    => array(
+				'transition — fade|slide|zoom (default "fade")',
+				'autoplay (bool, default true), interval (ms, default 6000), loop (bool), pauseOnHover (bool)',
+				'showArrows (bool), showDots (bool)',
+				'minHeight — CSS length (default "80vh")',
+				'align — full for edge-to-edge heroes',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/slider {\"transition\":\"zoom\",\"minHeight\":\"85vh\",\"align\":\"full\"} -->\n<!-- wp:ekwa/slide {\"bgImage\":\"https://placehold.co/1600x900\",\"overlayOpacity\":40} -->\n<!-- wp:ekwa/slide-content {\"animation\":\"fadeInDown\",\"delay\":200} -->\n<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\">Headline</h1>\n<!-- /wp:heading -->\n<!-- /wp:ekwa/slide-content -->\n<!-- wp:ekwa/slide-content {\"animation\":\"fadeInUp\",\"delay\":500} -->\n<!-- wp:ekwa/button {\"text\":\"Book Now\",\"url\":\"#\"} /-->\n<!-- /wp:ekwa/slide-content -->\n<!-- /wp:ekwa/slide -->\n<!-- /wp:ekwa/slider -->",
+			),
+		),
+
+		'slide-content' => array(
+			'block'    => 'ekwa/slide-content',
+			'type'     => 'container',
+			'contexts' => array( 'section' ),
+			'desc'     => 'Animated content group INSIDE an ekwa/slide. The entrance replays every time its slide activates.',
+			'attrs'    => array(
+				'animation — none|fadeIn|fadeInUp|fadeInDown|fadeInLeft|fadeInRight|zoomIn|slideInUp|blurIn (default "fadeInUp")',
+				'delay (ms, default 0), duration (ms, default 800)',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/slide-content {\"animation\":\"fadeInLeft\",\"delay\":400} -->\n<!-- wp:paragraph -->\n<p>Supporting copy.</p>\n<!-- /wp:paragraph -->\n<!-- /wp:ekwa/slide-content -->",
+			),
+		),
+
+		'hero-video' => array(
+			'block'    => 'ekwa/hero-video',
+			'type'     => 'container',
+			'contexts' => array( 'section' ),
+			'desc'     => 'Background-video hero (muted, looped, mobile-safe autoplay, accessible pause button). Children are the caption blocks shown over the video.',
+			'attrs'    => array(
+				'videoUrl (required, mp4/webm), posterUrl — first paint + reduced-motion fallback',
+				'overlayColor (default "#0b1622"), overlayOpacity (0–90, default 40)',
+				'minHeight (default "80vh"), contentAlign — left|center|right, showPauseButton (bool)',
+				'align — full for edge-to-edge',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/hero-video {\"videoUrl\":\"https://example.com/loop.mp4\",\"posterUrl\":\"https://placehold.co/1600x900\",\"contentAlign\":\"center\",\"align\":\"full\"} -->\n<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\">Welcome</h1>\n<!-- /wp:heading -->\n<!-- /wp:ekwa/hero-video -->",
+			),
+		),
+
 		// ─── Content / leaf (all contexts) ──────────────────────────────────
 
 		'text' => array(

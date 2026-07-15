@@ -1,0 +1,5 @@
+# Exclude development-only paths from the distributed theme zip.
+# GitHub source zipballs (used by the auto-updater) respect export-ignore,
+# so live sites never download CI config or dev tooling.
+.github/ export-ignore
+.gitattributes export-ignore

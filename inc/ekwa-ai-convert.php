@@ -100,9 +100,19 @@ CUSTOM TEMPLATES — pixel-parity for dynamic blocks. ekwa/phone, ekwa/address, 
   <!-- wp:ekwa/phone {"type":"new","customTemplate":"<p><a href=\"tel:{{tel}}\"><i class=\"fas fa-phone\"></i> {{prefix}} {{number}}</a></p>"} /-->
 - ekwa/address: {{street}} {{city}} {{state}} {{zip}} {{city_state}} {{full}} {{maps_url}}. Keep the mockup's tag/classes, e.g. customTemplate:"<a class=\"ft-addr\" href=\"{{maps_url}}\" target=\"_blank\">{{street}}<br>{{city_state}} {{zip}}</a>".
 - ekwa/hours: repeat a row with {{#rows}}…{{/rows}} containing {{day}}, {{time}}, and {{closed_class}} (adds " is-closed" on closed days). E.g. customTemplate:"<ul class=\"hrs\">{{#rows}}<li class=\"hrs-row{{closed_class}}\"><span>{{day}}</span><span>{{time}}</span></li>{{/rows}}</ul>". Emit ONE row template — it repeats per day automatically.
-- ekwa/social: {{#links}}…{{/links}} with {{url}}, {{name}}, {{icon}}. E.g. customTemplate:"<div class=\"ft-soc\">{{#links}}<a href=\"{{url}}\" aria-label=\"{{name}}\" target=\"_blank\"><i class=\"{{icon}}\"></i></a>{{/links}}</div>".
+- ekwa/social: {{#links}}…{{/links}} with {{url}}, {{name}}, {{icon}}, plus {{share_button}} (the theme's share popup button — ALWAYS place it after the links). E.g. customTemplate:"<div class=\"ft-soc\">{{#links}}<a href=\"{{url}}\" aria-label=\"{{name}}\" target=\"_blank\"><i class=\"{{icon}}\"></i></a>{{/links}}{{share_button}}</div>".
 - ekwa/copyright: {{year}} {{name}}. E.g. customTemplate:"<span>© {{year}} {{name}}. All rights reserved.</span>".
 Template rules: copy the mockup's classes/structure EXACTLY (so the mockup CSS applies unchanged); replace every concrete value (numbers, addresses, day/time text, social URLs, years, names) with the placeholders; include NO <script>, no event handlers, and no HTML comments inside the template; escape the double quotes for JSON. When the mockup element is trivial or matches the block's canonical output, omit customTemplate.
+
+HERO SLIDERS & VIDEO HEROES — mockups often ship custom slider widgets (slick/swiper/hand-rolled) and background-video heroes. Convert them to the theme's dedicated blocks instead of reproducing their JS markup:
+- A hero slider/carousel of full-width slides → ekwa/slider wrapping one ekwa/slide per slide. Slide background image → the slide's {"bgImage":"…"} attribute (drop the mockup's <img>/inline-bg for it). Each caption/CTA group inside a slide → ekwa/slide-content with an entrance animation, e.g.:
+  <!-- wp:ekwa/slider {"transition":"fade","interval":6000} -->
+  <!-- wp:ekwa/slide {"bgImage":"hero-1.jpg","overlayOpacity":40} -->
+  <!-- wp:ekwa/slide-content {"animation":"fadeInDown","delay":300} --> …heading/paragraph/button blocks… <!-- /wp:ekwa/slide-content -->
+  <!-- /wp:ekwa/slide -->
+  <!-- /wp:ekwa/slider -->
+  Drop the mockup's own slider dots/arrows/JS — the block renders its own. Animations: none|fadeIn|fadeInUp|fadeInDown|fadeInLeft|fadeInRight|zoomIn|slideInUp|blurIn.
+- A hero with a background <video> → ekwa/hero-video {"videoUrl":"…","posterUrl":"…","overlayOpacity":40} wrapping the caption blocks. Drop the mockup's <video> markup.
 
 EVERYTHING ELSE — structure:
 - Containers (<div>, <section>, <header>, <footer>, <nav>, <main>, <aside>) → ekwa/div with {"tagName":"…"} and {"className":"…"} copied VERBATIM from the source (so the mockup CSS still targets them). Keep the nesting exactly.
