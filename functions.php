@@ -281,6 +281,13 @@ require_once get_template_directory() . '/inc/ekwa-block-templates.php';
 require_once get_template_directory() . '/inc/ekwa-slider.php';
 
 /**
+ * Ekwa YouTube Video / Ekwa Vimeo Video blocks (URL → auto metadata, lazy
+ * click-to-play, lightbox, transcript, Schema.org markup). Front-end CSS/JS
+ * inline per page via ekwa-inline-assets.
+ */
+require_once get_template_directory() . '/inc/ekwa-video-embed.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {

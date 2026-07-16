@@ -1,0 +1,36 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/vimeo-video",
+	"version": "1.0.0",
+	"title": "Ekwa Vimeo Video",
+	"category": "ekwa-elements",
+	"icon": "video-alt3",
+	"description": "Paste a Vimeo URL — auto-fetched title, thumbnail and duration, click-to-play or lightbox, optional transcript. Pasting a bare Vimeo link on its own line also creates this block automatically.",
+	"textdomain": "ekwa",
+	"keywords": [ "video", "vimeo", "embed" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true
+	},
+	"attributes": {
+		"videoUrl":           { "type": "string",  "default": "" },
+		"videoId":            { "type": "string",  "default": "" },
+		"embedUrl":           { "type": "string",  "default": "" },
+		"videoTitle":         { "type": "string",  "default": "" },
+		"videoDescription":   { "type": "string",  "default": "" },
+		"videoDuration":      { "type": "string",  "default": "" },
+		"uploadDate":         { "type": "string",  "default": "" },
+		"thumbnailUrl":       { "type": "string",  "default": "" },
+		"customThumbnail":    { "type": "object",  "default": {} },
+		"showTitle":          { "type": "boolean", "default": true },
+		"showDescription":    { "type": "boolean", "default": false },
+		"transcript":         { "type": "string",  "default": "" },
+		"showTranscript":     { "type": "boolean", "default": false },
+		"openInLightbox":     { "type": "boolean", "default": false },
+		"disableLazyLoad":    { "type": "boolean", "default": false },
+		"fetchPriorityHigh":  { "type": "boolean", "default": false }
+	},
+	"editorScript": "ekwa-vimeo-video-editor"
+}

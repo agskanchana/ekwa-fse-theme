@@ -180,6 +180,40 @@ function ekwa_ai_block_spec_registry() {
 			),
 		),
 
+		'youtube-video' => array(
+			'block'    => 'ekwa/youtube-video',
+			'type'     => 'leaf',
+			'contexts' => array(),
+			'desc'     => 'A YouTube video: paste a watch/share URL and the block auto-fetches title, thumbnail and duration server-side. Click-to-play inline, or an optional lightbox popup. Schema.org VideoObject markup included.',
+			'attrs'    => array(
+				'videoUrl (required) — any youtube.com/youtu.be watch, share or embed URL',
+				'showTitle (default true), showDescription (default false)',
+				'openInLightbox — bool, plays in the site lightbox instead of inline (default false)',
+				'transcript — plain text, blank line between paragraphs; showTranscript to reveal the toggle button',
+				'className',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/youtube-video {\"videoUrl\":\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"} /-->",
+			),
+		),
+
+		'vimeo-video' => array(
+			'block'    => 'ekwa/vimeo-video',
+			'type'     => 'leaf',
+			'contexts' => array(),
+			'desc'     => 'Same as ekwa/youtube-video but for a vimeo.com URL. No automatic transcript fetch (Vimeo has no public captions API) — transcript text must be pasted in manually.',
+			'attrs'    => array(
+				'videoUrl (required) — any vimeo.com URL',
+				'showTitle (default true), showDescription (default false)',
+				'openInLightbox — bool, plays in the site lightbox instead of inline (default false)',
+				'transcript — plain text, blank line between paragraphs; showTranscript to reveal the toggle button',
+				'className',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/vimeo-video {\"videoUrl\":\"https://vimeo.com/76979871\"} /-->",
+			),
+		),
+
 		'button' => array(
 			'block'    => 'ekwa/button',
 			'type'     => 'leaf',

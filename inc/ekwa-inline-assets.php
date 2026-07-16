@@ -62,6 +62,8 @@ function ekwa_inline_asset_map() {
 		'ekwa/carousel'         => array( 'css' => 'blocks/ekwa-carousel/style.css',          'js' => 'blocks/ekwa-carousel/view.js' ),
 		'ekwa/slider'           => array( 'css' => 'blocks/ekwa-slider/style.css',            'js' => 'blocks/ekwa-slider/view.js' ),
 		'ekwa/hero-video'       => array( 'css' => 'blocks/ekwa-hero-video/style.css',        'js' => 'blocks/ekwa-hero-video/view.js' ),
+		'ekwa/youtube-video'    => array( 'css' => 'blocks/ekwa-video-embed/style.css',       'js' => 'blocks/ekwa-video-embed/view.js' ),
+		'ekwa/vimeo-video'      => array( 'css' => 'blocks/ekwa-video-embed/style.css',       'js' => 'blocks/ekwa-video-embed/view.js' ),
 		'ekwa/load-more-rows'   => array( 'css' => 'blocks/ekwa-load-more-rows/style.css',    'js' => 'blocks/ekwa-load-more-rows/view.js' ),
 
 		// Blog blocks — all share the (page-level) blog stylesheet; dedupe keeps
