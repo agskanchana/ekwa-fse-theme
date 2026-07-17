@@ -93,7 +93,10 @@ function ekwa_ai_site_register_routes() {
 				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
 			),
 			'title'     => array( 'required' => false, 'type' => 'string',  'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
-			'slug'      => array( 'required' => false, 'type' => 'string',  'default' => '', 'sanitize_callback' => 'sanitize_title' ),
+			// Wrapped: REST calls sanitize callbacks as cb( $value, $request, $key ),
+			// and sanitize_title's 2nd param is $fallback_title — an empty slug would
+			// return the WP_REST_Request object itself and fatal on the string cast.
+			'slug'      => array( 'required' => false, 'type' => 'string',  'default' => '', 'sanitize_callback' => function ( $v ) { return sanitize_title( (string) $v ); } ),
 			'overwrite' => array( 'required' => false, 'type' => 'boolean', 'default' => false ),
 		),
 	) );
@@ -258,7 +261,7 @@ function ekwa_ai_site_plan_system_prompt( $parts, $inner_topic, $has_images = fa
 	$schema_lines = array();
 	$schema_lines[] = '"site_summary": "2–3 sentences: what the business is, the tone of voice, and the visual direction (colors/typography feel) for every generator that follows"';
 	if ( isset( $want['header'] ) ) {
-		$schema_lines[] = '"header": { "brief": "detailed build brief for the DESKTOP header bar — layout, which elements (logo, menu, phone, button, …), styling direction", "media_ids": [] }';
+		$schema_lines[] = '"header": { "brief": "detailed build brief for the DESKTOP header bar — layout, which elements (logo, menu, phone, search, button, …), styling direction", "media_ids": [] }';
 	}
 	if ( isset( $want['footer'] ) ) {
 		$schema_lines[] = '"footer": { "brief": "detailed build brief for the footer — columns, address/hours/social/map/nav/copyright, styling direction", "media_ids": [] }';
@@ -280,6 +283,10 @@ function ekwa_ai_site_plan_system_prompt( $parts, $inner_topic, $has_images = fa
 		. "- Each \"brief\" must be a self-contained instruction (3–6 sentences) a generator can execute without seeing the other sections: what the section contains, the layout, the copy angle, and how it should feel. Do not reference other sections.\n"
 		. "- Assign media from the MEDIA LIBRARY MANIFEST below by numeric id. Use each file at most once across the whole plan. A large landscape image (or a video) belongs in the hero. Leave media_ids empty when no listed file fits — the generator will use tasteful placeholders.\n"
 		. "- Dynamic data (phone numbers, addresses, hours, menus, social links) comes from theme blocks at render time — briefs should mention WHICH dynamic elements appear, never their literal values.\n"
+		. "- The home HERO brief must instruct the generator to build it with the theme's ekwa/slider hero slider (1–3 slides with animated content) — or with ekwa/hero-video when a video from the manifest is assigned to it. Never plan a plain static hero when a slider fits.\n"
+		. "- Header brief must include: the theme logo block, the primary menu, the ekwa/search icon, and exactly ONE phone element — a single click-to-call number for a one-location business, or the Call Us dropdown for a multi-location business. NEVER both (they render the same numbers twice).\n"
+		. "- Footer brief: unless the owner asks otherwise, include the social icon row (ekwa/social) and the Google map (ekwa/map) alongside address, hours, footer navigation and the copyright line.\n"
+		. "- Never plan the same dynamic element twice within one part (e.g. phone numbers in a top strip AND a Call Us dropdown beside the menu, or social icons in two rows of the same footer).\n"
 		. "- Respect the PROJECT MEMORY and the design tokens if provided.";
 
 	if ( $has_images ) {

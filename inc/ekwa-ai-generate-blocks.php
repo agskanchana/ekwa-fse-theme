@@ -306,19 +306,31 @@ function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'c
 	$mobile_max  = $bp['mobile'];
 	$desktop_min = $tablet_max + 1;
 
+	// Tell the model which logo block THIS site can actually render: the inline
+	// SVG block only when its markup is configured; core/site-logo otherwise.
+	$has_svg_logo = '' !== trim( (string) get_option( 'ekwa_svg_logo_markup', '' ) );
+	$logo_cue     = $has_svg_logo
+		? 'use ekwa/svg-logo (this site has its SVG logo configured; core/site-logo is also acceptable)'
+		: 'use core/site-logo (this site has NO SVG logo configured — do not use ekwa/svg-logo)';
+
 	$context_cue = '';
 	if ( 'header' === $context ) {
 		$context_cue = "HEADER CONTEXT — strict rules:\n"
 			. "1. DESKTOP ONLY. The site has a separate mobile header. The whole header is your single top-level ekwa/div (className \"EKWA_SCOPE\"); hide it on smaller screens with this rule in your <style>: `@media (max-width: {$tablet_max}px){ .EKWA_SCOPE{ display:none !important; } }`.\n"
 			. "2. NO mobile markup — no hamburger, no off-canvas drawer, no mobile toggle. Assume viewport ≥ {$desktop_min}px.\n"
-			. "3. Use ekwa/header-menu for the PRIMARY navigation (never type menu items). Use core/site-logo OR ekwa/svg-logo for the logo. Every requested element (logo, menu, phone, search, address, social, button) MUST appear as its block.\n"
-			. "4. Keep it a compact header bar — no hero, no page body.\n\n";
+			. "3. Use ekwa/header-menu for the PRIMARY navigation (never type menu items). The logo MUST be a logo block — {$logo_cue} — NEVER an ekwa/image, a placeholder, or typed text.\n"
+			. "4. ALWAYS include ekwa/search in the header bar (the search-overlay trigger is required in every Ekwa header), even when the brief forgets to mention it.\n"
+			. "5. PHONE — no duplication: include EITHER ekwa/phone number(s) OR one ekwa/phone-dropdown (\"Call Us\"), NEVER both — they render the same numbers twice. One location → ekwa/phone; multiple locations → ekwa/phone-dropdown. More generally, never repeat the same dynamic element (phone, address, social) in both a utility strip and the main bar.\n"
+			. "6. Keep it a compact header bar — no hero, no page body.\n\n";
 	} elseif ( 'footer' === $context ) {
 		$context_cue = "FOOTER CONTEXT — strict rules:\n"
 			. "1. Build stacked, full-width footer sections (columns of links/info, then a bottom bar).\n"
-			. "2. Every requested element (address, hours, social, map, footer nav, copyright, scroll-to-top) MUST appear as its block. Use core/navigation for the footer menu, ekwa/copyright for the copyright line.\n\n";
+			. "2. Every requested element (address, hours, social, map, footer nav, copyright, scroll-to-top) MUST appear as its block. Use core/navigation for the footer menu, ekwa/copyright for the copyright line.\n"
+			. "3. DEFAULT ELEMENTS — unless the brief explicitly excludes them, a complete Ekwa footer includes ekwa/social (the social icon row) and ekwa/map (the Google map embed) alongside ekwa/address and ekwa/hours. Never hand-build social icon links or an <iframe> map — those two blocks render the real data.\n"
+			. "4. Never repeat the same dynamic element (social row, address, phone) twice within the footer.\n\n";
 	} else {
-		$context_cue = "SECTION CONTEXT — build an in-content page section (it sits inside the main content column). Use headings/paragraphs/lists, grids/flex for layout, and ekwa content blocks as needed.\n\n";
+		$context_cue = "SECTION CONTEXT — build an in-content page section (it sits inside the main content column). Use headings/paragraphs/lists, grids/flex for layout, and ekwa content blocks as needed. "
+			. "HERO sections (top-of-page banners): build them with ekwa/slider (1–3 ekwa/slide, each with ekwa/slide-content groups) — or ekwa/hero-video when a background video URL is supplied. Do not hand-build a static hero div, custom slider chrome, or CSS animations the slider already provides.\n\n";
 	}
 
 	$prompt = <<<PROMPT
@@ -338,7 +350,7 @@ BLOCK MARKUP RULES:
     <!-- wp:ekwa/phone {"type":"new"} /-->
 - Attribute JSON must be STRICT, valid JSON (double-quoted keys/strings, no trailing commas, no comments). Omit attributes you don't need; defaults apply.
 - Use ONLY the blocks listed in the BLOCK SPEC below. Do not invent block names or attributes.
-- Prefer ekwa/* blocks — they are server-rendered and never trigger block-validation errors. For the core/* text blocks (paragraph, heading, list) copy the serialization in the spec EXACTLY, including any wp-block-* classes, or the block becomes invalid.
+- Prefer ekwa/* blocks for layout, media, and dynamic data — they are server-rendered and never trigger block-validation errors. For TEXT content (headings, paragraphs, lists) the core blocks are the normal choice: use core/heading, core/paragraph and core/list freely, but copy the serialization in the spec EXACTLY, including any wp-block-* classes, or the block becomes invalid.
 
 STYLING RULES (scoped classes + one stylesheet — IMPORTANT):
 - Wrap your ENTIRE output in EXACTLY ONE top-level ekwa/div. Give that wrapper the className "EKWA_SCOPE" (you may add more classes after it, e.g. "EKWA_SCOPE site-header"). EKWA_SCOPE is a placeholder — the system replaces it with a unique section id.
