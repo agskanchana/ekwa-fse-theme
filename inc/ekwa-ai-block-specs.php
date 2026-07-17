@@ -104,7 +104,7 @@ function ekwa_ai_block_spec_registry() {
 			'contexts' => array( 'section' ),
 			'desc'     => 'Full-width HERO slider. Children are ekwa/slide blocks (background image + overlay); each slide holds ekwa/slide-content groups with entrance animations. Arrows/dots/keyboard/swipe/autoplay are built in — never hand-build slider chrome.',
 			'attrs'    => array(
-				'transition — fade|slide|zoom (default "fade")',
+				'transition — fade|slide|slide-up|zoom|zoom-out|blur|parallax|wipe|flip (default "fade")',
 				'autoplay (bool, default true), interval (ms, default 6000), loop (bool), pauseOnHover (bool)',
 				'showArrows (bool), showDots (bool)',
 				'minHeight — CSS length (default "80vh")',

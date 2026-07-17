@@ -1,12 +1,19 @@
 /**
  * Ekwa Slider — frontend engine.
  * Inlined before </body> only on pages where the block renders.
- * Transitions (fade / slide / zoom), arrows, dots, keyboard, touch swipe,
- * autoplay (pauses on hover/focus/hidden tab), lazy slide backgrounds, and
- * content entrance animations replayed on every slide activation.
+ * Transitions (fade / slide / slide-up / zoom / zoom-out / blur / wipe /
+ * flip / parallax), arrows (revealed on hover), dots with autoplay progress,
+ * keyboard, touch swipe, autoplay (pauses on hover/focus/hidden tab), lazy
+ * slide backgrounds, and content entrance animations replayed on every
+ * slide activation.
  */
 ( function () {
 	'use strict';
+
+	// Transitions where the outgoing slide must stay visible while the new
+	// one enters (CSS keys off .is-leaving / .from-prev / .from-next);
+	// value = ms before the leaving classes are cleared (≥ CSS duration).
+	var LAYERED = { slide: 750, 'slide-up': 750, parallax: 900, wipe: 950, flip: 950 };
 
 	function initSlider( root ) {
 		if ( root.__ekwaSlider ) { return; }
@@ -25,6 +32,16 @@
 		var current = 0;
 		var timer   = null;
 		var busy    = false;
+
+		// Single slide: nothing to navigate — hide arrows/dots via CSS.
+		if ( slides.length < 2 ) {
+			root.classList.add( 'ekwa-slider--single' );
+		}
+
+		// Expose the interval so the active dot can fill as a progress bar.
+		if ( autoplay ) {
+			root.style.setProperty( '--ekwa-slider-interval', interval + 'ms' );
+		}
 
 		// Hydrate lazy backgrounds (slide 1 got an inline style server-side).
 		slides.forEach( function ( s ) {
@@ -72,6 +89,11 @@
 			dots.forEach( function ( d, i ) {
 				d.classList.toggle( 'is-active', i === current );
 			} );
+			// Non-looping sliders grey out the arrow at each end.
+			if ( ! loop ) {
+				if ( prevBtn ) { prevBtn.disabled = 0 === current; }
+				if ( nextBtn ) { nextBtn.disabled = current === slides.length - 1; }
+			}
 		}
 
 		// ── Navigation core ──────────────────────────────────────────
@@ -83,7 +105,7 @@
 			var out = slides[ current ];
 			var inn = slides[ index ];
 
-			if ( 'slide' === transition && ! reduced ) {
+			if ( LAYERED[ transition ] && ! reduced ) {
 				busy = true;
 				// Position the incoming slide on the correct side first.
 				inn.classList.remove( 'is-leaving', 'from-next', 'from-prev' );
@@ -97,7 +119,7 @@
 				window.setTimeout( function () {
 					out.classList.remove( 'is-leaving', 'from-next' );
 					busy = false;
-				}, 750 );
+				}, LAYERED[ transition ] );
 			} else {
 				out.classList.remove( 'is-active' );
 				inn.classList.add( 'is-active' );
@@ -125,23 +147,41 @@
 
 		// ── Touch swipe ──────────────────────────────────────────────
 		var touchX = null;
+		var touchY = null;
 		root.addEventListener( 'touchstart', function ( e ) {
 			touchX = e.touches[ 0 ].clientX;
+			touchY = e.touches[ 0 ].clientY;
 		}, { passive: true } );
 		root.addEventListener( 'touchend', function ( e ) {
 			if ( null === touchX ) { return; }
 			var dx = e.changedTouches[ 0 ].clientX - touchX;
+			var dy = e.changedTouches[ 0 ].clientY - touchY;
 			touchX = null;
-			if ( Math.abs( dx ) < 40 ) { return; }
+			// Mostly-vertical gestures are page scrolling, not swipes.
+			if ( Math.abs( dx ) < 40 || Math.abs( dy ) > Math.abs( dx ) ) { return; }
 			if ( dx < 0 ) { next(); } else { prev(); }
 			restart();
 		}, { passive: true } );
 
 		// ── Autoplay ─────────────────────────────────────────────────
-		function stop()  { if ( timer ) { window.clearInterval( timer ); timer = null; } }
+		// .is-paused freezes the active dot's progress-fill animation.
+		function stop() {
+			if ( timer ) { window.clearInterval( timer ); timer = null; }
+			root.classList.add( 'is-paused' );
+		}
 		function start() {
-			if ( ! autoplay || reduced || slides.length < 2 || timer ) { return; }
-			timer = window.setInterval( next, interval );
+			if ( ! autoplay || reduced || slides.length < 2 ) { return; }
+			root.classList.remove( 'is-paused' );
+			if ( ! timer ) {
+				timer = window.setInterval( next, interval );
+				// The timer starts at zero — restart the dot fill to match.
+				var d = dots[ current ];
+				if ( d ) {
+					d.classList.remove( 'is-active' );
+					void d.offsetWidth;
+					d.classList.add( 'is-active' );
+				}
+			}
 		}
 		function restart() { stop(); start(); }
 

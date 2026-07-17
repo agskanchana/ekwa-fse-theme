@@ -272,7 +272,7 @@ function ekwa_mockup_ai_prompts() {
 		. "- Phone numbers use tel:+1... links; email uses mailto:; the address/directions link may use \"#\" (the real maps URL comes from settings).\n"
 		. "- Define ALL colors and fonts as CSS variables in :root (they import as design tokens). Use unique, descriptive image filenames.\n"
 		. "- Keep the ekwa-* class names EXACTLY as written; you may add your own classes alongside them.\n"
-		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/zoom transitions, per-caption entrance animations, arrows, dots, autoplay).";
+		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/zoom/blur/parallax/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).";
 
 	return array(
 		'retrofit' => array(

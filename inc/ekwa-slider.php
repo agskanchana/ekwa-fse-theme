@@ -20,6 +20,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * The slide transitions offered by ekwa/slider. Keys are the CSS modifier
+ * suffixes (ekwa-slider--{key}, rules in blocks/ekwa-slider/style.css);
+ * labels feed the editor select. Shared with the editor via
+ * wp_localize_script.
+ *
+ * @return array<string,string>
+ */
+function ekwa_slider_transitions() {
+	return array(
+		'fade'     => __( 'Fade', 'ekwa' ),
+		'slide'    => __( 'Slide (horizontal)', 'ekwa' ),
+		'slide-up' => __( 'Slide (vertical)', 'ekwa' ),
+		'zoom'     => __( 'Zoom (Ken Burns fade)', 'ekwa' ),
+		'zoom-out' => __( 'Zoom out (settle)', 'ekwa' ),
+		'blur'     => __( 'Blur crossfade', 'ekwa' ),
+		'parallax' => __( 'Parallax push', 'ekwa' ),
+		'wipe'     => __( 'Wipe reveal', 'ekwa' ),
+		'flip'     => __( 'Flip (3D)', 'ekwa' ),
+	);
+}
+
+/**
  * The entrance animations offered by ekwa/slide-content. Keys are the CSS
  * class suffixes (keyframes live in blocks/ekwa-slider/style.css); labels
  * feed the editor select. Shared with the editor via wp_localize_script.
@@ -52,7 +74,8 @@ function ekwa_slider_register_blocks() {
 		true
 	);
 	wp_localize_script( 'ekwa-slider-editor', 'ekwaSliderConfig', array(
-		'animations' => ekwa_slider_animations(),
+		'animations'  => ekwa_slider_animations(),
+		'transitions' => ekwa_slider_transitions(),
 	) );
 
 	wp_register_script(
@@ -114,7 +137,7 @@ function ekwa_render_slider_block( $attrs, $content ) {
 	static $instance = 0;
 	$instance++;
 
-	$transition = in_array( $attrs['transition'] ?? 'fade', array( 'fade', 'slide', 'zoom' ), true ) ? $attrs['transition'] : 'fade';
+	$transition = array_key_exists( $attrs['transition'] ?? 'fade', ekwa_slider_transitions() ) ? ( $attrs['transition'] ?? 'fade' ) : 'fade';
 	$autoplay   = ! isset( $attrs['autoplay'] ) || (bool) $attrs['autoplay'];
 	$interval   = max( 2000, absint( $attrs['interval'] ?? 6000 ) );
 	$arrows     = ! isset( $attrs['showArrows'] ) || (bool) $attrs['showArrows'];

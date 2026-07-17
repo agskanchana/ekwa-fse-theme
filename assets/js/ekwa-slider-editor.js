@@ -23,11 +23,15 @@
 	var Button            = wp.components.Button;
 	var __                = wp.i18n.__;
 
-	var cfg        = window.ekwaSliderConfig || {};
-	var ANIMATIONS = cfg.animations || { none: 'None', fadeIn: 'Fade In', fadeInUp: 'Fade In Up' };
+	var cfg         = window.ekwaSliderConfig || {};
+	var ANIMATIONS  = cfg.animations || { none: 'None', fadeIn: 'Fade In', fadeInUp: 'Fade In Up' };
+	var TRANSITIONS = cfg.transitions || { fade: 'Fade', slide: 'Slide (horizontal)', zoom: 'Zoom (Ken Burns fade)' };
 
 	var ANIM_OPTIONS = Object.keys( ANIMATIONS ).map( function ( k ) {
 		return { value: k, label: ANIMATIONS[ k ] };
+	} );
+	var TRANSITION_OPTIONS = Object.keys( TRANSITIONS ).map( function ( k ) {
+		return { value: k, label: TRANSITIONS[ k ] };
 	} );
 
 	// ── ekwa/slider ─────────────────────────────────────────────────────
@@ -43,11 +47,7 @@
 						el( SelectControl, {
 							label: __( 'Transition effect', 'ekwa' ),
 							value: a.transition,
-							options: [
-								{ value: 'fade',  label: __( 'Fade', 'ekwa' ) },
-								{ value: 'slide', label: __( 'Slide (horizontal)', 'ekwa' ) },
-								{ value: 'zoom',  label: __( 'Zoom (Ken Burns fade)', 'ekwa' ) },
-							],
+							options: TRANSITION_OPTIONS,
 							onChange: function ( v ) { set( { transition: v } ); },
 						} ),
 						el( TextControl, {
