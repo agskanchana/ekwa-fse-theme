@@ -122,8 +122,10 @@ function ekwa_video_get_metadata( $provider, $video_id ) {
 }
 
 /**
- * YouTube metadata via the Data API (if a key is configured) with an oEmbed
- * (no key required) fallback for the title alone.
+ * YouTube metadata via the Data API (if a key is configured), else scraped
+ * from the public watch page (no key needed — this is what actually supplies
+ * duration/upload date most sites run without a key), else oEmbed as a last
+ * resort (title only).
  *
  * @param string $video_id
  * @return array<string,string>
@@ -154,7 +156,16 @@ function ekwa_video_get_youtube_metadata( $video_id ) {
 		}
 	}
 
-	// Fallback: oEmbed gives us a title without needing an API key.
+	// No API key (or the API call failed/returned nothing) — scrape the public
+	// watch page. Unlike oEmbed below, this actually yields duration and
+	// upload date, so it's tried first.
+	$scraped = ekwa_video_youtube_metadata_from_watch_page( $video_id );
+	if ( $scraped ) {
+		return $scraped;
+	}
+
+	// Last resort: oEmbed gives us a title without needing an API key and
+	// without depending on YouTube's watch-page markup staying scrapable.
 	$title    = '';
 	$response = wp_remote_get(
 		'https://www.youtube.com/oembed?url=' . rawurlencode( 'https://www.youtube.com/watch?v=' . $video_id ) . '&format=json',
@@ -175,6 +186,48 @@ function ekwa_video_get_youtube_metadata( $video_id ) {
 }
 
 /**
+ * Scrape title/description/duration/upload date/thumbnail out of the public
+ * watch page's ytInitialPlayerResponse — the only source (short of a paid
+ * Data API key) that actually has duration and upload date; oEmbed never
+ * returns either for YouTube.
+ *
+ * @param string $video_id
+ * @return array<string,string>|null Null if the page couldn't be read/parsed.
+ */
+function ekwa_video_youtube_metadata_from_watch_page( $video_id ) {
+	$data = ekwa_video_youtube_watch_page_player_response( $video_id );
+	if ( ! $data ) {
+		return null;
+	}
+
+	$details     = $data['videoDetails'] ?? array();
+	$microformat = $data['microformat']['playerMicroformatRenderer'] ?? array();
+
+	$title       = $microformat['title']['simpleText'] ?? $details['title'] ?? '';
+	$description = $microformat['description']['simpleText'] ?? $details['shortDescription'] ?? '';
+	$length      = $microformat['lengthSeconds'] ?? $details['lengthSeconds'] ?? '';
+	$upload_date = $microformat['uploadDate'] ?? $microformat['publishDate'] ?? '';
+
+	// If none of these came through, the page was probably a consent/CAPTCHA
+	// wall rather than the real watch page — let the caller fall through to
+	// oEmbed instead of returning an all-empty result.
+	if ( '' === $title && '' === $length && '' === $upload_date ) {
+		return null;
+	}
+
+	$thumbnails = $microformat['thumbnail']['thumbnails'] ?? $details['thumbnail']['thumbnails'] ?? array();
+	$thumbnail  = ! empty( $thumbnails ) ? ( end( $thumbnails )['url'] ?? '' ) : ''; // Largest is listed last.
+
+	return array(
+		'videoTitle'       => $title,
+		'videoDescription' => '' !== $description ? wp_trim_words( $description, 30 ) : '',
+		'videoDuration'    => '' !== $length ? ekwa_video_seconds_to_iso8601( (int) $length ) : '',
+		'uploadDate'       => '' !== $upload_date ? ekwa_video_date_to_iso8601( $upload_date ) : '',
+		'thumbnailUrl'     => $thumbnail ? $thumbnail : ( 'https://img.youtube.com/vi/' . $video_id . '/maxresdefault.jpg' ),
+	);
+}
+
+/**
  * Pick the best available YouTube thumbnail from an API snippet, falling back
  * to the predictable img.youtube.com URL pattern.
  *
@@ -191,6 +244,25 @@ function ekwa_video_best_youtube_thumbnail( $video_id, $snippet ) {
 		}
 	}
 	return 'https://img.youtube.com/vi/' . $video_id . '/maxresdefault.jpg';
+}
+
+/**
+ * Normalize a YouTube watch-page date ("2011-10-19", occasionally already
+ * full ISO 8601) into the same Y-m-d\TH:i:s\Z shape used across all providers
+ * for the uploadDate attribute (matches ekwa_video_vimeo_date_to_iso()).
+ *
+ * @param string $date
+ * @return string
+ */
+function ekwa_video_date_to_iso8601( $date ) {
+	if ( empty( $date ) ) {
+		return '';
+	}
+	if ( preg_match( '/^\d{4}-\d{2}-\d{2}T/', $date ) ) {
+		return $date;
+	}
+	$parsed = DateTime::createFromFormat( 'Y-m-d', $date );
+	return $parsed ? $parsed->format( 'Y-m-d\TH:i:s\Z' ) : $date;
 }
 
 /**
@@ -458,8 +530,12 @@ function ekwa_video_render( $attrs, $provider ) {
 	if ( $display_thumb ) {
 		$html .= '<meta itemprop="thumbnailUrl" content="' . esc_url( $display_thumb ) . '">';
 	}
-	if ( $video_description ) {
-		$html .= '<meta itemprop="description" content="' . esc_attr( $video_description ) . '">';
+	// Schema.org requires a description; fall back to the title when none was
+	// fetched/entered rather than omitting the field (display paragraph below
+	// still only shows when $video_description itself is non-empty).
+	$schema_description = '' !== $video_description ? $video_description : $video_title;
+	if ( $schema_description ) {
+		$html .= '<meta itemprop="description" content="' . esc_attr( $schema_description ) . '">';
 	}
 	$html .= '<meta itemprop="embedUrl" content="' . esc_url( $embed_url ) . '">';
 
@@ -631,12 +707,15 @@ function ekwa_video_fetch_youtube_transcript( $video_id, $force_refresh = false 
 }
 
 /**
- * Scrape captionTracks out of the public watch page.
+ * Fetch the public watch page and pull out ytInitialPlayerResponse — the same
+ * JSON blob backs both caption-track discovery (below) and the no-API-key
+ * metadata scrape (ekwa_video_youtube_metadata_from_watch_page() above), so
+ * the fetch + regex/json_decode dance lives here once.
  *
  * @param string $video_id
  * @return array|null
  */
-function ekwa_video_youtube_caption_tracks_from_watch_page( $video_id ) {
+function ekwa_video_youtube_watch_page_player_response( $video_id ) {
 	$response = wp_remote_get(
 		'https://www.youtube.com/watch?v=' . rawurlencode( $video_id ),
 		array(
@@ -658,7 +737,18 @@ function ekwa_video_youtube_caption_tracks_from_watch_page( $video_id ) {
 		return null;
 	}
 
-	$data   = json_decode( $m[1], true );
+	$data = json_decode( $m[1], true );
+	return is_array( $data ) ? $data : null;
+}
+
+/**
+ * Scrape captionTracks out of the public watch page.
+ *
+ * @param string $video_id
+ * @return array|null
+ */
+function ekwa_video_youtube_caption_tracks_from_watch_page( $video_id ) {
+	$data   = ekwa_video_youtube_watch_page_player_response( $video_id );
 	$tracks = $data['captions']['playerCaptionsTracklistRenderer']['captionTracks'] ?? null;
 
 	return ( is_array( $tracks ) && ! empty( $tracks ) ) ? $tracks : null;

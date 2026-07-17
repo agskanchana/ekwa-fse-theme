@@ -40,6 +40,48 @@
 		return { videoId: m[ 1 ], embedUrl: 'https://www.youtube-nocookie.com/embed/' + m[ 1 ] + '?rel=0' };
 	}
 
+	// ISO 8601 duration ("PT1H4M30S") <-> human input ("1:04:30"), for the
+	// manual-entry field — schema markup needs ISO 8601, humans don't write it.
+	function isoDurationToHuman( iso ) {
+		var m = iso && iso.match( /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/ );
+		if ( ! m ) { return ''; }
+		var h = parseInt( m[ 1 ] || '0', 10 );
+		var mi = parseInt( m[ 2 ] || '0', 10 );
+		var s = parseInt( m[ 3 ] || '0', 10 );
+		if ( ! h && ! mi && ! s ) { return ''; }
+		var pad = function ( n ) { return ( n < 10 ? '0' : '' ) + n; };
+		return h > 0 ? ( h + ':' + pad( mi ) + ':' + pad( s ) ) : ( mi + ':' + pad( s ) );
+	}
+
+	// Returns an ISO 8601 duration string, '' for a cleared field, or null if
+	// the text isn't a recognizable minutes:seconds / h:m:s value.
+	function humanDurationToIso( human ) {
+		var trimmed = ( human || '' ).trim();
+		if ( ! trimmed ) { return ''; }
+		var parts = trimmed.split( ':' );
+		if ( parts.length < 1 || parts.length > 3 || parts.some( function ( p ) { return '' === p.trim() || isNaN( p.trim() ); } ) ) {
+			return null;
+		}
+		var nums = parts.map( function ( p ) { return parseInt( p.trim(), 10 ); } );
+		var h = 3 === nums.length ? nums[ 0 ] : 0;
+		var mi = 3 === nums.length ? nums[ 1 ] : ( 2 === nums.length ? nums[ 0 ] : 0 );
+		var s = 1 === nums.length ? nums[ 0 ] : nums[ nums.length - 1 ];
+		var out = 'PT';
+		if ( h > 0 ) { out += h + 'H'; }
+		if ( mi > 0 ) { out += mi + 'M'; }
+		if ( s > 0 || ( 0 === h && 0 === mi ) ) { out += s + 'S'; }
+		return out;
+	}
+
+	function isoDateToInputValue( iso ) {
+		var m = iso && String( iso ).match( /^(\d{4}-\d{2}-\d{2})/ );
+		return m ? m[ 1 ] : '';
+	}
+
+	function inputValueToIsoDate( value ) {
+		return value ? value + 'T00:00:00Z' : '';
+	}
+
 	registerBlockType( 'ekwa/youtube-video', {
 		edit: function ( props ) {
 			var a   = props.attributes;
@@ -57,6 +99,30 @@
 			var transcriptStatusState    = useState( null );
 			var transcriptStatus         = transcriptStatusState[ 0 ];
 			var setTranscriptStatus      = transcriptStatusState[ 1 ];
+			var durationInputState       = useState( isoDurationToHuman( a.videoDuration ) );
+			var durationInput             = durationInputState[ 0 ];
+			var setDurationInput          = durationInputState[ 1 ];
+			var durationErrorState       = useState( '' );
+			var durationError             = durationErrorState[ 0 ];
+			var setDurationError          = durationErrorState[ 1 ];
+
+			// Keep the human-readable duration field in sync when the ISO value
+			// changes from elsewhere (metadata fetch, URL cleared, etc.).
+			useEffect( function () {
+				setDurationInput( isoDurationToHuman( a.videoDuration ) );
+				setDurationError( '' );
+				// eslint-disable-next-line
+			}, [ a.videoDuration ] );
+
+			function commitDuration() {
+				var iso = humanDurationToIso( durationInput );
+				if ( null === iso ) {
+					setDurationError( __( 'Enter as minutes:seconds, e.g. 4:30 (or hours:minutes:seconds).', 'ekwa' ) );
+					return;
+				}
+				setDurationError( '' );
+				set( { videoDuration: iso } );
+			}
 
 			function fetchMetadata( url ) {
 				setIsLoading( true );
@@ -137,6 +203,21 @@
 
 			var blockProps = useBlockProps( { className: 'ekwa-video-embed-editor' } );
 
+			// Soft nudge — the API didn't return these, but they matter for the
+			// schema markup, so ask rather than silently publishing without them.
+			var hasVideo         = a.videoUrl && a.videoId && ! isLoading;
+			var missingDuration   = hasVideo && ! a.videoDuration;
+			var missingUploadDate = hasVideo && ! a.uploadDate;
+			var missingFieldsNotice = null;
+			if ( ! error && ( missingDuration || missingUploadDate ) ) {
+				var missingLabel = missingDuration && missingUploadDate
+					? __( "duration and upload date couldn't", 'ekwa' )
+					: missingDuration
+						? __( "duration couldn't", 'ekwa' )
+						: __( "upload date couldn't", 'ekwa' );
+				missingFieldsNotice = __( "This video's ", 'ekwa' ) + missingLabel + __( ' be detected automatically. You can enter it in the Video Information panel below.', 'ekwa' );
+			}
+
 			var inspector = el( InspectorControls, null,
 				el( PanelBody, { title: __( 'YouTube Video', 'ekwa' ), initialOpen: true },
 					el( TextControl, {
@@ -147,6 +228,7 @@
 					} ),
 					isLoading ? el( Spinner ) : null,
 					error ? el( Notice, { status: 'error', isDismissible: false }, error ) : null,
+					missingFieldsNotice ? el( Notice, { status: 'warning', isDismissible: false }, missingFieldsNotice ) : null,
 					a.videoUrl && a.videoId ? [
 						el( ToggleControl, { key: 'title', label: __( 'Show title', 'ekwa' ), checked: a.showTitle, onChange: function ( v ) { set( { showTitle: v } ); } } ),
 						el( ToggleControl, { key: 'desc', label: __( 'Show description', 'ekwa' ), checked: a.showDescription, onChange: function ( v ) { set( { showDescription: v } ); } } ),
@@ -167,6 +249,36 @@
 						} ),
 					] : null
 				),
+				a.videoUrl && a.videoId ? el( PanelBody, { title: __( 'Video Information', 'ekwa' ), initialOpen: true },
+					el( 'p', { style: { marginTop: 0, color: '#757575', fontSize: '12px' } },
+						__( 'Auto-filled when available. Edit any field to override it, or fill in anything that could not be detected — used for the on-page display and the schema.org markup.', 'ekwa' ) ),
+					el( TextControl, {
+						label: __( 'Video title', 'ekwa' ),
+						value: a.videoTitle || '',
+						onChange: function ( v ) { set( { videoTitle: v } ); },
+					} ),
+					el( TextareaControl, {
+						label: __( 'Video description', 'ekwa' ),
+						value: a.videoDescription || '',
+						onChange: function ( v ) { set( { videoDescription: v } ); },
+						rows: 4,
+						help: __( 'If left blank, the title is used as the description in the schema markup.', 'ekwa' ),
+					} ),
+					el( TextControl, {
+						label: __( 'Duration', 'ekwa' ),
+						value: durationInput,
+						onChange: setDurationInput,
+						onBlur: commitDuration,
+						placeholder: __( 'e.g. 4:30 or 1:04:30', 'ekwa' ),
+						help: durationError || __( 'Minutes:seconds, or hours:minutes:seconds.', 'ekwa' ),
+					} ),
+					el( TextControl, {
+						type: 'date',
+						label: __( 'Upload date', 'ekwa' ),
+						value: isoDateToInputValue( a.uploadDate ),
+						onChange: function ( v ) { set( { uploadDate: inputValueToIsoDate( v ) } ); },
+					} )
+				) : null,
 				a.videoUrl && a.videoId ? el( PanelBody, { title: __( 'Custom Thumbnail', 'ekwa' ), initialOpen: false },
 					el( MediaUploadCheck, null,
 						el( MediaUpload, {
