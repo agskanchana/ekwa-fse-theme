@@ -195,18 +195,6 @@ require_once get_template_directory() . '/inc/ekwa-ai-convert.php';
 require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
 
 /**
- * Media manifest — live inventory of image/video uploads (option + JSON file),
- * fed to the AI Site Generator so real uploads replace placeholders.
- */
-require_once get_template_directory() . '/inc/ekwa-media-manifest.php';
-
-/**
- * AI Site Generator — orchestrated whole-site generation (header, footer,
- * home + inner page) driven from Ekwa Settings → AI.
- */
-require_once get_template_directory() . '/inc/ekwa-ai-site.php';
-
-/**
  * Internal linking suggestions in the block editor (page index + Gemini helpers).
  */
 require_once get_template_directory() . '/inc/ekwa-interlink.php';
