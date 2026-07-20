@@ -21,7 +21,7 @@ $ekwa_theme_updater = PucFactory::buildUpdateChecker(
 	'ekwa'
 );
 
-$ekwa_theme_updater->setBranch('dev');  
+$ekwa_theme_updater->setBranch('live');  
 
 /**
  * Authenticate GitHub update checks with a Personal Access Token when one is
