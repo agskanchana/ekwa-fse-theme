@@ -1,0 +1,31 @@
+name: Build ekwa.zip
+
+# Every push to live rebuilds ekwa.zip and republishes it under a fixed
+# "latest" release, so the download link never changes even though the repo
+# name / branch name / version number do:
+# https://github.com/agskanchana/ekwa-fse-theme/releases/download/latest/ekwa.zip
+on:
+  push:
+    branches: [live]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ekwa.zip
+        run: git archive --format=zip --prefix=ekwa/ -o ekwa.zip HEAD
+
+      - name: Publish to rolling "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest ekwa.zip \
+            --title "Latest (live)" \
+            --notes "Auto-built from the live branch. Always the current install package." \
+            --target live
