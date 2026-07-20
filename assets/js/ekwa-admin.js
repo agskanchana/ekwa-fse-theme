@@ -169,7 +169,15 @@
 					$item.find('[name$="[' + field + ']"]').val(res[field]);
 				}
 			});
+			// Working hours only come back when the matched OSM place had them —
+			// rebuild the sub-repeater from the response, but only then, so an
+			// empty result never clobbers hours the admin entered by hand.
+			var hoursAdded = fillWorkingHours($item, res.working_hours);
+
 			var doneText = (strings.done || 'Filled in from: %s').replace('%s', res.formatted || url);
+			if (hoursAdded) {
+				doneText += ' ' + (strings.hoursAdded || '(working hours added)');
+			}
 			$status.text(doneText);
 		}).fail(function (xhr) {
 			var msg = strings.error || 'Couldn\'t extract an address from that link.';
@@ -181,6 +189,41 @@
 			$btn.prop('disabled', false);
 		});
 	});
+
+	/**
+	 * Rebuild a location's working-hours sub-repeater from geocode results.
+	 * Returns true when at least one row was written, false when the response
+	 * carried no hours (leaving any existing manual rows untouched).
+	 */
+	function fillWorkingHours($item, hours) {
+		if (!Array.isArray(hours) || !hours.length) {
+			return false;
+		}
+		var $repeater = $item.find('.ekwa-wh-repeater');
+		var locIdx    = $repeater.attr('data-loc-index');
+		var tmpl      = $('#tmpl-ekwa-working-hour').html();
+		$repeater.find('.ekwa-wh-item').remove();
+		hours.forEach(function (wh, i) {
+			var html = tmpl
+				.replace(/__LOC_INDEX__/g, locIdx)
+				.replace(/__WH_INDEX__/g, i);
+			var $row     = $(html);
+			var isClosed = String(wh.closed) === '1';
+			$row.find('.ekwa-wh-day').val(wh.day);
+			$row.find('.ekwa-wh-closed-cb').prop('checked', isClosed);
+			$row.find('.ekwa-wh-times').toggle(!isClosed);
+			if (!isClosed) {
+				$row.find('[name$="[open_hour]"]').val(wh.open_hour);
+				$row.find('[name$="[open_min]"]').val(wh.open_min);
+				$row.find('[name$="[open_period]"]').val(wh.open_period);
+				$row.find('[name$="[close_hour]"]').val(wh.close_hour);
+				$row.find('[name$="[close_min]"]').val(wh.close_min);
+				$row.find('[name$="[close_period]"]').val(wh.close_period);
+			}
+			$repeater.append($row);
+		});
+		return true;
+	}
 
 	/* ============================================================
 	 *  Working hours sub-repeater â€” add / remove

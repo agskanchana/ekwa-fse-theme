@@ -80,6 +80,7 @@ function ekwa_admin_enqueue( $hook ) {
 			'emptyUrl'   => __( 'Paste a Direction URL first.', 'ekwa' ),
 			/* translators: %s: matched address, for the admin to confirm it's the right place. */
 			'done'       => __( 'Filled in from: %s', 'ekwa' ),
+			'hoursAdded' => __( '(working hours added)', 'ekwa' ),
 		),
 		'aiTestStrings'    => array(
 			'testing' => __( 'Testing…', 'ekwa' ),
