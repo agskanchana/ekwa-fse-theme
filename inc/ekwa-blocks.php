@@ -3393,6 +3393,34 @@ function ekwa_render_grid_block( $attrs, $content ) {
 
 
 /**
+ * Before WordPress core builds an ekwa/carousel block's default $content (by
+ * rendering every inner block once), unhook the CSS/JS inliner so that pass
+ * produces no side effects. ekwa_render_carousel_block() ignores $content and
+ * re-renders each inner block itself to wrap it in .ekwa-carousel__item — re-adding
+ * the filter there (see its first line) means that second, KEPT render is the only
+ * one the inliner ever sees.
+ *
+ * Without this, the inliner's per-request dedupe (ekwa_inline_mark_emitted())
+ * would mark each inner block's CSS as already emitted during core's discarded
+ * first pass, so the manually re-rendered copy that actually reaches the page
+ * would silently lose its <style> tag — e.g. an ekwa/youtube-video slide loses
+ * .ekwa-video-embed's CSS and collapses to unstyled markup. Its JS still queues
+ * fine either way, since ekwa_inline_queue_script() dedupes into a footer-printed
+ * array rather than depending on which render pass survives.
+ *
+ * @param mixed $pre_render Existing filter value (passed through unchanged).
+ * @param array $parsed_block
+ * @return mixed
+ */
+function ekwa_carousel_unhook_inliner_for_prerender( $pre_render, $parsed_block ) {
+	if ( isset( $parsed_block['blockName'] ) && 'ekwa/carousel' === $parsed_block['blockName'] ) {
+		remove_filter( 'render_block', 'ekwa_inline_block_assets', 10 );
+	}
+	return $pre_render;
+}
+add_filter( 'pre_render_block', 'ekwa_carousel_unhook_inliner_for_prerender', 10, 2 );
+
+/**
  * Server-side render callback for the ekwa/carousel block.
  *
  * Each top-level inner block becomes a slide. Frontend script + style are
@@ -3405,6 +3433,10 @@ function ekwa_render_grid_block( $attrs, $content ) {
  * @return string
  */
 function ekwa_render_carousel_block( $attrs, $content, $block ) {
+	// Restore the inliner (see ekwa_carousel_unhook_inliner_for_prerender()) before
+	// we do the one render pass whose output is actually kept.
+	add_filter( 'render_block', 'ekwa_inline_block_assets', 10, 2 );
+
 	$desktop      = isset( $attrs['desktopItems'] )     ? max( 1, absint( $attrs['desktopItems'] ) )     : 3;
 	$tablet       = isset( $attrs['tabletItems'] )      ? max( 1, absint( $attrs['tabletItems'] ) )      : 2;
 	$mobile       = isset( $attrs['mobileItems'] )      ? max( 1, absint( $attrs['mobileItems'] ) )      : 1;

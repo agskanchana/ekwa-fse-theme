@@ -272,7 +272,8 @@ function ekwa_mockup_ai_prompts() {
 		. "- Phone numbers use tel:+1... links; email uses mailto:; the address/directions link may use \"#\" (the real maps URL comes from settings).\n"
 		. "- Define ALL colors and fonts as CSS variables in :root (they import as design tokens). Use unique, descriptive image filenames.\n"
 		. "- Keep the ekwa-* class names EXACTLY as written; you may add your own classes alongside them.\n"
-		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/zoom/blur/parallax/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).";
+		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/slide-up/zoom/zoom-out/blur/parallax-push/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).\n"
+		. "- YOUTUBE/VIMEO VIDEOS: a real embedded iframe (or even just the video's URL as a placeholder) is enough — do NOT hand-build a custom play button/lightbox. \"Convert with AI\" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.";
 
 	return array(
 		'retrofit' => array(
@@ -685,7 +686,8 @@ function ekwa_mockup_build_guide_html() {
 		. '<li>' . sprintf( esc_html__( 'Keep image/video filenames unique — the importer matches by filename. Breakpoints on this site: mobile ≤ %1$dpx, desktop > %2$dpx.', 'ekwa' ), (int) $bp['mobile'], (int) $bp['tablet'] ) . '</li>'
 		. '<li>' . esc_html__( 'Define colors and fonts as CSS variables in :root — they import as design tokens.', 'ekwa' ) . '</li>'
 		. '<li>' . esc_html__( 'Keep the ekwa-* class names exactly; add your own classes alongside them. When in doubt, stamp data-ekwa="…" on the element (vocabulary at the end).', 'ekwa' ) . '</li>'
-		. '<li>' . esc_html__( 'Hero sliders & background-video heroes: design one static slide (or a poster image) — no slider JS, dots or arrows. "Convert with AI" maps them to the theme\'s ekwa/slider and ekwa/hero-video blocks, which bring transitions, per-caption entrance animations, arrows, dots and autoplay built in.', 'ekwa' ) . '</li>'
+		. '<li>' . esc_html__( 'Hero sliders & background-video heroes: design one static slide (or a poster image) — no slider JS, dots or arrows. "Convert with AI" maps them to the theme\'s ekwa/slider and ekwa/hero-video blocks, which bring nine transitions (fade, slide, slide-up, zoom, zoom-out, blur, parallax push, wipe, flip), per-caption entrance animations, arrows, dots and autoplay built in.', 'ekwa' ) . '</li>'
+		. '<li>' . esc_html__( 'YouTube/Vimeo videos: a real embedded iframe (or just the video URL) is enough — no custom play button or lightbox needed. "Convert with AI" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.', 'ekwa' ) . '</li>'
 		. '</ul></div>'
 
 		. '<h2>' . esc_html__( 'Header elements', 'ekwa' ) . '</h2>' . $groups['header']

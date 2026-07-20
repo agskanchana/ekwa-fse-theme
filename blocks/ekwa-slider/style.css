@@ -31,6 +31,14 @@
 	z-index: 2;
 }
 
+/* Kills the transition for one reflow so view.js can snap an incoming slide
+   to its from-prev starting position instantly. Without this, adding
+   .from-prev itself animates (transform/filter/clip-path are unconditionally
+   transitioned on every .ekwa-slide), so the "instant reposition, then
+   animate in" trick silently fails and backward navigation enters from the
+   wrong side. */
+.ekwa-slide--jump { transition: none !important; }
+
 .ekwa-slide__overlay {
 	position: absolute;
 	inset: 0;

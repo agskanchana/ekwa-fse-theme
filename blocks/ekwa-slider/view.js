@@ -107,9 +107,17 @@
 
 			if ( LAYERED[ transition ] && ! reduced ) {
 				busy = true;
-				// Position the incoming slide on the correct side first.
+				// Position the incoming slide on the correct side first. transform/
+				// filter/clip-path are unconditionally transitioned on every slide,
+				// so adding .from-prev alone would itself animate instead of
+				// snapping — kill the transition for one reflow to force an instant
+				// jump, THEN re-enable it before animating in via .is-active.
 				inn.classList.remove( 'is-leaving', 'from-next', 'from-prev' );
-				if ( dir < 0 ) { inn.classList.add( 'from-prev' ); }
+				if ( dir < 0 ) {
+					inn.classList.add( 'ekwa-slide--jump', 'from-prev' );
+					void inn.offsetWidth;
+					inn.classList.remove( 'ekwa-slide--jump' );
+				}
 				void inn.offsetWidth;
 				inn.classList.add( 'is-active' );
 				inn.classList.remove( 'from-prev' );

@@ -59,7 +59,33 @@ p.ekwa-inner-banner__heading {
 	text-decoration: underline;
 }
 
-/* ----- Style: Classic (default) — already covered by base. ----- */
+/* ----- Style: Classic (default) — centered, with a soft vignette and a
+   short accent rule under the heading so a plain color fill still reads as
+   an intentional design, not just "text on a color". ----- */
+.ekwa-inner-banner:not(.is-style-minimal):not(.is-style-gradient):not(.is-style-wave):not(.is-style-glass):not(.is-style-duotone):not(.is-style-framed):not(.is-style-split)::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background: radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, .35) 100%);
+	pointer-events: none;
+}
+.ekwa-inner-banner__heading::before {
+	content: '';
+	display: block;
+	width: 56px;
+	height: 3px;
+	margin: 0 auto 16px;
+	background: var(--wp--preset--color--accent, var(--wp--preset--color--primary, #fff));
+	border-radius: 2px;
+}
+.ekwa-inner-banner.is-style-left .ekwa-inner-banner__heading::before,
+.ekwa-inner-banner.is-style-split .ekwa-inner-banner__heading::before {
+	margin: 0 0 16px;
+}
+.ekwa-inner-banner__heading {
+	text-shadow: 0 2px 12px rgba(0, 0, 0, .25);
+}
 
 /* ----- Style: Left Aligned ----- */
 .ekwa-inner-banner.is-style-left {
@@ -70,7 +96,9 @@ p.ekwa-inner-banner__heading {
 	padding-left: clamp(20px, 6vw, 80px);
 }
 
-/* ----- Style: Minimal (solid band, no overlay, compact) ----- */
+/* ----- Style: Minimal (solid band, no overlay, compact) — a slim gradient
+   rule top and bottom keeps it a deliberate flat band rather than a plain
+   div, without adding the height/weight a full overlay would. ----- */
 .ekwa-inner-banner.is-style-minimal {
 	min-height: 0 !important; /* override inline min-height for compact band */
 }
@@ -78,32 +106,58 @@ p.ekwa-inner-banner__heading {
 	display: none;
 }
 .ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__content {
-	padding: 24px 20px;
+	padding: 28px 20px;
 }
 .ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__heading {
 	font-size: clamp(1.25rem, 2.4vw, 1.75rem);
 }
+.ekwa-inner-banner.is-style-minimal .ekwa-inner-banner__heading::before {
+	height: 2px;
+	width: 40px;
+}
+.ekwa-inner-banner.is-style-minimal::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 3px;
+	background: var(--wp--preset--gradient--primary-to-accent,
+		linear-gradient(90deg, var(--wp--preset--color--primary, #1a1a2e), var(--wp--preset--color--accent, #4a4a8e)));
+	z-index: 2;
+}
 
-/* ----- Style: Gradient ----- */
+/* ----- Style: Gradient — layered mesh blobs + a faint grain texture
+   instead of one flat diagonal, so it reads as designed rather than a
+   CSS-101 linear-gradient. ----- */
 .ekwa-inner-banner.is-style-gradient {
-	background-image: linear-gradient(
-		135deg,
-		var(--wp--preset--color--primary, #1a1a2e) 0%,
-		var(--wp--preset--color--secondary, #4a4a8e) 100%
-	);
+	background-color: var(--wp--preset--color--primary, #1a1a2e);
+	background-image:
+		radial-gradient(ellipse 60% 80% at 15% 20%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 55%, transparent) 0%, transparent 60%),
+		radial-gradient(ellipse 70% 90% at 85% 90%, color-mix(in srgb, var(--wp--preset--color--primary-dark, #0f0f1a) 70%, transparent) 0%, transparent 65%),
+		linear-gradient(135deg, var(--wp--preset--color--primary, #1a1a2e) 0%, var(--wp--preset--color--accent-dark, var(--wp--preset--color--accent, #4a4a8e)) 100%);
 }
 .ekwa-inner-banner.is-style-gradient.ekwa-inner-banner--has-bg {
-	/* Featured image present → blend gradient over it. */
+	/* Featured image present → blend the mesh over it. */
 	background-image:
-		linear-gradient(
-			135deg,
-			color-mix(in srgb, var(--wp--preset--color--primary, #1a1a2e) 75%, transparent) 0%,
-			color-mix(in srgb, var(--wp--preset--color--secondary, #4a4a8e) 75%, transparent) 100%
-		),
+		radial-gradient(ellipse 60% 80% at 15% 20%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 55%, transparent) 0%, transparent 60%),
+		radial-gradient(ellipse 70% 90% at 85% 90%, color-mix(in srgb, var(--wp--preset--color--primary-dark, #0f0f1a) 70%, transparent) 0%, transparent 65%),
+		linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--primary, #1a1a2e) 78%, transparent) 0%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 78%, transparent) 100%),
 		var(--ekwa-banner-bg, none);
 }
 .ekwa-inner-banner.is-style-gradient .ekwa-inner-banner__overlay {
 	display: none;
+}
+.ekwa-inner-banner.is-style-gradient::after {
+	/* Subtle grain so the mesh doesn't band on large monitors. */
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	pointer-events: none;
+	opacity: .05;
+	mix-blend-mode: overlay;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ----- Style: Split (vertical accent stripe on the left) ----- */
@@ -118,11 +172,109 @@ p.ekwa-inner-banner__heading {
 	left: 0;
 	bottom: 0;
 	width: 8px;
-	background: var(--wp--preset--color--accent, var(--wp--preset--color--secondary, #ffffff));
+	background: var(--wp--preset--gradient--primary-to-accent,
+		var(--wp--preset--color--accent, var(--wp--preset--color--secondary, #ffffff)));
 	z-index: 3;
 }
 .ekwa-inner-banner.is-style-split .ekwa-inner-banner__content {
 	padding-left: clamp(32px, 7vw, 96px);
+}
+
+/* ----- Style: Wave (curved edge flowing into the page below) ----- */
+.ekwa-inner-banner.is-style-wave {
+	padding-bottom: clamp(24px, 5vw, 56px);
+}
+.ekwa-inner-banner.is-style-wave::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: -1px; /* avoid a hairline gap from sub-pixel rounding */
+	height: clamp(28px, 6vw, 64px);
+	z-index: 1; /* below .ekwa-inner-banner__content (z-index:2), which is
+	               transparent anyway — keeps the wave from ever covering
+	               text if content runs tall on a narrow viewport. */
+	pointer-events: none;
+	background-repeat: no-repeat;
+	background-size: 100% 100%;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cpath d='M0,40 C300,110 900,-30 1200,40 L1200,120 L0,120 Z' fill='%23ffffff'/%3E%3C/svg%3E");
+	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cpath d='M0,40 C300,110 900,-30 1200,40 L1200,120 L0,120 Z' fill='%23fff'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cpath d='M0,40 C300,110 900,-30 1200,40 L1200,120 L0,120 Z' fill='%23fff'/%3E%3C/svg%3E");
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	-webkit-mask-size: 100% 100%;
+	mask-size: 100% 100%;
+	background-color: var(--wp--preset--color--background, #fff);
+}
+
+/* ----- Style: Glass Card (frosted content card floating over the photo —
+   lets the image show through fully instead of being dimmed by a flat
+   overlay). ----- */
+.ekwa-inner-banner.is-style-glass .ekwa-inner-banner__overlay {
+	opacity: .18 !important;
+}
+.ekwa-inner-banner.is-style-glass .ekwa-inner-banner__content {
+	background: color-mix(in srgb, var(--wp--preset--color--surface, #fff) 22%, transparent);
+	-webkit-backdrop-filter: blur(14px) saturate(140%);
+	backdrop-filter: blur(14px) saturate(140%);
+	border: 1px solid color-mix(in srgb, var(--wp--preset--color--white, #fff) 30%, transparent);
+	border-radius: 16px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, .25);
+	max-width: min(600px, 90%);
+	padding: clamp(24px, 4vw, 40px);
+}
+.ekwa-inner-banner.is-style-glass .ekwa-inner-banner__heading::before {
+	background: var(--wp--preset--color--white, #fff);
+}
+
+/* ----- Style: Duotone (bold two-tone tint over the photo via blend mode —
+   no image filtering needed, so it works with any uploaded photo). ----- */
+.ekwa-inner-banner.is-style-duotone .ekwa-inner-banner__overlay {
+	background: var(--wp--preset--gradient--primary-to-accent,
+		linear-gradient(135deg, var(--wp--preset--color--primary, #1a1a2e), var(--wp--preset--color--accent, #4a4a8e)));
+	mix-blend-mode: color;
+	opacity: .9 !important;
+}
+.ekwa-inner-banner.is-style-duotone::before {
+	/* A second, darkening pass keeps text legible — color blend alone can
+	   leave photos too bright for white text. */
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background: var(--wp--preset--color--foreground, #000);
+	mix-blend-mode: luminosity;
+	opacity: .35;
+	pointer-events: none;
+}
+
+/* ----- Style: Framed Card (bordered card inset from the banner's edges —
+   an editorial, boutique feel; the photo/color still runs full-bleed
+   behind it). ----- */
+.ekwa-inner-banner.is-style-framed {
+	padding: clamp(16px, 3vw, 32px);
+	box-sizing: border-box;
+}
+.ekwa-inner-banner.is-style-framed .ekwa-inner-banner__content {
+	background: color-mix(in srgb, var(--wp--preset--color--background, #fff) 92%, transparent);
+	color: var(--wp--preset--color--foreground, #1a1a2e);
+	border: 1px solid color-mix(in srgb, var(--wp--preset--color--foreground, #000) 12%, transparent);
+	border-radius: 4px;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
+	max-width: min(720px, 100%);
+	padding: clamp(28px, 4vw, 48px);
+}
+.ekwa-inner-banner.is-style-framed .ekwa-inner-banner__heading {
+	text-shadow: none;
+}
+.ekwa-inner-banner.is-style-framed .ekwa-inner-banner__heading::before {
+	background: var(--wp--preset--color--accent, var(--wp--preset--color--primary, #1a1a2e));
+}
+/* Framed is the one variant with dark text on a light card — some child
+   themes hardcode the breadcrumb link to white (!important) for the usual
+   dark-background banners, so out-specify it rather than assume it's unset. */
+.ekwa-inner-banner.is-style-framed .ekwa-inner-banner__breadcrumbs a {
+	color: inherit !important;
 }
 
 /* Editor template-preview tint — barely visible "this is sample data" hint. */

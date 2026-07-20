@@ -89,6 +89,12 @@ add_action( 'admin_notices', 'ekwa_github_rate_limit_notice' );
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * Location address extraction — resolves a pasted Google Maps "Direction URL"
+ * and geocodes it to fill street/city/state/zip/lat/lng in the Locations tab.
+ */
+require_once get_template_directory() . '/inc/ekwa-location-geocode.php';
+
+/**
  * Load design tokens (color/bg-image variables, saved mockup CSS, conditional
  * font breakpoint) — before fonts, which reads the breakpoint helper.
  */

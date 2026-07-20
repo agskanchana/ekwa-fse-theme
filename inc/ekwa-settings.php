@@ -73,6 +73,14 @@ function ekwa_admin_enqueue( $hook ) {
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
 		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
 		'aiTestKeyUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ai-test-key' ) ),
+		'locationGeocodeUrl' => esc_url_raw( rest_url( 'ekwa/v1/location-geocode' ) ),
+		'locationStrings'  => array(
+			'working'    => __( 'Looking up…', 'ekwa' ),
+			'error'      => __( 'Couldn\'t extract an address from that link.', 'ekwa' ),
+			'emptyUrl'   => __( 'Paste a Direction URL first.', 'ekwa' ),
+			/* translators: %s: matched address, for the admin to confirm it's the right place. */
+			'done'       => __( 'Filled in from: %s', 'ekwa' ),
+		),
 		'aiTestStrings'    => array(
 			'testing' => __( 'Testing…', 'ekwa' ),
 			'error'   => __( 'Request failed.', 'ekwa' ),
@@ -2106,7 +2114,9 @@ function ekwa_render_location_row( $index, $data, $days ) {
 				</div>
 				<div class="ekwa-field">
 					<label><?php esc_html_e( 'Direction URL', 'ekwa' ); ?></label>
-					<input type="url" name="<?php echo esc_attr( $prefix ); ?>[direction]" value="<?php echo esc_url( $data['direction'] ); ?>" />
+					<input type="url" name="<?php echo esc_attr( $prefix ); ?>[direction]" value="<?php echo esc_url( $data['direction'] ); ?>" class="ekwa-location-direction" />
+					<button type="button" class="button ekwa-extract-location"><?php esc_html_e( 'Extract address', 'ekwa' ); ?></button>
+					<span class="ekwa-extract-location-status description"></span>
 				</div>
 				<div class="ekwa-field">
 					<label><?php esc_html_e( 'Street Address', 'ekwa' ); ?></label>

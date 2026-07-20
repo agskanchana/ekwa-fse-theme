@@ -149,6 +149,26 @@ function ekwa_register_block_styles() {
 	) );
 
 	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'wave',
+		'label' => __( 'Wave (Curved Edge)', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'glass',
+		'label' => __( 'Glass Card', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'duotone',
+		'label' => __( 'Duotone', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
+		'name'  => 'framed',
+		'label' => __( 'Framed Card', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/inner-banner', array(
 		'name'  => 'split',
 		'label' => __( 'Split (Side Accent)', 'ekwa' ),
 	) );

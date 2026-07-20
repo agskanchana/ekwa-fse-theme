@@ -135,6 +135,54 @@
 	});
 
 	/* ============================================================
+	 *  Location repeater â€” extract address from the Direction URL
+	 * ============================================================ */
+	$(document).on('click', '.ekwa-extract-location', function () {
+		var $btn      = $(this);
+		var $item     = $btn.closest('.ekwa-location-item');
+		var $status   = $item.find('.ekwa-extract-location-status');
+		var url       = $item.find('.ekwa-location-direction').val();
+		var strings   = (window.ekwaAdmin && ekwaAdmin.locationStrings) || {};
+		var endpoint  = window.ekwaAdmin && ekwaAdmin.locationGeocodeUrl;
+		var nonce     = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
+
+		if (!url) {
+			$status.text(strings.emptyUrl || 'Paste a Direction URL first.');
+			return;
+		}
+		if (!endpoint) {
+			$status.text('REST endpoint missing.');
+			return;
+		}
+
+		$btn.prop('disabled', true);
+		$status.text(strings.working || 'Looking up…');
+
+		$.ajax({
+			url: endpoint,
+			method: 'POST',
+			data: { url: url },
+			headers: { 'X-WP-Nonce': nonce }
+		}).done(function (res) {
+			['street', 'city', 'state', 'zip', 'latitude', 'longitude'].forEach(function (field) {
+				if (res[field]) {
+					$item.find('[name$="[' + field + ']"]').val(res[field]);
+				}
+			});
+			var doneText = (strings.done || 'Filled in from: %s').replace('%s', res.formatted || url);
+			$status.text(doneText);
+		}).fail(function (xhr) {
+			var msg = strings.error || 'Couldn\'t extract an address from that link.';
+			if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+				msg = xhr.responseJSON.message;
+			}
+			$status.text(msg);
+		}).always(function () {
+			$btn.prop('disabled', false);
+		});
+	});
+
+	/* ============================================================
 	 *  Working hours sub-repeater â€” add / remove
 	 * ============================================================ */
 	$(document).on('click', '.ekwa-add-wh', function () {
