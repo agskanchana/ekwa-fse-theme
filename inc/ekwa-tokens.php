@@ -107,16 +107,67 @@ function ekwa_tokens_sanitize_colors( $raw ) {
 }
 
 /**
+ * Does a `--name: value` custom property declare a font family (rather than a
+ * colour, length, or other token)? Font-family variables are owned by the Fonts
+ * module (ekwa-fonts.php), which self-hosts the file and adds conditional mobile
+ * loading; auto-extracting them here too would redefine the same variable as a
+ * bare family name and defeat both. Detected from the value — a font stack names
+ * a generic family keyword and/or a quoted family, and never carries a colour,
+ * length or CSS function.
+ *
+ * @param string $name  Variable name (leading dashes optional).
+ * @param string $value Declared value.
+ * @return bool
+ */
+function ekwa_tokens_value_is_font_family( $name, $value ) {
+	$name  = strtolower( ltrim( (string) $name, '-' ) );
+	$value = strtolower( trim( (string) $value ) );
+	if ( '' === $value ) {
+		return false;
+	}
+	// Colours, lengths, and CSS functions (incl. var() aliases) are never a bare
+	// font stack — leave those as tokens.
+	if ( preg_match( '~#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|var\(|url\(|gradient|\d~', $value ) ) {
+		return false;
+	}
+	// A generic family keyword anywhere in the stack settles it.
+	if ( preg_match( '~\b(sans-serif|serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace)\b~', $value ) ) {
+		return true;
+	}
+	// Otherwise, a quoted family paired with a font-ish variable name.
+	if ( preg_match( '~["\']~', $value ) && preg_match( '~font|typeface|family|(?:^|[-_])ff(?:[-_]|$)~', $name ) ) {
+		return true;
+	}
+	return false;
+}
+
+/**
  * Extract custom-property declarations from a stylesheet (deterministic, no
- * AI). Used to pre-fill the colors textarea from the saved mockup CSS.
+ * AI). Used to pre-fill the colors textarea from the saved mockup CSS. Font
+ * families are dropped — the Fonts tab owns those (see
+ * ekwa_tokens_value_is_font_family()).
  *
  * @param string $css
  * @return string `--name: value;` lines.
  */
 function ekwa_tokens_extract_vars_from_css( $css ) {
 	// Strip comments first so commented-out variables don't leak in.
-	$css = preg_replace( '/\/\*.*?\*\//s', '', (string) $css );
-	return ekwa_tokens_sanitize_colors( $css );
+	$css   = preg_replace( '/\/\*.*?\*\//s', '', (string) $css );
+	$lines = ekwa_tokens_sanitize_colors( $css );
+	if ( '' === $lines ) {
+		return '';
+	}
+	$kept = array();
+	foreach ( explode( "\n", $lines ) as $line ) {
+		if ( preg_match( '/^(--[a-z0-9_-]+)\s*:\s*(.+?);?$/i', trim( $line ), $m )
+			&& ekwa_tokens_value_is_font_family( $m[1], $m[2] ) ) {
+			continue; // Owned by the Fonts module — don't duplicate here.
+		}
+		if ( '' !== trim( $line ) ) {
+			$kept[] = $line;
+		}
+	}
+	return implode( "\n", $kept );
 }
 
 /**
@@ -397,7 +448,7 @@ function ekwa_tokens_render_tab() {
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Color variables', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5;). Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above.', 'ekwa' ); ?>
+			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5;). Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
 		</p>
 		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--brand-dark: #0f2f66;"><?php echo esc_textarea( $colors ); ?></textarea>
 	</div>

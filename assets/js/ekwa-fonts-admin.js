@@ -356,10 +356,23 @@
 	}
 
 	/**
+	 * Pre-fill the variable-name field with the name the mockup already uses for
+	 * this family, and mark it "touched" so the family→var autosync leaves it
+	 * alone. No-op when the family isn't bound to a variable in the mockup CSS —
+	 * the autosync's family-derived slug then stands.
+	 */
+	function applySuggestedVar( $row, suggestedVar ) {
+		if ( ! suggestedVar ) { return; }
+		$row.find( '.ekwa-fonts-varname' )
+			.val( suggestedVar )
+			.data( 'touched', true );
+	}
+
+	/**
 	 * Open a Google-font row pre-filled with a family + weights, ready for the
 	 * user to review and hit "Download & save".
 	 */
-	function embedGoogleFont( family, weights ) {
+	function embedGoogleFont( family, weights, suggestedVar ) {
 		var $row = createGoogleRow();
 		if ( ! $row ) { return; }
 		var $family = $row.find( '.ekwa-fonts-family-search' );
@@ -367,6 +380,7 @@
 		var sync = $family.data( 'syncVarName' );
 		if ( typeof sync === 'function' ) { sync(); }
 		$family.trigger( 'change' ); // refresh preview if the catalog is loaded
+		applySuggestedVar( $row, suggestedVar ); // after sync, so it wins
 
 		var wanted = {};
 		( weights || [] ).forEach( function ( w ) { wanted[ String( w ) ] = true; } );
@@ -380,10 +394,11 @@
 	/**
 	 * Open an upload row pre-filled with a custom family name.
 	 */
-	function embedCustomFont( family ) {
+	function embedCustomFont( family, suggestedVar ) {
 		var $row = createUploadRow();
 		if ( ! $row ) { return; }
 		$row.find( '.ekwa-fonts-family' ).val( family ).trigger( 'input' );
+		applySuggestedVar( $row, suggestedVar ); // after the input-triggered sync
 		scrollToRow( $row );
 	}
 
@@ -442,6 +457,7 @@
 				.data( 'family', f.family )
 				.data( 'weights', weights )
 				.data( 'google', isGoogle ? 1 : 0 )
+				.data( 'var', f.suggested_var || '' )
 				.appendTo( $card );
 
 			$cards.append( $card );
@@ -483,9 +499,9 @@
 	$aiResults.on( 'click', '.ekwa-fonts-ai-embed', function () {
 		var $b = $( this );
 		if ( $b.data( 'google' ) ) {
-			embedGoogleFont( $b.data( 'family' ), $b.data( 'weights' ) );
+			embedGoogleFont( $b.data( 'family' ), $b.data( 'weights' ), $b.data( 'var' ) );
 		} else {
-			embedCustomFont( $b.data( 'family' ) );
+			embedCustomFont( $b.data( 'family' ), $b.data( 'var' ) );
 		}
 	} );
 

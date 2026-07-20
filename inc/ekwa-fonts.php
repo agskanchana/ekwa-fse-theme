@@ -736,6 +736,40 @@ function ekwa_fonts_ai_sanitize_entry( $entry ) {
 	);
 }
 
+/**
+ * Find the mockup CSS custom property that already defines a given font family,
+ * so the Fonts UI can pre-fill the variable name with the one the mockup ALREADY
+ * references (e.g. family "Poppins" => "ff-heading" for
+ * `--ff-heading:'Poppins',sans-serif`). Section CSS and the self-hosted font
+ * then resolve to the same token with no rewriting. Returns '' when the family
+ * is only referenced by raw name (no variable) — the UI falls back to the
+ * family-derived slug.
+ *
+ * @param string $css    Stylesheet that was analysed.
+ * @param string $family Detected family name.
+ * @return string Sanitized variable name without leading dashes, or ''.
+ */
+function ekwa_fonts_find_family_var( $css, $family ) {
+	$family = strtolower( trim( (string) $family ) );
+	$css    = (string) $css;
+	if ( '' === $family || '' === $css ) {
+		return '';
+	}
+	// Strip comments so commented-out declarations don't match.
+	$css = preg_replace( '/\/\*.*?\*\//s', '', $css );
+	if ( ! preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}]+)/i', $css, $m, PREG_SET_ORDER ) ) {
+		return '';
+	}
+	foreach ( $m as $decl ) {
+		// The primary (first) family in the stack is the real typeface.
+		$first = strtolower( trim( explode( ',', $decl[2] )[0], " \t\n\r\"'" ) );
+		if ( $first === $family ) {
+			return ekwa_fonts_sanitize_var_name( $decl[1] );
+		}
+	}
+	return '';
+}
+
 function ekwa_fonts_ajax_ai_detect() {
 	check_ajax_referer( 'ekwa_fonts', 'nonce' );
 	if ( ! current_user_can( 'manage_options' ) ) {
@@ -798,6 +832,9 @@ function ekwa_fonts_ajax_ai_detect() {
 	foreach ( $data['fonts'] as $entry ) {
 		$clean = ekwa_fonts_ai_sanitize_entry( $entry );
 		if ( $clean ) {
+			// Prefer the mockup's own variable name for this family so the UI
+			// pre-fills a token that section CSS already references.
+			$clean['suggested_var'] = ekwa_fonts_find_family_var( $css, $clean['family'] );
 			$fonts[] = $clean;
 		}
 	}
