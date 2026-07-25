@@ -211,18 +211,123 @@ function ekwa_tokens_print_head() {
 }
 add_action( 'wp_head', 'ekwa_tokens_print_head', 5 );
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// GLOBAL CSS POOL (thinning <head> stylesheet)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The mockup's base/shared CSS — resets, body typography, generic components —
+// lives here and is printed site-wide in <head>. It seeds from the mockup
+// stylesheet (minus the color/font *variables*, which the Colors and Fonts tabs
+// already emit as :root vars) and SHRINKS as the converter's "Extract this
+// section's CSS with AI" moves each section's own rules out to that section's
+// Scoped CSS. Whatever no section claims (body font, `.btn`, resets) stays here,
+// so the base styling every section inherits is never lost — the gap that made
+// `body { font-family }` disappear on the front end.
+
+/**
+ * The saved global CSS pool.
+ *
+ * @return string
+ */
+function ekwa_tokens_global_css() {
+	return (string) get_option( 'ekwa_global_css', '' );
+}
+
+/**
+ * Strip variable/at-rule declarations that are owned elsewhere, so the global
+ * pool never re-declares them: `:root {}` blocks (colors + font families come
+ * from the Colors/Fonts tabs), `@font-face` and `@import` (fonts are self-hosted
+ * by the Fonts tab). Base element rules (body, headings, a, img…) and component
+ * rules are kept — those are exactly what the pool exists to carry.
+ *
+ * @param string $css
+ * @return string
+ */
+function ekwa_tokens_strip_css_variables( $css ) {
+	$css = (string) $css;
+	$css = preg_replace( '/@import\b[^;]+;/i', '', $css );
+	$css = preg_replace( '/@font-face\s*\{[^}]*\}/is', '', $css );
+	// Remove :root variable blocks (they hold no nested braces).
+	$css = preg_replace( '/:root\b[^{]*\{[^}]*\}/is', '', $css );
+	$css = preg_replace( "/\n{3,}/", "\n\n", (string) $css );
+	return trim( (string) $css );
+}
+
+/**
+ * Make a raw CSS string safe to echo inside a <style> element: it can never
+ * close the element or smuggle markup/JS. Mirrors the guard the block renderer
+ * applies to Scoped CSS.
+ *
+ * @param string $css
+ * @return string
+ */
+function ekwa_tokens_sanitize_css_blob( $css ) {
+	$css = (string) $css;
+	$css = preg_replace( '#</\s*style#i', '', $css );
+	$css = preg_replace( '#<\s*script#i', '', $css );
+	$css = str_ireplace( array( 'javascript:', 'expression(' ), '', $css );
+	return (string) $css;
+}
+
+/**
+ * (Re)seed the global pool from the saved mockup stylesheet, minus its
+ * variables. Returns the seeded CSS.
+ *
+ * @return string
+ */
+function ekwa_tokens_seed_global_css_from_mockup() {
+	$mockup = trim( ekwa_tokens_mockup_css() );
+	$seed   = '' === $mockup ? '' : ekwa_tokens_strip_css_variables( $mockup );
+	update_option( 'ekwa_global_css', $seed, false );
+	return $seed;
+}
+
+/**
+ * Replace the global pool with new CSS (e.g. the leftover after a section's
+ * rules were extracted out). Variables are stripped defensively.
+ *
+ * @param string $css
+ */
+function ekwa_tokens_set_global_css( $css ) {
+	update_option( 'ekwa_global_css', ekwa_tokens_strip_css_variables( (string) $css ), false );
+}
+
+/**
+ * Print the global pool in <head>, after the token/font :root vars (priority 5)
+ * so any var() it references is already defined.
+ */
+function ekwa_tokens_print_global_css() {
+	$css = trim( ekwa_tokens_global_css() );
+	if ( '' === $css ) {
+		return;
+	}
+	echo '<style id="ekwa-global-css">' . ekwa_tokens_sanitize_css_blob( $css ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+}
+add_action( 'wp_head', 'ekwa_tokens_print_global_css', 6 );
+
 /**
  * Same CSS inside the editor (canvas + shell) so authored sections preview
- * with real token values.
+ * with real token values — plus the global pool so base typography matches
+ * the front end.
  */
 function ekwa_tokens_editor_assets() {
 	$css = ekwa_tokens_root_css();
-	if ( '' === $css ) {
+	// The global pool is printed in <head> on the front end by
+	// ekwa_tokens_print_global_css(); here it's added ONLY in the editor (this
+	// hook also fires front-side via enqueue_block_assets) so the canvas previews
+	// with the same base styles without double-printing the pool on the front end.
+	$global = is_admin() ? trim( ekwa_tokens_global_css() ) : '';
+	if ( '' === $css && '' === $global ) {
 		return;
 	}
 	wp_register_style( 'ekwa-tokens-inline', false, array(), wp_get_theme()->get( 'Version' ) );
 	wp_enqueue_style( 'ekwa-tokens-inline' );
-	wp_add_inline_style( 'ekwa-tokens-inline', $css );
+	if ( '' !== $css ) {
+		wp_add_inline_style( 'ekwa-tokens-inline', $css );
+	}
+	if ( '' !== $global ) {
+		wp_add_inline_style( 'ekwa-tokens-inline', ekwa_tokens_sanitize_css_blob( $global ) );
+	}
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_tokens_editor_assets' );
 add_action( 'enqueue_block_assets', 'ekwa_tokens_editor_assets' );
@@ -245,6 +350,18 @@ function ekwa_tokens_save_settings() {
 			$colors = ekwa_tokens_extract_vars_from_css( ekwa_tokens_mockup_css() );
 		}
 		update_option( 'ekwa_tokens_colors', $colors );
+	}
+
+	// Global CSS pool. Persist the edited value as-is (this is where the thinning
+	// pool is stored — the field shows its current, shrinking contents). Saving
+	// it EMPTY (re)seeds it from the mockup stylesheet minus its variables — the
+	// same "clear to re-derive" convention as the Colors field above.
+	if ( isset( $_POST['ekwa_global_css'] ) ) {
+		$global = ekwa_tokens_sanitize_css_blob( wp_unslash( $_POST['ekwa_global_css'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		if ( '' === trim( $global ) && '' !== trim( ekwa_tokens_mockup_css() ) ) {
+			$global = ekwa_tokens_strip_css_variables( ekwa_tokens_mockup_css() );
+		}
+		update_option( 'ekwa_global_css', $global, false );
 	}
 
 	// Background image variables (repeater: parallel name/url arrays).
@@ -451,6 +568,14 @@ function ekwa_tokens_render_tab() {
 			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5;). Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
 		</p>
 		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--brand-dark: #0f2f66;"><?php echo esc_textarea( $colors ); ?></textarea>
+	</div>
+
+	<div class="ekwa-section">
+		<h2><?php esc_html_e( 'Global CSS (printed in <head>)', 'ekwa' ); ?></h2>
+		<p class="description" style="margin-bottom:1em;">
+			<?php esc_html_e( 'The shared, site-wide CSS every page inherits — resets, body typography, generic components. It seeds from the mockup stylesheet above (minus the color/font variables, which the Colors and Fonts tabs already emit), and shrinks on its own as you use the converter\'s “Extract this section\'s CSS with AI”: each section\'s own rules move out to that section\'s Scoped CSS, and whatever no section claims (body font, buttons, resets) stays here. Edit freely — this box always holds the current pool. Save it EMPTY to re-seed from the mockup stylesheet.', 'ekwa' ); ?>
+		</p>
+		<textarea name="ekwa_global_css" rows="10" class="large-text code" placeholder="/* shared/global CSS — body, resets, shared components */"><?php echo esc_textarea( ekwa_tokens_global_css() ); ?></textarea>
 	</div>
 
 	<div class="ekwa-section">

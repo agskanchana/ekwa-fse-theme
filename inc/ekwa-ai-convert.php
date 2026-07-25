@@ -69,6 +69,63 @@ function ekwa_ai_convert_register_routes() {
 			),
 		),
 	) );
+
+	// Reconvert one mis-mapped part: turn a selected HTML snippet into a single
+	// dynamic block (address, phone, hours…), preserving the mockup structure via
+	// customTemplate. Used by the editor's "Reconvert as…" block action.
+	register_rest_route( 'ekwa/v1', '/reconvert-part', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_ai_reconvert_handle_request',
+		'permission_callback' => 'ekwa_ai_rest_permission', // Role gate + daily cap.
+		'args'                => array(
+			'html' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+			),
+			'target' => array(
+				'required' => true,
+				'type'     => 'string',
+			),
+			'model' => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'gemini-2.5-flash',
+			),
+		),
+	) );
+}
+
+/**
+ * Dynamic blocks a selected part can be reconverted into, with the placeholder
+ * vocabulary each accepts via customTemplate. The customTemplate-capable blocks
+ * are sourced from the block-templates module so the two stay in lock-step; the
+ * rest are simple standalone dynamic blocks (no template).
+ *
+ * @return array<string,array{label:string,placeholders:string,customTemplate:bool}>
+ */
+function ekwa_ai_reconvert_targets() {
+	$tpl = function_exists( 'ekwa_tpl_supported_blocks' ) ? ekwa_tpl_supported_blocks() : array();
+
+	$targets = array();
+	foreach ( array( 'ekwa/address', 'ekwa/phone', 'ekwa/hours', 'ekwa/social', 'ekwa/copyright' ) as $block ) {
+		if ( isset( $tpl[ $block ] ) ) {
+			$targets[ $block ] = array(
+				'label'          => $tpl[ $block ]['label'],
+				'placeholders'   => $tpl[ $block ]['placeholders'],
+				'customTemplate' => true,
+			);
+		}
+	}
+
+	// Standalone dynamic blocks (no customTemplate — they render their own markup).
+	$targets['ekwa/map']         = array( 'label' => __( 'Map', 'ekwa' ),         'placeholders' => '', 'customTemplate' => false );
+	$targets['ekwa/search']      = array( 'label' => __( 'Search', 'ekwa' ),      'placeholders' => '', 'customTemplate' => false );
+	$targets['ekwa/header-menu'] = array( 'label' => __( 'Header menu', 'ekwa' ), 'placeholders' => '', 'customTemplate' => false );
+	$targets['ekwa/svg-logo']    = array( 'label' => __( 'Logo (SVG)', 'ekwa' ),  'placeholders' => '', 'customTemplate' => false );
+	$targets['site-logo']        = array( 'label' => __( 'Logo (image)', 'ekwa' ), 'placeholders' => '', 'customTemplate' => false );
+
+	return $targets;
 }
 
 /**
@@ -241,4 +298,176 @@ function ekwa_ai_convert_handle_request( $request ) {
 	}
 
 	return rest_ensure_response( $response );
+}
+
+/**
+ * System prompt for reconverting ONE selected snippet into a single dynamic
+ * block, preserving the mockup structure via customTemplate where supported.
+ *
+ * @param string $target Block name (e.g. "ekwa/address").
+ * @return string
+ */
+function ekwa_ai_reconvert_system_prompt( $target ) {
+	$targets = ekwa_ai_reconvert_targets();
+	$info    = isset( $targets[ $target ] ) ? $targets[ $target ] : null;
+	$label   = $info ? $info['label'] : $target;
+
+	$prompt  = "You convert ONE HTML snippet a user selected in the WordPress editor into Ekwa dynamic BLOCK MARKUP. Your output is parsed by wp.blocks.parse(), so emit ONLY valid block-comment markup — no markdown fences, no <style>, no <script>, no prose.\n\n";
+	$prompt .= "TARGET: convert the snippet into the {$target} block ({$label}). If the snippet clearly holds several of the SAME item (e.g. two phone numbers), emit one block per item in source order; otherwise emit exactly one block. Emit the block with ATTRIBUTES ONLY and NO inner text/content — the theme fills the REAL value from the site's settings at render time. NEVER type a real or placeholder phone/address/hours/name/URL into the block body.\n\n";
+
+	switch ( $target ) {
+		case 'ekwa/phone':
+			$prompt .= "ATTRIBUTES: {\"type\":\"new\"} for a new-patient number, {\"type\":\"existing\"} for an existing/current-patient number (read the label beside it); add {\"location\":2} for a clearly-second location.\n";
+			break;
+		case 'ekwa/address':
+			$prompt .= "ATTRIBUTES: {\"mode\":\"full\"}.\n";
+			break;
+		case 'ekwa/hours':
+			$prompt .= "Emit ONE ekwa/hours block; drop the snippet's literal day/time text.\n";
+			break;
+		case 'ekwa/social':
+			$prompt .= "Emit ONE ekwa/social block covering the whole row of social icons.\n";
+			break;
+		case 'ekwa/copyright':
+			$prompt .= "Emit ONE ekwa/copyright block; drop the literal year/name.\n";
+			break;
+		case 'site-logo':
+			$prompt .= "Emit <!-- wp:site-logo /--> for an <img> logo.\n";
+			break;
+		case 'ekwa/svg-logo':
+			$prompt .= "Emit <!-- wp:ekwa/svg-logo /--> for an inline <svg> logo.\n";
+			break;
+		case 'ekwa/map':
+			$prompt .= "Emit <!-- wp:ekwa/map /--> for a Google Maps embed/iframe/link.\n";
+			break;
+		case 'ekwa/search':
+			$prompt .= "Emit <!-- wp:ekwa/search /--> for a search trigger/box.\n";
+			break;
+		case 'ekwa/header-menu':
+			$prompt .= "Emit <!-- wp:ekwa/header-menu /--> for the primary navigation menu.\n";
+			break;
+	}
+
+	if ( $info && ! empty( $info['customTemplate'] ) ) {
+		$prompt .= "\nPRESERVE STRUCTURE — set the block's \"customTemplate\" attribute to the snippet's OWN markup with every concrete value replaced by these placeholders: {$info['placeholders']}. Copy the snippet's tags and class names EXACTLY so the mockup CSS still applies. The loops {{#rows}}…{{/rows}} (hours) and {{#links}}…{{/links}} (social) repeat once per row/link — write ONE row/link template. No <script>, event handlers, or HTML comments inside the template. Escape double quotes for the JSON. If the snippet is a single trivial element that already matches the block's default output, omit customTemplate.\n";
+		$prompt .= ekwa_ai_reconvert_template_example( $target );
+	}
+
+	$prompt .= "\nAttribute JSON must be STRICT valid JSON: double-quoted keys/strings, no trailing commas.";
+	return $prompt;
+}
+
+/**
+ * A concrete customTemplate example per target, to anchor the model's output.
+ *
+ * @param string $target
+ * @return string
+ */
+function ekwa_ai_reconvert_template_example( $target ) {
+	switch ( $target ) {
+		case 'ekwa/phone':
+			return "EXAMPLE — <p><a href=\"tel:+15551234567\"><i class=\"fas fa-phone\"></i> New: (555) 123-4567</a></p> →\n"
+				. "<!-- wp:ekwa/phone {\"type\":\"new\",\"customTemplate\":\"<p><a href=\\\"tel:{{tel}}\\\"><i class=\\\"fas fa-phone\\\"></i> {{prefix}} {{number}}</a></p>\"} /-->\n";
+		case 'ekwa/address':
+			return "EXAMPLE — <a class=\"ft-addr\" href=\"https://maps.google.com/…\" target=\"_blank\">123 Main St<br>Wayzata, MN 55391</a> →\n"
+				. "<!-- wp:ekwa/address {\"mode\":\"full\",\"customTemplate\":\"<a class=\\\"ft-addr\\\" href=\\\"{{maps_url}}\\\" target=\\\"_blank\\\">{{street}}<br>{{city_state}} {{zip}}</a>\"} /-->\n";
+		case 'ekwa/hours':
+			return "EXAMPLE — <ul class=\"hrs\"><li class=\"hrs-row\"><span>Mon</span><span>9–5</span></li>…</ul> →\n"
+				. "<!-- wp:ekwa/hours {\"customTemplate\":\"<ul class=\\\"hrs\\\">{{#rows}}<li class=\\\"hrs-row{{closed_class}}\\\"><span>{{day}}</span><span>{{time}}</span></li>{{/rows}}</ul>\"} /-->\n";
+		case 'ekwa/social':
+			return "EXAMPLE — <div class=\"ft-soc\"><a href=\"https://facebook.com/…\" aria-label=\"Facebook\"><i class=\"fab fa-facebook\"></i></a>…</div> →\n"
+				. "<!-- wp:ekwa/social {\"customTemplate\":\"<div class=\\\"ft-soc\\\">{{#links}}<a href=\\\"{{url}}\\\" aria-label=\\\"{{name}}\\\" target=\\\"_blank\\\"><i class=\\\"{{icon}}\\\"></i></a>{{/links}}{{share_button}}</div>\"} /-->\n";
+		case 'ekwa/copyright':
+			return "EXAMPLE — <span>© 2026 Acme Dental. All rights reserved.</span> →\n"
+				. "<!-- wp:ekwa/copyright {\"customTemplate\":\"<span>© {{year}} {{name}}. All rights reserved.</span>\"} /-->\n";
+	}
+	return '';
+}
+
+/**
+ * Handle POST /ekwa/v1/reconvert-part.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_ai_reconvert_handle_request( $request ) {
+	if ( function_exists( 'ekwa_ai_current_feature' ) ) {
+		ekwa_ai_current_feature( 'reconvert' );
+	}
+
+	$api_key = ekwa_get_ai_api_key();
+	if ( ! $api_key ) {
+		return new WP_Error( 'no_api_key', __( 'Gemini API key not configured (Ekwa Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
+	}
+
+	$html   = trim( (string) $request->get_param( 'html' ) );
+	$target = (string) $request->get_param( 'target' );
+	$model  = (string) $request->get_param( 'model' );
+
+	if ( '' === $html ) {
+		return new WP_Error( 'empty_html', __( 'Nothing to reconvert — paste the original mockup snippet for this part.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+	$targets = ekwa_ai_reconvert_targets();
+	if ( ! isset( $targets[ $target ] ) ) {
+		return new WP_Error( 'bad_target', __( 'Unknown reconvert target.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+	if ( strlen( $html ) > 20000 ) {
+		$html = substr( $html, 0, 20000 );
+	}
+
+	$allowed = ekwa_ai_generate_allowed_models();
+	if ( ! isset( $allowed[ $model ] ) ) {
+		$model = 'gemini-2.5-flash';
+	}
+
+	$system   = ekwa_ai_reconvert_system_prompt( $target );
+	$contents = array(
+		array(
+			'role'  => 'user',
+			'parts' => array(
+				array( 'text' => "Selected snippet to convert into the {$target} block:\n\n" . $html ),
+			),
+		),
+	);
+
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, $model );
+	if ( is_wp_error( $result ) ) {
+		return new WP_Error( 'ai_error', $result->get_error_message(), array( 'status' => 502 ) );
+	}
+
+	// Same post-processing as AI Convert: strip fences, drop stray CSS/JS,
+	// repair attribute JSON, self-correct once, validate, preview-render.
+	$cleaned   = ekwa_ai_generate_strip_fences( $result['content'] );
+	$extracted = ekwa_ai_generate_extract_css_js( $cleaned );
+	$markup    = trim( $extracted['html'] );
+	$warnings  = array();
+
+	$repair = ekwa_ai_repair_block_markup( $markup );
+	$markup = $repair['markup'];
+	if ( $repair['failed'] > 0 ) {
+		$corrected = ekwa_ai_blocks_self_correct( $markup, $api_key );
+		if ( null !== $corrected ) {
+			$re = trim( ekwa_ai_generate_extract_css_js( ekwa_ai_generate_strip_fences( $corrected ) )['html'] );
+			if ( '' !== $re ) {
+				$re_repair = ekwa_ai_repair_block_markup( $re );
+				if ( $re_repair['failed'] <= $repair['failed'] ) {
+					$markup = $re_repair['markup'];
+					$repair = $re_repair;
+				}
+			}
+		}
+	}
+
+	if ( '' === trim( $markup ) ) {
+		return new WP_Error( 'ai_empty', __( 'The AI returned no block markup for that snippet.', 'ekwa' ), array( 'status' => 502 ) );
+	}
+
+	$warnings = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $markup ) );
+	$rendered = ekwa_ai_generate_blocks_render_preview( $markup );
+
+	return rest_ensure_response( array(
+		'markup'        => $markup,
+		'rendered_html' => $rendered,
+		'warnings'      => $warnings,
+	) );
 }

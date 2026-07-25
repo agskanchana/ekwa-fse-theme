@@ -216,20 +216,58 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 	$ai_extract = (bool) $request->get_param( 'css_ai_extract' );
 
 	if ( $ai_extract ) {
-		// Source: pasted CSS wins; otherwise the saved mockup stylesheet.
-		$source_css = '' !== $css
+		// Thinning-pool model: with no CSS pasted, the source is the site-wide
+		// Global CSS pool (seeded from the mockup stylesheet in Design Setup). The
+		// AI splits it into this section's rules (scoped → attached to the wrapper)
+		// and the leftover, which REPLACES the pool — so the <head> stylesheet
+		// gets thinner section by section, and shared/base CSS that no section
+		// claims (body font, resets, generic buttons) stays global.
+		//
+		// Pasting CSS in the modal is a one-off override: it's split for the scoped
+		// result but never rewrites the shared pool.
+		$pasted     = '' !== $css;
+		$source_css = $pasted
 			? $css
-			: ( function_exists( 'ekwa_tokens_mockup_css' ) ? trim( ekwa_tokens_mockup_css() ) : '' );
+			: ( function_exists( 'ekwa_tokens_global_css' ) ? trim( ekwa_tokens_global_css() ) : '' );
+
+		// Pool not seeded yet (e.g. an install predating this feature) — fall back
+		// to the saved mockup stylesheet minus its variables, so the first
+		// extraction works and seeds the pool from its leftover.
+		if ( '' === $source_css && ! $pasted && function_exists( 'ekwa_tokens_mockup_css' ) && function_exists( 'ekwa_tokens_strip_css_variables' ) ) {
+			$mock = trim( ekwa_tokens_mockup_css() );
+			if ( '' !== $mock ) {
+				$source_css = ekwa_tokens_strip_css_variables( $mock );
+			}
+		}
 
 		if ( '' === $source_css ) {
-			$response['warnings'][] = __( 'AI CSS extraction skipped — paste the mockup CSS or save it in Ekwa Settings → Design Setup first.', 'ekwa' );
+			$response['warnings'][] = $pasted
+				? __( 'AI CSS extraction skipped — the pasted CSS was empty.', 'ekwa' )
+				: __( 'AI CSS extraction skipped — save your mockup stylesheet in Ekwa Settings → Design Setup first to seed the Global CSS pool.', 'ekwa' );
 		} else {
-			$extracted_css = ekwa_mc_ai_extract_section_css( $html, $source_css );
-			if ( is_wp_error( $extracted_css ) ) {
-				$response['warnings'][] = __( 'AI CSS extraction failed: ', 'ekwa' ) . $extracted_css->get_error_message();
+			$split = ekwa_mc_ai_split_section_css( $html, $source_css );
+			if ( is_wp_error( $split ) ) {
+				$response['warnings'][] = __( 'AI CSS extraction failed: ', 'ekwa' ) . $split->get_error_message();
 			} else {
-				$response['css_scoped']  = $extracted_css;
+				$response['css_scoped']  = $split['scoped'];
 				$response['css_extract'] = ekwa_mc_extract_css_tokens( $source_css );
+
+				// Thin the shared pool with the leftover — pool path only, and only
+				// for users who may edit theme-wide CSS.
+				if ( ! $pasted && null !== $split['leftover'] && function_exists( 'ekwa_tokens_set_global_css' ) ) {
+					if ( ! current_user_can( 'edit_theme_options' ) ) {
+						$response['warnings'][] = __( 'Section CSS extracted, but only an administrator can update the site-wide Global CSS.', 'ekwa' );
+					} elseif ( '' === trim( $split['leftover'] ) && '' !== trim( $source_css ) ) {
+						// Safety: never empty the whole shared pool on one response —
+						// an empty leftover means the model swept everything into the
+						// section, which would drop the site's base CSS.
+						$response['warnings'][] = __( 'Global CSS left unchanged — the AI returned no leftover for this section (that would have emptied the shared pool). Double-check this section’s Scoped CSS.', 'ekwa' );
+					} else {
+						ekwa_tokens_set_global_css( $split['leftover'] );
+						$response['css_global_updated'] = true;
+						$response['css_global_bytes']   = strlen( trim( $split['leftover'] ) );
+					}
+				}
 			}
 		}
 	} elseif ( '' !== $css ) {
@@ -253,17 +291,20 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 }
 
 /**
- * AI: extract only the CSS rules that style the given HTML from a full
- * stylesheet, rewritten to use the site's design-token variables.
+ * AI: split a stylesheet ("the pool") into (1) the rules that specifically
+ * style the given HTML section — rewritten to the site's design tokens, ready
+ * to attach as the wrapper's Scoped CSS — and (2) everything else, returned
+ * verbatim so it can replace the shrinking site-wide Global CSS pool.
  *
  * Billable Gemini call — gated by the AI governance permission (role gate,
  * daily cap) even though the converter route itself only needs edit_posts.
  *
  * @param string $html Section HTML being converted.
- * @param string $css  Full mockup stylesheet.
- * @return string|WP_Error Extracted CSS.
+ * @param string $css  The current CSS pool to split.
+ * @return array{scoped:string,leftover:?string}|WP_Error  leftover is null when
+ *         the model didn't return the two-part format (pool left untouched).
  */
-function ekwa_mc_ai_extract_section_css( $html, $css ) {
+function ekwa_mc_ai_split_section_css( $html, $css ) {
 	if ( ! function_exists( 'ekwa_ai_generate_call_gemini' ) || ! function_exists( 'ekwa_get_ai_api_key' ) ) {
 		return new WP_Error( 'ai_unavailable', __( 'AI modules are not loaded.', 'ekwa' ) );
 	}
@@ -289,11 +330,14 @@ function ekwa_mc_ai_extract_section_css( $html, $css ) {
 		$html = substr( $html, 0, 60000 ) . "\n<!-- …truncated -->";
 	}
 
-	$system = "You are a precise CSS extractor for a WordPress block theme.\n"
-		. "INPUT: an HTML section, then a full stylesheet.\n"
-		. "TASK: return ONLY the CSS rules from the stylesheet that apply to elements in the HTML section — matched by its classes, ids, tags and their descendants. INCLUDE the section's ::before/::after pseudo-element rules, :hover/:focus states, @media variants of those rules, and any @keyframes they reference. EXCLUDE resets, :root blocks, and rules for elements not present in the section.\n"
-		. "REWRITE values to the site's design tokens where one matches: use var(--name) for colors, font-family variables for fonts, and background-image variables instead of url(...) when the token represents the same image. Do NOT redeclare the token variables themselves.\n"
-		. "Preserve every selector exactly as written otherwise. OUTPUT raw CSS only — no markdown fences, no commentary.";
+	$system = "You are a precise CSS splitter for a WordPress block theme.\n"
+		. "INPUT: an HTML section, then a stylesheet (\"the pool\").\n"
+		. "TASK: split the pool into TWO parts with NO overlap:\n"
+		. "1) SCOPED — the rules that specifically style THIS section (matched by its classes, ids, tags and their descendants). INCLUDE the section's ::before/::after pseudo-element rules, :hover/:focus states, @media variants of those rules, and any @keyframes they reference. REWRITE values to the site's design tokens where one matches: var(--name) for colors, font-family variables for fonts, background-image variables instead of url(...) when the token represents the same image. Do NOT redeclare the token variables themselves.\n"
+		. "2) LEFTOVER — EVERY other rule from the pool, returned VERBATIM (do not rewrite, reorder, merge, or drop anything). This is the shared/base layer: resets, html/body typography, bare element rules (a, img, headings, lists…), generic component rules (e.g. .btn, .container) that aren't unique to this section, utility classes, and other sections' rules. When unsure whether a rule is section-specific or shared, put it in LEFTOVER.\n"
+		. "EXCLUDE from BOTH outputs: :root blocks, @font-face, and @import (those are handled elsewhere). Otherwise every rule in the pool must appear in exactly one part. Invent nothing.\n"
+		. "OUTPUT EXACTLY this, the two markers each on their own line with raw CSS between — no markdown fences, no commentary:\n"
+		. "===EKWA_SCOPED===\n<scoped css>\n===EKWA_LEFTOVER===\n<leftover css>";
 
 	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
 		$system .= "\n" . ekwa_tokens_ai_context();
@@ -303,7 +347,7 @@ function ekwa_mc_ai_extract_section_css( $html, $css ) {
 		array(
 			'role'  => 'user',
 			'parts' => array(
-				array( 'text' => "HTML SECTION:\n\n" . $html . "\n\nFULL STYLESHEET:\n\n" . $css ),
+				array( 'text' => "HTML SECTION:\n\n" . $html . "\n\nPOOL STYLESHEET:\n\n" . $css ),
 			),
 		),
 	);
@@ -321,7 +365,39 @@ function ekwa_mc_ai_extract_section_css( $html, $css ) {
 		return new WP_Error( 'ai_empty', __( 'The AI returned no CSS.', 'ekwa' ) );
 	}
 
-	return $out;
+	return ekwa_mc_parse_split_css( $out );
+}
+
+/**
+ * Parse the AI's two-part CSS response. Tolerant of missing/misspelled markers:
+ * when the LEFTOVER marker is absent, the whole output is treated as scoped and
+ * leftover is null (the caller then leaves the pool untouched).
+ *
+ * @param string $out Raw model output (fences already stripped).
+ * @return array{scoped:string,leftover:?string}
+ */
+function ekwa_mc_parse_split_css( $out ) {
+	$scoped_marker   = '===EKWA_SCOPED===';
+	$leftover_marker = '===EKWA_LEFTOVER===';
+
+	$has_leftover = ( false !== stripos( $out, $leftover_marker ) );
+	if ( ! $has_leftover ) {
+		// No split — strip a stray scoped marker if present, keep all as scoped.
+		$scoped = trim( preg_replace( '/^\s*' . preg_quote( $scoped_marker, '/' ) . '\s*/i', '', $out ) );
+		return array( 'scoped' => $scoped, 'leftover' => null );
+	}
+
+	$parts    = preg_split( '/' . preg_quote( $leftover_marker, '/' ) . '/i', $out, 2 );
+	$scoped   = isset( $parts[0] ) ? $parts[0] : '';
+	$leftover = isset( $parts[1] ) ? $parts[1] : '';
+
+	// Drop the scoped marker from the first part.
+	$scoped = preg_replace( '/^\s*' . preg_quote( $scoped_marker, '/' ) . '\s*/i', '', $scoped );
+
+	return array(
+		'scoped'   => trim( (string) $scoped ),
+		'leftover' => trim( (string) $leftover ),
+	);
 }
 
 /**

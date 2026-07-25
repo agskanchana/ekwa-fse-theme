@@ -530,6 +530,39 @@ function ekwa_enqueue_converter_editor_script() {
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );
 
 /**
+ * Enqueue the per-part "Reconvert as…" block action — turns a mis-mapped
+ * element (e.g. an address flattened to text) into the correct dynamic block,
+ * preserving the mockup structure via customTemplate.
+ */
+function ekwa_enqueue_reconvert_editor_script() {
+	wp_enqueue_script(
+		'ekwa-reconvert-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-reconvert-editor.js',
+		array(
+			'wp-hooks',
+			'wp-compose',
+			'wp-blocks',
+			'wp-block-editor',
+			'wp-components',
+			'wp-element',
+			'wp-data',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		filemtime( get_template_directory() . '/assets/js/ekwa-reconvert-editor.js' ),
+		true
+	);
+
+	$targets = function_exists( 'ekwa_ai_reconvert_targets' ) ? ekwa_ai_reconvert_targets() : array();
+	$list    = array();
+	foreach ( $targets as $name => $info ) {
+		$list[] = array( 'value' => $name, 'label' => $info['label'] );
+	}
+	wp_localize_script( 'ekwa-reconvert-editor', 'ekwaReconvert', array( 'targets' => $list ) );
+}
+add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_reconvert_editor_script' );
+
+/**
  * Internal linking suggestions — editor sidebar that scans the current page and
  * proposes one-click internal links to other pages.
  */

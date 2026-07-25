@@ -193,6 +193,7 @@
 		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
 		var s18 = useState( [] );        var report     = s18[0]; var setReport     = s18[1];
+		var s23 = useState( null );      var cssGlobal  = s23[0]; var setCssGlobal  = s23[1];
 
 		var fileRef = useRef( null );
 
@@ -229,6 +230,7 @@
 					setCssExtract( res.css_extract || null );
 					setCssSaved( !! res.css_saved );
 					setCssScoped( res.css_scoped || '' );
+					setCssGlobal( res.css_global_updated ? { bytes: res.css_global_bytes || 0 } : null );
 					setMediaMaps( {} );
 					setConverting( false );
 					setStep( 'result' );
@@ -288,6 +290,7 @@
 				setCssExtract( res.css_extract || null );
 				setCssSaved( !! res.css_saved );
 				setCssScoped( res.css_scoped || '' );
+				setCssGlobal( res.css_global_updated ? { bytes: res.css_global_bytes || 0 } : null );
 				setConverting( false );
 				setStep( 'result' );
 
@@ -422,7 +425,7 @@
 					} ),
 					el( ToggleControl, {
 						label: __( 'Extract this section’s CSS with AI → attach as Scoped CSS', 'ekwa' ),
-						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables. Uses the field above, or the stylesheet saved in Ekwa Settings → Design Setup when empty.', 'ekwa' ),
+						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables, and attaches them to the section. Everything left over stays in the site-wide Global CSS in Design Setup — so base styles like the body font are never lost, and that shared pool gets thinner each time you extract a section. Leave the CSS box empty to use the pool; pasting CSS here is a one-off that won’t touch the pool.', 'ekwa' ),
 						checked: aiExtract,
 						onChange: setAiExtract,
 					} ),
@@ -602,6 +605,20 @@
 			resultChildren.push(
 				el( Notice, { key: 'err', status: 'error', isDismissible: true, onRemove: function () { setError( null ); } },
 					error
+				)
+			);
+		}
+
+		// Global CSS pool thinned — this section's rules moved to its Scoped CSS,
+		// the shared leftover stays in <head>. Shown even when no fonts/colors
+		// surfaced (the pool can be pure structural CSS by now).
+		if ( cssGlobal ) {
+			var gBytes = cssGlobal.bytes || 0;
+			var gKb    = gBytes / 1024;
+			var gSize  = gKb < 0.1 ? ( gBytes + ' B' ) : ( gKb.toFixed( gKb < 10 ? 1 : 0 ) + ' KB' );
+			resultChildren.push(
+				el( Notice, { key: 'css-global', status: 'success', isDismissible: false },
+					__( 'Global CSS pool thinned — this section’s rules are now its Scoped CSS. Shared CSS still in <head>: ', 'ekwa' ) + gSize
 				)
 			);
 		}
