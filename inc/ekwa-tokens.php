@@ -83,15 +83,56 @@ function ekwa_tokens_sanitize_var_name( $raw ) {
 
 /**
  * Sanitize the pasted color-variables text down to safe `--name: value;`
- * lines. Accepts full `:root { … }` blocks or bare declaration lines; drops
- * anything that isn't a custom property with a simple value.
+ * lines. Accepts a full stylesheet (`:root { … }` plus any other rules) as well
+ * as bare declaration lines; drops anything that isn't a custom property with a
+ * simple value.
+ *
+ * When the input contains CSS blocks, only the *inside* of the innermost
+ * `{ … }` declaration blocks is scanned. Selectors live OUTSIDE the braces, so a
+ * BEM class name carrying a pseudo-class or pseudo-element — `.btn--primary:hover`,
+ * `.card__title--center::after` — can never be misread as a custom property. The
+ * old flat regex scanned the whole stylesheet and happily turned those selectors
+ * into junk tokens (`--primary: hover;`, `--center: :after;`). Restricting the
+ * scan to block bodies also handles CSS nesting for free: an outer block still
+ * contains braces, so it isn't captured by the brace-less `[^{}]*` body match.
  *
  * @param string $raw
  * @return string One declaration per line.
  */
 function ekwa_tokens_sanitize_colors( $raw ) {
+	$raw = (string) $raw;
+
+	if ( false !== strpos( $raw, '{' ) ) {
+		// Stylesheet input: collect the contents of declaration blocks only.
+		$bodies = array();
+		if ( preg_match_all( '/\{([^{}]*)\}/s', $raw, $bm ) ) {
+			foreach ( $bm[1] as $body ) {
+				$body = trim( $body );
+				if ( '' !== $body ) {
+					// Guarantee a trailing terminator so the last declaration in
+					// a block (CSS lets it omit the semicolon) still matches below.
+					$bodies[] = rtrim( $body, ';' ) . ';';
+				}
+			}
+		}
+		$src = implode( "\n", $bodies );
+	} else {
+		// Bare declaration lines (manual paste): terminate each with ';' so a
+		// value that omits the semicolon still matches the declaration regex.
+		$src = '';
+		foreach ( preg_split( '/[\r\n]+/', $raw ) as $line ) {
+			$line = trim( $line );
+			if ( '' !== $line ) {
+				$src .= rtrim( $line, ';' ) . ";\n";
+			}
+		}
+	}
+
 	$out = array();
-	if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}]+);?/i', (string) $raw, $m, PREG_SET_ORDER ) ) {
+	// Match `--name: value;` only — the required `;` terminator (added above) plus
+	// a single-line value (no line breaks) keeps values from bleeding across
+	// declarations.
+	if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}\r\n]+?)\s*;/i', $src, $m, PREG_SET_ORDER ) ) {
 		foreach ( $m as $pair ) {
 			$name  = ekwa_tokens_sanitize_var_name( $pair[1] );
 			$value = trim( $pair[2] );
