@@ -94,6 +94,24 @@ function ekwa_admin_enqueue( $hook ) {
 		),
 	) );
 
+	// CodeMirror (WP's bundled code editor) for the Design Setup tab: the Global
+	// CSS field (with background-image path detection) and the two editable JS
+	// files. Each returns false when the user disabled syntax highlighting in
+	// their profile — the JS then leaves the plain textareas in place.
+	$ekwa_cm_css = wp_enqueue_code_editor( array( 'type' => 'text/css' ) );
+	$ekwa_cm_js  = wp_enqueue_code_editor( array( 'type' => 'text/javascript' ) );
+	wp_localize_script( 'ekwa-admin-js', 'ekwaCodeEditors', array(
+		'css'  => $ekwa_cm_css ? $ekwa_cm_css : false,
+		'js'   => $ekwa_cm_js ? $ekwa_cm_js : false,
+		'i18n' => array(
+			'bgIntro' => __( 'Hard-coded image path(s) found in the Global CSS below. Relative or mockup URLs break on the live site.', 'ekwa' ),
+			'bgFix'   => __( 'Upload each image to the Media Library, add it under “Background image variables”, then replace the url(…) with var(--your-name).', 'ekwa' ),
+			/* translators: 1: line number, 2: the offending url() value. */
+			'bgLine'  => __( 'Line %1$d: %2$s', 'ekwa' ),
+			'bgClean' => __( 'No hard-coded image paths in the Global CSS. ✓', 'ekwa' ),
+		),
+	) );
+
 }
 add_action( 'admin_enqueue_scripts', 'ekwa_admin_enqueue' );
 
@@ -2050,6 +2068,8 @@ function ekwa_render_settings_page() {
 						mainForm.classList.toggle( 'ekwa-form-hidden', inBulk );
 						bulkForm.classList.toggle( 'ekwa-form-hidden', ! inBulk );
 					}
+					// Let CodeMirror editors (Design Setup tab) re-measure once visible.
+					document.dispatchEvent( new CustomEvent( 'ekwa:tab-activated', { detail: { slug: slug } } ) );
 				}
 
 				tabs.forEach( function ( t ) {

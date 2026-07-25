@@ -554,4 +554,142 @@
 		$(this).hide();
 	});
 
+	/* ============================================================
+	 *  Design Setup — CodeMirror editors
+	 *  - Global CSS: CSS editor + background-image path detector
+	 *  - delayed-scripts.js / ekwa-child.js: JS editors + WAF-safe base64
+	 * ============================================================ */
+	$(function () {
+		var CE    = window.ekwaCodeEditors || null;
+		var hasCM = !!( CE && window.wp && wp.codeEditor );
+		var cmInstances = []; // { cm, slug } — for refresh-on-show.
+
+		function trackCM( cm, node ) {
+			var pane = ( node && node.closest ) ? node.closest( '.ekwa-tab-pane' ) : null;
+			cmInstances.push( { cm: cm, slug: pane ? pane.getAttribute( 'data-tab' ) : null } );
+		}
+
+		function refreshCM( slug ) {
+			cmInstances.forEach( function ( it ) {
+				if ( ! slug || ! it.slug || it.slug === slug ) {
+					try { it.cm.refresh(); } catch ( e ) {}
+				}
+			} );
+		}
+
+		// ---- Global CSS: CSS editor + background-image path detector ----
+		if ( hasCM && CE.css ) {
+			var cssTa = document.getElementById( 'ekwa-global-css' );
+			if ( cssTa ) {
+				var cssCm = wp.codeEditor.initialize( cssTa, CE.css ).codemirror;
+				var panel = document.getElementById( 'ekwa-global-css-bg-warning' );
+				trackCM( cssCm, cssTa );
+
+				var scan = ekwaDebounce( function () {
+					var lines = cssCm.getValue().split( /\r\n|\r|\n/ );
+					var bad   = [];
+					// url( ... ) literals. var(--x) never matches, so background
+					// *variables* are treated as fine — exactly the intent.
+					var re = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+					lines.forEach( function ( line, i ) {
+						re.lastIndex = 0;
+						var m;
+						while ( ( m = re.exec( line ) ) ) {
+							var t = ( m[2] || '' ).trim();
+							if ( ! t ) { continue; }
+							if ( /^data:/i.test( t ) ) { continue; }   // self-contained, won't break
+							if ( t.charAt( 0 ) === '#' ) { continue; } // SVG fragment ref, not a path
+							bad.push( { line: i, url: t } );
+							break; // one flag per line is enough
+						}
+					} );
+					cssCm.operation( function () {
+						for ( var ln = 0; ln < cssCm.lineCount(); ln++ ) {
+							cssCm.removeLineClass( ln, 'background', 'ekwa-cm-error-line' );
+						}
+						bad.forEach( function ( o ) {
+							cssCm.addLineClass( o.line, 'background', 'ekwa-cm-error-line' );
+						} );
+					} );
+					renderBgPanel( panel, bad );
+				}, 250 );
+
+				cssCm.on( 'changes', scan );
+				scan();
+			}
+		}
+
+		// ---- delayed-scripts.js / ekwa-child.js: JS editors + base64 mirror ----
+		var jsTextareas = document.querySelectorAll( 'textarea.ekwa-code-js' );
+		if ( jsTextareas.length ) {
+			var jsPairs = [];
+			if ( hasCM && CE.js ) {
+				Array.prototype.forEach.call( jsTextareas, function ( ta ) {
+					var inst = wp.codeEditor.initialize( ta, CE.js );
+					if ( ta.disabled ) { inst.codemirror.setOption( 'readOnly', true ); }
+					jsPairs.push( { ta: ta, cm: inst.codemirror } );
+					trackCM( inst.codemirror, ta );
+				} );
+			}
+			// Always mirror each JS field to its base64 twin on submit, so a WAF
+			// that strips raw <script>/JS from the POST body can't wipe the file.
+			var form = document.getElementById( 'ekwa-main-settings-form' );
+			if ( form ) {
+				form.addEventListener( 'submit', function () {
+					jsPairs.forEach( function ( p ) { p.cm.save(); } ); // CodeMirror → textarea
+					Array.prototype.forEach.call( jsTextareas, function ( ta ) {
+						var b64 = form.querySelector( 'input[name="' + ta.name + '_b64"]' );
+						if ( ! b64 ) { return; }
+						try {
+							b64.value = ta.disabled ? '' : btoa( unescape( encodeURIComponent( ta.value ) ) );
+						} catch ( e ) {
+							b64.value = '';
+						}
+					} );
+				} );
+			}
+		}
+
+		// Re-measure CodeMirror once its (initially hidden) tab is shown.
+		if ( cmInstances.length ) {
+			document.addEventListener( 'ekwa:tab-activated', function ( e ) {
+				refreshCM( e.detail && e.detail.slug );
+			} );
+			setTimeout( function () { refreshCM(); }, 60 );
+		}
+
+		function renderBgPanel( panel, bad ) {
+			if ( ! panel ) { return; }
+			var i18n = ( CE && CE.i18n ) ? CE.i18n : {};
+			if ( ! bad.length ) {
+				panel.className   = 'ekwa-css-bg-warning is-clean';
+				panel.textContent = i18n.bgClean || '';
+				return;
+			}
+			panel.className = 'ekwa-css-bg-warning is-warning';
+			var lineTpl = i18n.bgLine || 'Line %1$d: %2$s';
+			var items = bad.map( function ( o ) {
+				return '<li>' + ekwaEsc( lineTpl.replace( '%1$d', o.line + 1 ).replace( '%2$s', o.url ) ) + '</li>';
+			} ).join( '' );
+			panel.innerHTML =
+				'<p><strong>⚠ ' + ekwaEsc( i18n.bgIntro || '' ) + '</strong></p>' +
+				'<ul>' + items + '</ul>' +
+				'<p>' + ekwaEsc( i18n.bgFix || '' ) + '</p>';
+		}
+
+		function ekwaDebounce( fn, wait ) {
+			var timer;
+			return function () {
+				clearTimeout( timer );
+				timer = setTimeout( fn, wait );
+			};
+		}
+
+		function ekwaEsc( s ) {
+			var d = document.createElement( 'div' );
+			d.textContent = ( s == null ) ? '' : String( s );
+			return d.innerHTML;
+		}
+	});
+
 })(jQuery);

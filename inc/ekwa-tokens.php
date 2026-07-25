@@ -424,6 +424,11 @@ function ekwa_tokens_save_settings() {
 	if ( isset( $_POST['ekwa_fonts_conditional_bp'] ) ) {
 		update_option( 'ekwa_fonts_conditional_bp', max( 480, min( 1920, absint( $_POST['ekwa_fonts_conditional_bp'] ) ) ) );
 	}
+
+	// Editable front-end JS files (delayed-scripts.js / ekwa-child.js).
+	if ( function_exists( 'ekwa_js_editor_save' ) ) {
+		ekwa_js_editor_save();
+	}
 }
 
 /**
@@ -604,9 +609,9 @@ function ekwa_tokens_render_tab() {
 	</div>
 
 	<div class="ekwa-section">
-		<h2><?php esc_html_e( 'Color variables', 'ekwa' ); ?></h2>
+		<h2><?php esc_html_e( 'CSS variables', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5;). Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
+			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5; --space-lg: 2rem; --radius: 8px;). Not just colours — any :root variable your CSS reuses. Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
 		</p>
 		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--brand-dark: #0f2f66;"><?php echo esc_textarea( $colors ); ?></textarea>
 	</div>
@@ -614,9 +619,11 @@ function ekwa_tokens_render_tab() {
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Global CSS (printed in <head>)', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'The shared, site-wide CSS every page inherits — resets, body typography, generic components. It seeds from the mockup stylesheet above (minus the color/font variables, which the Colors and Fonts tabs already emit), and shrinks on its own as you use the converter\'s “Extract this section\'s CSS with AI”: each section\'s own rules move out to that section\'s Scoped CSS, and whatever no section claims (body font, buttons, resets) stays here. Edit freely — this box always holds the current pool. Save it EMPTY to re-seed from the mockup stylesheet.', 'ekwa' ); ?>
+			<?php esc_html_e( 'The shared, site-wide CSS every page inherits — resets, body typography, generic components. It seeds from the mockup stylesheet above (minus the CSS/font variables, which the CSS variables and Fonts sections already emit), and shrinks on its own as you use the converter\'s “Extract this section\'s CSS with AI”: each section\'s own rules move out to that section\'s Scoped CSS, and whatever no section claims (body font, buttons, resets) stays here. Edit freely — this box always holds the current pool. Save it EMPTY to re-seed from the mockup stylesheet.', 'ekwa' ); ?>
 		</p>
-		<textarea name="ekwa_global_css" rows="10" class="large-text code" placeholder="/* shared/global CSS — body, resets, shared components */"><?php echo esc_textarea( ekwa_tokens_global_css() ); ?></textarea>
+		<p class="description" style="margin-bottom:1em;"><?php esc_html_e( 'Heads up: any hard-coded image path — like background: url(images/hero.jpg) — is highlighted in red below, because mockup-relative paths break on the live site. Upload the image to the Media Library, add it under “Background image variables” below, and reference it with var(--your-name). Backgrounds that already use a variable are fine.', 'ekwa' ); ?></p>
+			<textarea id="ekwa-global-css" name="ekwa_global_css" rows="10" class="large-text code ekwa-code-css" spellcheck="false" placeholder="/* shared/global CSS — body, resets, shared components */"><?php echo esc_textarea( ekwa_tokens_global_css() ); ?></textarea>
+			<div id="ekwa-global-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
 	</div>
 
 	<div class="ekwa-section">
@@ -694,6 +701,8 @@ function ekwa_tokens_render_tab() {
 			</tr>
 		</table>
 	</div>
+
+	<?php if ( function_exists( 'ekwa_js_editor_render' ) ) { ekwa_js_editor_render(); } ?>
 	<?php
 }
 

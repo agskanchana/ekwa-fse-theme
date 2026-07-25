@@ -269,6 +269,11 @@ require_once get_template_directory() . '/inc/ekwa-responsive.php';
 require_once get_template_directory() . '/inc/ekwa-child-generator.php';
 
 /**
+ * Editable front-end JS files (delayed-scripts.js / ekwa-child.js) in Design Setup.
+ */
+require_once get_template_directory() . '/inc/ekwa-js-editor.php';
+
+/**
  * Mockup contract: canonical snippet library, readiness checker, and the
  * Author Guide / starter-template downloads (Ekwa Settings → Design Setup).
  */

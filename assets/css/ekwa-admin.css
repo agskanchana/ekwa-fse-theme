@@ -441,3 +441,52 @@
 		grid-template-columns: 1fr;
 	}
 }
+
+/* ---------- Design Setup: CodeMirror editors ---------- */
+.ekwa-settings-wrap .CodeMirror {
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	height: auto;
+}
+.ekwa-settings-wrap .CodeMirror-focused {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+}
+.ekwa-js-file .CodeMirror {
+	max-height: 420px;
+}
+
+/* Background-image path offenders in the Global CSS editor. */
+.ekwa-cm-error-line {
+	background: #fcecec !important;
+}
+
+/* Warning panel under the Global CSS field. */
+.ekwa-css-bg-warning {
+	margin-top: 8px;
+	font-size: 13px;
+	line-height: 1.5;
+}
+.ekwa-css-bg-warning:empty {
+	display: none;
+}
+.ekwa-css-bg-warning.is-clean {
+	color: #008a20;
+}
+.ekwa-css-bg-warning.is-warning {
+	border-left: 4px solid #d63638;
+	background: #fcf0f1;
+	padding: 8px 12px;
+	border-radius: 4px;
+}
+.ekwa-css-bg-warning p {
+	margin: 0 0 6px;
+}
+.ekwa-css-bg-warning ul {
+	margin: 6px 0;
+	padding-left: 18px;
+	list-style: disc;
+}
+.ekwa-css-bg-warning li {
+	word-break: break-all;
+}

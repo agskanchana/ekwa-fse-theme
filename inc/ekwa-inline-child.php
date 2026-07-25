@@ -120,6 +120,9 @@ function ekwa_inline_child_print_js() {
 		&& function_exists( 'ekwa_inline_minify_js' ) ) {
 		$js = ekwa_inline_minify_js( $js );
 	}
+	// The file is now editable from Design Setup; make sure a literal </script>
+	// in the JS (e.g. inside a string) can't close the inline element early.
+	$js = str_replace( '</script', '<\/script', $js );
 	echo '<script id="ekwa-child-js-inline">' . $js . "</script>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
 add_action( 'wp_footer', 'ekwa_inline_child_print_js', 21 );
