@@ -2443,19 +2443,19 @@ function ekwa_render_mobile_dock_block( $attrs ) {
 			}
 			$html .= '<div class="accordion-body' . ( $first ? ' active' : '' ) . '" id="' . esc_attr( $aid ) . '">';
 			$html .= '<div class="accordion-content">';
-			if ( $loc['existing'] ) {
-				$tel = ekwa_mobile_number( $loc['existing'] );
-				$html .= '<div class="phone-item"><span class="phone-label">Existing Patient</span>'
-					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
-					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
-					. esc_html( $loc['existing'] ) . '</a></div>';
-			}
 			if ( $loc['new'] ) {
 				$tel = ekwa_mobile_number( $loc['new'] );
 				$html .= '<div class="phone-item"><span class="phone-label">New Patient</span>'
 					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
 					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
 					. esc_html( $loc['new'] ) . '</a></div>';
+			}
+			if ( $loc['existing'] ) {
+				$tel = ekwa_mobile_number( $loc['existing'] );
+				$html .= '<div class="phone-item"><span class="phone-label">Existing Patient</span>'
+					. '<a href="tel:' . esc_attr( $tel ) . '" class="phone-link">'
+					. '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
+					. esc_html( $loc['existing'] ) . '</a></div>';
 			}
 			$html .= '</div></div></div>'; // .accordion-content, .accordion-body, .location-accordion
 			$li++;
@@ -4170,12 +4170,27 @@ function ekwa_render_back_to_category_block() {
 		return '';
 	}
 
-	$excluded = array( 'uncategorized', 'featured', 'featured-articles' );
-	$filtered = array_filter( $categories, function ( $cat ) use ( $excluded ) {
+	// "Featured" buckets aren't real destination pages — a post filed under one
+	// links back to the home page instead of a category archive.
+	$featured_slugs = array( 'featured', 'featured-articles', 'featured-article' );
+	$excluded       = array_merge( array( 'uncategorized' ), $featured_slugs );
+	$filtered       = array_filter( $categories, function ( $cat ) use ( $excluded ) {
 		return ! in_array( strtolower( $cat->slug ), $excluded, true );
 	} );
 
 	if ( empty( $filtered ) ) {
+		// No real category left. If the post is in a featured bucket, send readers
+		// back to the home page rather than hiding the link entirely.
+		foreach ( $categories as $cat ) {
+			if ( in_array( strtolower( $cat->slug ), $featured_slugs, true ) ) {
+				return '<div class="ekwa-back-to-category">'
+					. '<a href="' . esc_url( home_url( '/' ) ) . '" class="ekwa-back-link">'
+					. '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i> '
+					. esc_html__( 'Back to home page', 'ekwa' )
+					. '</a>'
+					. '</div>';
+			}
+		}
 		return '';
 	}
 

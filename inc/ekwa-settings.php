@@ -302,6 +302,9 @@ function ekwa_save_settings() {
 		'ekwa_interlink_enabled'      => 'sanitize_text_field',
 		'ekwa_interlink_refine_model' => 'sanitize_text_field',
 		'ekwa_chatbot_src'      => 'ekwa_sanitize_chatbot_src',
+		'ekwa_google_verification' => 'ekwa_sanitize_google_verification',
+		'ekwa_skip_link_anchor' => 'sanitize_text_field',
+		'ekwa_skip_link_text'   => 'sanitize_text_field',
 		'ekwa_mmenu_bg'           => 'ekwa_sanitize_color',
 		'ekwa_mmenu_text'         => 'ekwa_sanitize_color',
 		'ekwa_mmenu_icon'         => 'ekwa_sanitize_color',
@@ -1171,6 +1174,45 @@ function ekwa_render_settings_page() {
 									</select>
 									<p class="description">
 										<?php esc_html_e( 'Where to print the tag. Footer keeps it out of the critical <head> for better load performance; choose Header to load it as early as possible.', 'ekwa' ); ?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+
+					<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Search Console Verification', 'ekwa' ); ?></h2>
+						<table class="form-table">
+							<tr>
+								<th><label for="ekwa_google_verification"><?php esc_html_e( 'Google site verification', 'ekwa' ); ?></label></th>
+								<td>
+									<input type="text" id="ekwa_google_verification" name="ekwa_google_verification" value="<?php echo esc_attr( get_option( 'ekwa_google_verification', '' ) ); ?>" class="large-text" autocomplete="off" spellcheck="false" placeholder="ZNyVtZivCvatldhYZfdn_mrWDsh6NQAAdtc1VuVSSLo" />
+									<p class="description">
+										<?php esc_html_e( 'Adds the Google Search Console verification meta tag to the <head> of every page. Paste either the token or the full <meta name="google-site-verification" content="…" /> tag — the token is extracted automatically. Leave empty to output nothing.', 'ekwa' ); ?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+
+					<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Skip to Content Link', 'ekwa' ); ?></h2>
+						<table class="form-table">
+							<tr>
+								<th><label for="ekwa_skip_link_anchor"><?php esc_html_e( 'Target anchor', 'ekwa' ); ?></label></th>
+								<td>
+									<input type="text" id="ekwa_skip_link_anchor" name="ekwa_skip_link_anchor" value="<?php echo esc_attr( get_option( 'ekwa_skip_link_anchor', '' ) ); ?>" class="regular-text" autocomplete="off" spellcheck="false" placeholder="#main-content" />
+									<p class="description">
+										<?php esc_html_e( 'The element the "Skip to content" link jumps to — enter its id (e.g. #main-content or main-content). Make sure an element on the page actually carries that id. Leave empty to keep the WordPress default behavior, which targets the first <main> element automatically.', 'ekwa' ); ?>
+									</p>
+								</td>
+							</tr>
+							<tr>
+								<th><label for="ekwa_skip_link_text"><?php esc_html_e( 'Link text', 'ekwa' ); ?></label></th>
+								<td>
+									<input type="text" id="ekwa_skip_link_text" name="ekwa_skip_link_text" value="<?php echo esc_attr( get_option( 'ekwa_skip_link_text', '' ) ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Skip to content', 'ekwa' ); ?>" />
+									<p class="description">
+										<?php esc_html_e( 'Text shown when the skip link is focused (only applies when a target anchor is set above). Leave empty for “Skip to content”.', 'ekwa' ); ?>
 									</p>
 								</td>
 							</tr>

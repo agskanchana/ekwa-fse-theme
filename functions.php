@@ -233,6 +233,18 @@ require_once get_template_directory() . '/inc/ekwa-delayed-scripts.php';
 require_once get_template_directory() . '/inc/ekwa-analytics.php';
 
 /**
+ * Google Search Console site-verification meta tag in <head> (Ekwa Settings →
+ * General).
+ */
+require_once get_template_directory() . '/inc/ekwa-google-verification.php';
+
+/**
+ * Configurable "Skip to content" link — lets authors set the target anchor
+ * (Ekwa Settings → General) instead of relying on core's <main> auto-detection.
+ */
+require_once get_template_directory() . '/inc/ekwa-skip-link.php';
+
+/**
  * Lightbox (GLightbox) — class-driven lightbox for images/videos; injects the
  * library CSS/JS on first user interaction. See inc/ekwa-lightbox.php for usage.
  */
