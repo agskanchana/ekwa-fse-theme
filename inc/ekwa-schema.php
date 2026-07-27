@@ -358,3 +358,37 @@ function ekwa_yoast_schema_fallback_image( $graph, $context = null ) {
 	return $graph;
 }
 add_filter( 'wpseo_schema_graph', 'ekwa_yoast_schema_fallback_image', 11, 2 );
+
+/**
+ * Yoast schema: give the Article author (Person) node a `url`.
+ *
+ * Google's Article rich-result test flags "Missing field url (optional)" on the
+ * author when Yoast omits it — which is the norm under Ekwa's standards, where
+ * WordPress author archives are disabled and so no archive URL is generated.
+ *
+ * We fill it from the theme's configured Author Page (Ekwa Settings → General →
+ * "Author Page", the `ekwa_author_page` option). That's the same page the visible
+ * byline links to via ekwa_filter_author_link() in inc/ekwa-blog.php, so the
+ * schema URL and the byline stay consistent. We deliberately do NOT fall back to
+ * the native author archive URL, since that target is disabled/noindexed.
+ *
+ * No-ops when Yoast already set a `url`, or when no Author Page is configured
+ * (the optional warning simply remains until one is selected).
+ *
+ * @param array $data    The author Person piece.
+ * @param mixed $context Yoast Meta_Tags_Context — unused; kept as Yoast passes it.
+ * @return array
+ */
+function ekwa_yoast_schema_author_url( $data, $context = null ) {
+	if ( ! is_array( $data ) || ! empty( $data['url'] ) ) {
+		return $data;
+	}
+
+	$author_page_id = absint( get_option( 'ekwa_author_page', 0 ) );
+	if ( $author_page_id && 'publish' === get_post_status( $author_page_id ) ) {
+		$data['url'] = get_permalink( $author_page_id );
+	}
+
+	return $data;
+}
+add_filter( 'wpseo_schema_author', 'ekwa_yoast_schema_author_url', 11, 2 );
