@@ -146,6 +146,22 @@ function ekwa_inject_header_visibility_class( $block_content, $block ) {
 }
 add_filter( 'render_block', 'ekwa_inject_header_visibility_class', 10, 2 );
 
+/**
+ * Whether placeholder parent links (href="#" or empty) in the mobile menu
+ * should be rendered as <span> instead of <a>.
+ *
+ * When a parent item has no real destination, tapping its label does nothing
+ * in mmenu-light — the submenu only opens from the small > arrow. Rendering a
+ * <span> makes mmenu-light treat a tap on the label itself as "open submenu"
+ * (its click delegation opens the panel for a <span>), so no JS is needed.
+ * Defaults on. Toggled from Ekwa Settings → Branding → Mobile Menu Behavior.
+ *
+ * @return bool
+ */
+function ekwa_mmenu_span_parents_enabled() {
+	return (bool) get_option( 'ekwa_mmenu_span_parents', 1 );
+}
+
 class Ekwa_Mobile_Menu_Walker extends Walker_Nav_Menu {
 
 	/**
@@ -164,11 +180,28 @@ class Ekwa_Mobile_Menu_Walker extends Walker_Nav_Menu {
 
 		$output .= '<li class="' . esc_attr( $class_string ) . '">';
 
+		$url = ! empty( $item->url ) ? $item->url : '';
+
+		$icon_html  = '';
+		$icon_class = ! empty( $item->icon_class ) ? $item->icon_class : '';
+		if ( $icon_class ) {
+			$icon_html = '<i class="' . esc_attr( $icon_class ) . '" aria-hidden="true"></i> ';
+		}
+
+		// Placeholder parent with no real destination (href="#" or empty):
+		// render a <span> so mmenu-light opens the submenu on a label tap,
+		// not only from the > arrow. See ekwa_mmenu_span_parents_enabled().
+		$is_placeholder = ( '' === $url || '#' === $url );
+		if ( $is_placeholder && ekwa_mmenu_span_parents_enabled() ) {
+			$output .= '<span>' . $icon_html . esc_html( $item->title ) . '</span>';
+			return;
+		}
+
 		$atts = array(
 			'title'  => ! empty( $item->attr_title ) ? $item->attr_title : '',
 			'target' => ! empty( $item->target )     ? $item->target     : '',
 			'rel'    => ! empty( $item->xfn )        ? $item->xfn        : '',
-			'href'   => ! empty( $item->url )        ? $item->url        : '',
+			'href'   => $url,
 		);
 
 		$attr_string = '';
@@ -176,12 +209,6 @@ class Ekwa_Mobile_Menu_Walker extends Walker_Nav_Menu {
 			if ( $val ) {
 				$attr_string .= ' ' . $att . '="' . esc_attr( $val ) . '"';
 			}
-		}
-
-		$icon_html  = '';
-		$icon_class = ! empty( $item->icon_class ) ? $item->icon_class : '';
-		if ( $icon_class ) {
-			$icon_html = '<i class="' . esc_attr( $icon_class ) . '" aria-hidden="true"></i> ';
 		}
 
 		$output .= '<a' . $attr_string . '>';

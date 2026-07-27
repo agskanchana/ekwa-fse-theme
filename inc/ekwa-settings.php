@@ -419,6 +419,10 @@ function ekwa_save_settings() {
 		update_option( 'ekwa_github_token', sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) ) );
 	}
 
+	// Mobile menu — render placeholder parent links (href="#") as spans so the
+	// submenu opens on a label tap. Checkbox: unchecked saves as 0.
+	update_option( 'ekwa_mmenu_span_parents', isset( $_POST['ekwa_mmenu_span_parents'] ) ? 1 : 0 );
+
 	// WebP options — checkboxes need explicit handling so unchecked saves as 0.
 	update_option( 'ekwa_webp_enabled', isset( $_POST['ekwa_webp_enabled'] ) ? 1 : 0 );
 	update_option( 'ekwa_webp_apply_core_image', isset( $_POST['ekwa_webp_apply_core_image'] ) ? 1 : 0 );
@@ -1343,6 +1347,22 @@ function ekwa_render_settings_page() {
 						<tr>
 							<th><label for="ekwa_mmenu_navbar_text"><?php esc_html_e( 'Sub-page Header Text', 'ekwa' ); ?></label></th>
 							<td><input type="text" id="ekwa_mmenu_navbar_text" name="ekwa_mmenu_navbar_text" value="<?php echo esc_attr( $mmenu_navbar_text ); ?>" class="ekwa-color-field" data-default-color="" /></td>
+						</tr>
+					</table>
+				</div>
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Mobile Menu Behavior', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Placeholder parent links', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_mmenu_span_parents" value="1" <?php checked( get_option( 'ekwa_mmenu_span_parents', 1 ), 1 ); ?> />
+									<?php esc_html_e( 'Render parent items with no link (href="#") as plain text instead of links', 'ekwa' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'When a mobile menu parent has no page assigned (href="#"), tapping its name opens the submenu instead of doing nothing — no need to hit the small ">" arrow. Turn off to keep them as clickable links.', 'ekwa' ); ?></p>
+							</td>
 						</tr>
 					</table>
 				</div>
