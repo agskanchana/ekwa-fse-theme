@@ -3646,7 +3646,7 @@ function ekwa_render_text_block( $attrs ) {
 	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
 	$anchor     = isset( $attrs['anchor'] )    ? sanitize_html_class( $attrs['anchor'] ) : '';
 
-	$allowed_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
+	$allowed_tags = array( 'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub' );
 	if ( ! in_array( $tag, $allowed_tags, true ) ) {
 		$tag = 'span';
 	}
@@ -3877,7 +3877,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 
 	$allowed = array(
 		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',
-		'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub',
+		'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub',
 		'figcaption',
 	);
 	if ( ! in_array( $tag, $allowed, true ) ) {

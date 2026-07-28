@@ -311,7 +311,10 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	//   element-only kids              → ekwa/div with tagName=<inline tag>
 	//   mixed text+element (splittable)→ ekwa/div, children split into icon/text blocks
 	//   mixed but not splittable       → wp:html fallback
-	$inline_tags = array( 'span', 'small', 'strong', 'em', 'mark', 'time', 'label', 'sup', 'sub' );
+	// Presentational b/i/u sit alongside their semantic cousins (strong, em) —
+	// without them a plain <b>/<u> fell through to the raw-HTML fallback. Font
+	// Awesome <i> is already intercepted above, so only text-carrying <i> lands here.
+	$inline_tags = array( 'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub' );
 	if ( in_array( $tag, $inline_tags, true ) ) {
 		$has_elements = ekwa_mc_has_element_children( $node );
 		if ( ! $has_elements ) {

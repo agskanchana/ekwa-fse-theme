@@ -153,7 +153,7 @@ function ekwa_ai_block_spec_registry() {
 			'contexts' => array(),
 			'desc'     => 'A single inline element. The visible text is the "text" attribute (NOT inner blocks).',
 			'attrs'    => array(
-				'tagName — span|small|strong|em|mark|time|label|sup|sub|figcaption (default "span")',
+				'tagName — span|small|strong|b|em|i|u|mark|time|label|sup|sub|figcaption (default "span")',
 				'text — the visible text',
 				'className',
 			),
