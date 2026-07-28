@@ -452,8 +452,12 @@
 	border-color: #2271b1;
 	box-shadow: 0 0 0 1px #2271b1;
 }
+/* Definite height (not height:auto + max-height): CodeMirror's inner
+   .CodeMirror-scroll is height:100%, which only resolves against a definite
+   parent height. With height:auto+max-height the scroller grew past the clamp
+   and the outer overflow:hidden swallowed it — the field couldn't scroll. */
 .ekwa-js-file .CodeMirror {
-	max-height: 420px;
+	height: 420px;
 }
 
 /* Background-image path offenders in the Global CSS editor. */

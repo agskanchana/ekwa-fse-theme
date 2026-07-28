@@ -712,20 +712,28 @@
 					reportSections
 				)
 			);
-		} else {
-			// Fallback for older responses without a structured report.
-			var otherWarnings = ( warnings || [] ).filter( function ( w ) {
-				return ! /No manifest match/i.test( w );
-			} );
-			if ( otherWarnings.length > 0 ) {
-				resultChildren.push(
-					el( Notice, { key: 'warnings', status: 'warning', isDismissible: false },
-						el( 'ul', { className: 'ekwa-mc-warnings-list' },
-							otherWarnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
-						)
+		}
+
+		// Warnings the structured report never carries — chiefly the CSS/AI
+		// extraction messages, which are appended server-side to `warnings` only
+		// (see ekwa_mc_apply_css_options). Previously these were shown only as a
+		// fallback when there was NO report, so a "why is Scoped CSS empty?"
+		// notice (no API key, pool not seeded, AI daily cap, blocked request…)
+		// was silently swallowed whenever the converter also produced a report.
+		// Always surface them, and never duplicate a message already in the report.
+		var reportMsgSet = {};
+		( report || [] ).forEach( function ( entry ) { reportMsgSet[ entry.message ] = true; } );
+		var extraWarnings = ( warnings || [] ).filter( function ( w ) {
+			return ! reportMsgSet[ w ] && ! /No manifest match/i.test( w );
+		} );
+		if ( extraWarnings.length > 0 ) {
+			resultChildren.push(
+				el( Notice, { key: 'warnings', status: 'warning', isDismissible: false },
+					el( 'ul', { className: 'ekwa-mc-warnings-list' },
+						extraWarnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
 					)
-				);
-			}
+				)
+			);
 		}
 
 		// Result markup.
