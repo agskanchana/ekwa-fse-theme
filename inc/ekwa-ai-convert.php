@@ -237,10 +237,16 @@ function ekwa_ai_convert_handle_request( $request ) {
 		),
 	);
 
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, $model );
+	// Block markup runs roughly the length of the input HTML plus block-comment
+	// overhead, so on a large section the default 16k output cap would cut the
+	// markup off mid-block and leave unbalanced/parse-broken output. Give it the
+	// model's full window; thinking stays ON — mapping content to the right
+	// dynamic blocks is a reasoning task, unlike the mechanical CSS split.
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, $model, 65536 );
 	if ( is_wp_error( $result ) ) {
 		return new WP_Error( 'ai_error', $result->get_error_message(), array( 'status' => 502 ) );
 	}
+	$truncated = isset( $result['finish_reason'] ) && 'MAX_TOKENS' === $result['finish_reason'];
 
 	// Same post-processing as the Block Builder: strip fences, drop any stray
 	// CSS/JS the model emitted, repair attribute JSON, self-correct once.
@@ -248,6 +254,9 @@ function ekwa_ai_convert_handle_request( $request ) {
 	$extracted    = ekwa_ai_generate_extract_css_js( $cleaned );
 	$block_markup = trim( $extracted['html'] );
 	$warnings     = array();
+	if ( $truncated ) {
+		$warnings[] = __( 'This section was large enough that the AI response was cut short — the converted blocks may be incomplete. Convert it in smaller pieces (header, each section, footer) and review the result before inserting.', 'ekwa' );
+	}
 
 	$repair       = ekwa_ai_repair_block_markup( $block_markup );
 	$block_markup = $repair['markup'];

@@ -423,15 +423,36 @@ function ekwa_ai_generate_image_part( $img ) {
 /**
  * Call the Gemini API with a multimodal contents array.
  *
- * @param string $system_prompt System instruction.
- * @param array  $contents      Pre-built `contents` array.
- * @param float  $temperature   Sampling temperature.
- * @param string $api_key       Gemini API key.
- * @param string $model         Gemini model id (e.g. gemini-2.5-flash).
- * @return array|WP_Error { content: string } or error.
+ * @param string   $system_prompt     System instruction.
+ * @param array    $contents          Pre-built `contents` array.
+ * @param float    $temperature       Sampling temperature.
+ * @param string   $api_key           Gemini API key.
+ * @param string   $model             Gemini model id (e.g. gemini-2.5-flash).
+ * @param int      $max_output_tokens Output-token cap. Raise it for tasks that
+ *                                    must echo large input back (e.g. the CSS
+ *                                    splitter returns the whole leftover pool);
+ *                                    leaving it too low silently TRUNCATES the
+ *                                    response, which callers must then detect via
+ *                                    the returned finish_reason.
+ * @param int|null $thinking_budget   When set, caps the model's "thinking" tokens
+ *                                    (0 disables thinking entirely). Thinking is
+ *                                    drawn from the SAME output budget, so for
+ *                                    mechanical, deterministic tasks passing 0
+ *                                    frees the whole budget for the actual answer
+ *                                    and removes a source of intermittent
+ *                                    truncation/empty responses on the 2.5 models.
+ * @return array|WP_Error { content: string, tokens: int, finish_reason: string } or error.
  */
-function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = 'gemini-2.5-flash' ) {
+function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = 'gemini-2.5-flash', $max_output_tokens = 16384, $thinking_budget = null ) {
 	$url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent?key=' . urlencode( $api_key );
+
+	$generation_config = array(
+		'temperature'     => $temperature,
+		'maxOutputTokens' => (int) $max_output_tokens,
+	);
+	if ( null !== $thinking_budget ) {
+		$generation_config['thinkingConfig'] = array( 'thinkingBudget' => (int) $thinking_budget );
+	}
 
 	$body = array(
 		'system_instruction' => array(
@@ -440,10 +461,7 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 			),
 		),
 		'contents'         => $contents,
-		'generationConfig' => array(
-			'temperature'     => $temperature,
-			'maxOutputTokens' => 16384,
-		),
+		'generationConfig' => $generation_config,
 	);
 
 	$response = wp_remote_post( $url, array(
@@ -466,6 +484,8 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 		return new WP_Error( 'gemini_error', $msg );
 	}
 
+	$finish_reason = isset( $data['candidates'][0]['finishReason'] ) ? (string) $data['candidates'][0]['finishReason'] : '';
+
 	$content = '';
 	if ( ! empty( $data['candidates'][0]['content']['parts'] ) ) {
 		foreach ( $data['candidates'][0]['content']['parts'] as $part ) {
@@ -476,7 +496,13 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 	}
 
 	if ( '' === $content ) {
-		return new WP_Error( 'gemini_empty', 'Gemini returned an empty response.' );
+		// MAX_TOKENS with no text means the budget was spent before any answer
+		// (often the 2.5 "thinking" step eating the whole allowance) — a distinct,
+		// actionable failure from a genuinely empty completion.
+		$msg = ( 'MAX_TOKENS' === $finish_reason )
+			? 'Gemini hit its output-token limit before returning any text. Try again, raise the token budget, or shorten the input.'
+			: 'Gemini returned an empty response.';
+		return new WP_Error( 'gemini_empty', $msg );
 	}
 
 	// Usage accounting: every billable call bumps the caller's daily counter
@@ -487,7 +513,7 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 		ekwa_ai_record_usage( $tokens, $feature, $model );
 	}
 
-	return array( 'content' => $content, 'tokens' => $tokens );
+	return array( 'content' => $content, 'tokens' => $tokens, 'finish_reason' => $finish_reason );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

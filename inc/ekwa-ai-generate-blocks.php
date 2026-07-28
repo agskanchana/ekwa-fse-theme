@@ -575,8 +575,17 @@ function ekwa_ai_blocks_self_correct( $markup, $api_key ) {
 		),
 	);
 
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-pro' );
+	// The correction echoes the WHOLE markup back, so give it the same full output
+	// window the generation step now uses — otherwise a large section that fits on
+	// generation would be truncated here and rejected by the caller's parse check.
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-pro', 65536 );
 	if ( is_wp_error( $result ) ) {
+		return null;
+	}
+
+	// A cut-off correction is a partial copy of the markup — discard it and let the
+	// caller keep the original rather than adopt truncated (block-dropping) output.
+	if ( isset( $result['finish_reason'] ) && 'MAX_TOKENS' === $result['finish_reason'] ) {
 		return null;
 	}
 

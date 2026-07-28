@@ -252,6 +252,10 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 				$response['css_scoped']  = $split['scoped'];
 				$response['css_extract'] = ekwa_mc_extract_css_tokens( $source_css );
 
+				if ( ! empty( $split['truncated'] ) ) {
+					$response['warnings'][] = __( 'This section’s stylesheet was large enough that the AI response was cut short — the Scoped CSS below may be incomplete, and the site-wide Global CSS was left unchanged. Re-run the extraction (or extract a smaller portion) and review the Scoped CSS before inserting.', 'ekwa' );
+				}
+
 				// Thin the shared pool with the leftover — pool path only, and only
 				// for users who may edit theme-wide CSS.
 				if ( ! $pasted && null !== $split['leftover'] && function_exists( 'ekwa_tokens_set_global_css' ) ) {
@@ -352,7 +356,14 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 		),
 	);
 
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-flash' );
+	// This call has to echo the ENTIRE leftover pool back verbatim, so its output
+	// is roughly as large as the input pool (up to the 150k guard above). The
+	// default 16k output cap would silently truncate that — cutting the LEFTOVER
+	// short and, once written back, permanently dropping every pool rule past the
+	// cut. Give it the model's full window and turn OFF "thinking" (a pure
+	// mechanical split needs none, and thinking tokens would eat into the same
+	// budget, reintroducing the truncation it's meant to avoid).
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-flash', 65536, 0 );
 	if ( is_wp_error( $result ) ) {
 		return $result;
 	}
@@ -365,7 +376,20 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 		return new WP_Error( 'ai_empty', __( 'The AI returned no CSS.', 'ekwa' ) );
 	}
 
-	return ekwa_mc_parse_split_css( $out );
+	$split = ekwa_mc_parse_split_css( $out );
+
+	// Even with the raised budget, an unusually large pool can still be cut off.
+	// A truncated LEFTOVER is a partial copy of the pool; writing it back would
+	// drop every rule past the cut and starve the sections extracted afterward.
+	// Refuse to thin the pool in that case: keep the (first-emitted, complete)
+	// SCOPED half, but null the leftover so the caller leaves the pool intact and
+	// the run stays safely repeatable.
+	if ( isset( $result['finish_reason'] ) && 'MAX_TOKENS' === $result['finish_reason'] ) {
+		$split['leftover']  = null;
+		$split['truncated'] = true;
+	}
+
+	return $split;
 }
 
 /**
@@ -377,26 +401,32 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
  * @return array{scoped:string,leftover:?string}
  */
 function ekwa_mc_parse_split_css( $out ) {
-	$scoped_marker   = '===EKWA_SCOPED===';
-	$leftover_marker = '===EKWA_LEFTOVER===';
+	// Tolerant marker matching: the model occasionally varies the spacing, the
+	// separator, or the number of '=' around the markers (===EKWA_SCOPED===,
+	// === EKWA SCOPED ===, ==EKWA-LEFTOVER==…). Matching loosely keeps a healthy
+	// split from being misread as "all scoped" over cosmetic drift.
+	$scoped_re   = '/=+\s*EKWA[\s_-]*SCOPED\s*=+/i';
+	$leftover_re = '/=+\s*EKWA[\s_-]*LEFTOVER\s*=+/i';
 
-	$has_leftover = ( false !== stripos( $out, $leftover_marker ) );
-	if ( ! $has_leftover ) {
-		// No split — strip a stray scoped marker if present, keep all as scoped.
-		$scoped = trim( preg_replace( '/^\s*' . preg_quote( $scoped_marker, '/' ) . '\s*/i', '', $out ) );
-		return array( 'scoped' => $scoped, 'leftover' => null );
+	if ( preg_match( $leftover_re, $out ) ) {
+		$parts    = preg_split( $leftover_re, $out, 2 );
+		$scoped   = isset( $parts[0] ) ? $parts[0] : '';
+		$leftover = isset( $parts[1] ) ? $parts[1] : '';
+	} else {
+		// No LEFTOVER marker — treat the whole output as scoped, pool untouched.
+		$scoped   = $out;
+		$leftover = null;
 	}
 
-	$parts    = preg_split( '/' . preg_quote( $leftover_marker, '/' ) . '/i', $out, 2 );
-	$scoped   = isset( $parts[0] ) ? $parts[0] : '';
-	$leftover = isset( $parts[1] ) ? $parts[1] : '';
-
-	// Drop the scoped marker from the first part.
-	$scoped = preg_replace( '/^\s*' . preg_quote( $scoped_marker, '/' ) . '\s*/i', '', $scoped );
+	// Drop everything up to and including the SCOPED marker — this also strips any
+	// preamble line ("Here is the split:") the model sometimes emits before it.
+	if ( preg_match( $scoped_re, $scoped, $m, PREG_OFFSET_CAPTURE ) ) {
+		$scoped = substr( $scoped, $m[0][1] + strlen( $m[0][0] ) );
+	}
 
 	return array(
 		'scoped'   => trim( (string) $scoped ),
-		'leftover' => trim( (string) $leftover ),
+		'leftover' => ( null === $leftover ) ? null : trim( (string) $leftover ),
 	);
 }
 
