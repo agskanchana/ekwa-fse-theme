@@ -472,7 +472,13 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 		'timeout' => 120,
 	) );
 
+	// Concise label for the diagnostic log so intermittent failures (rate limits,
+	// truncation, network) leave a trail in the PHP error log instead of vanishing
+	// into a returned WP_Error the user may or may not read.
+	$feature_label = function_exists( 'ekwa_ai_current_feature' ) ? ekwa_ai_current_feature() : 'ai';
+
 	if ( is_wp_error( $response ) ) {
+		error_log( sprintf( '[ekwa-ai] %s (%s) — network error: %s', $feature_label, $model, $response->get_error_message() ) );
 		return $response;
 	}
 
@@ -480,11 +486,18 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 	$data = json_decode( wp_remote_retrieve_body( $response ), true );
 
 	if ( 200 !== $code ) {
-		$msg = isset( $data['error']['message'] ) ? $data['error']['message'] : 'Gemini API error (HTTP ' . $code . ')';
+		$msg    = isset( $data['error']['message'] ) ? $data['error']['message'] : 'Gemini API error (HTTP ' . $code . ')';
+		$status = isset( $data['error']['status'] ) ? (string) $data['error']['status'] : '';
+		// 429 / RESOURCE_EXHAUSTED here is Google's own quota (per-minute or
+		// per-day), which is the usual cause of "works sometimes, fails others".
+		error_log( sprintf( '[ekwa-ai] %s (%s) — Gemini HTTP %d %s: %s', $feature_label, $model, $code, $status, $msg ) );
 		return new WP_Error( 'gemini_error', $msg );
 	}
 
 	$finish_reason = isset( $data['candidates'][0]['finishReason'] ) ? (string) $data['candidates'][0]['finishReason'] : '';
+	if ( 'MAX_TOKENS' === $finish_reason ) {
+		error_log( sprintf( '[ekwa-ai] %s (%s) — response truncated at MAX_TOKENS (budget %d)', $feature_label, $model, (int) $max_output_tokens ) );
+	}
 
 	$content = '';
 	if ( ! empty( $data['candidates'][0]['content']['parts'] ) ) {
@@ -509,8 +522,7 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 	// and appends to the rolling log (inc/ekwa-ai-governance.php).
 	$tokens = isset( $data['usageMetadata']['totalTokenCount'] ) ? (int) $data['usageMetadata']['totalTokenCount'] : 0;
 	if ( function_exists( 'ekwa_ai_record_usage' ) ) {
-		$feature = function_exists( 'ekwa_ai_current_feature' ) ? ekwa_ai_current_feature() : 'ai';
-		ekwa_ai_record_usage( $tokens, $feature, $model );
+		ekwa_ai_record_usage( $tokens, $feature_label, $model );
 	}
 
 	return array( 'content' => $content, 'tokens' => $tokens, 'finish_reason' => $finish_reason );

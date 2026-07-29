@@ -2,9 +2,9 @@
  * Ekwa Elfsight Review Block — Block Editor UI.
  *
  * Lets the user paste an Elfsight widget embed code in the sidebar. The
- * server-side render callback validates the input and rewrites it to a
- * lazysizes data-script trigger so the platform.js bundle is only loaded
- * once the widget enters the viewport.
+ * server-side render callback validates the input and defers the platform.js
+ * bundle until the visitor's first interaction (mousemove, scroll, keyboard,
+ * touch, or click) — no lazysizes dependency.
  */
 ( function ( wp ) {
 	'use strict';
@@ -18,8 +18,6 @@
 	var TextareaControl   = wp.components.TextareaControl;
 	var Notice            = wp.components.Notice;
 	var __                = wp.i18n.__;
-
-	var cfg = window.ekwaElfsightConfig || { lazyMode: 'native' };
 
 	function extractAppId( code ) {
 		if ( ! code ) { return ''; }
@@ -57,16 +55,6 @@
 				},
 			} ),
 		];
-
-		if ( cfg.lazyMode !== 'lazysizes' ) {
-			inspectorChildren.push(
-				el( Notice, {
-					key: 'lazy-mode-warning',
-					status: 'warning',
-					isDismissible: false,
-				}, __( 'Performance → Lazy loading mode is not set to lazysizes. The widget will render with the lazy markup but will never initialize until you switch the global setting.', 'ekwa' ) )
-			);
-		}
 
 		if ( isPasted && ! isValid ) {
 			inspectorChildren.push(
@@ -107,7 +95,7 @@
 				}, appId ),
 				el( 'span', {
 					style: { fontSize: '12px', color: '#7a8aac' },
-				}, __( 'Live widget renders only on the front-end after lazy load.', 'ekwa' ) )
+				}, __( 'Live widget renders on the front-end after the first user interaction.', 'ekwa' ) )
 			);
 		} else {
 			preview = el(

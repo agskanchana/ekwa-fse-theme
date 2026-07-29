@@ -46,20 +46,13 @@ function ekwa_register_blocks() {
 		)
 	);
 
-	// Elfsight Review block (lazysizes data-script trigger for the platform.js bundle).
+	// Elfsight Review block (platform.js is loaded on first user interaction).
 	wp_register_script(
 		'ekwa-elfsight-review-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-elfsight-review-editor.js',
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-elfsight-review-editor.js' ),
 		true
-	);
-	wp_localize_script(
-		'ekwa-elfsight-review-editor',
-		'ekwaElfsightConfig',
-		array(
-			'lazyMode' => function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native',
-		)
 	);
 
 	register_block_type(
@@ -1016,8 +1009,9 @@ function ekwa_render_map_block( $attrs ) {
  * Server-side render callback for the ekwa/elfsight-review block.
  *
  * Parses the pasted Elfsight embed code, validates the script src against
- * an allowlist, and emits the lazysizes data-script trigger so platform.js
- * is only fetched once the wrapper enters the viewport.
+ * an allowlist, and defers platform.js until the visitor's first interaction
+ * (mousemove, scroll, keyboard, touch, or click) via a tiny inline loader —
+ * see assets/js/ekwa-elfsight-review.js. No lazysizes dependency.
  *
  * @param array $attrs Block attributes.
  * @return string
@@ -1045,9 +1039,15 @@ function ekwa_render_elfsight_review_block( $attrs ) {
 	}
 	$app_class = $app_match[1];
 
+	// Queue the interaction loader (printed once, deduped, just before </body>).
+	ekwa_inline_queue_script( 'assets/js/ekwa-elfsight-review.js' );
+
+	// The loader injects the script at data-elfsight-src on first interaction;
+	// data-elfsight-app-lazy keeps Elfsight's own in-view init afterwards.
 	return sprintf(
-		'<div class="lazyload" data-script="%s"></div>'
-		. '<div class="%s" data-elfsight-app-lazy></div>',
+		'<div class="ekwa-elfsight-review" data-elfsight-src="%s">'
+		. '<div class="%s" data-elfsight-app-lazy></div>'
+		. '</div>',
 		esc_url( $script_src ),
 		esc_attr( $app_class )
 	);

@@ -5,7 +5,7 @@
 	"version": "1.0.0",
 	"title": "Ekwa Elfsight Review",
 	"category": "ekwa-elements",
-	"description": "Paste an Elfsight widget embed code; the platform.js script is lazy-loaded via lazysizes.",
+	"description": "Paste an Elfsight widget embed code; platform.js loads on the visitor's first interaction (mousemove, scroll, touch, or click).",
 	"textdomain": "ekwa",
 	"icon": "star-filled",
 	"supports": {

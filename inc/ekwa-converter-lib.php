@@ -322,7 +322,18 @@ function ekwa_mc_convert_node( $node, $depth ) {
 			if ( $text_content !== '' ) {
 				return ekwa_mc_convert_text( $node, $depth, $tag );
 			}
-			return ekwa_mc_convert_raw_html( $node, $depth );
+			// Empty inline element (no text, no element children). Routing it to
+			// the raw-HTML fallback produced a needless "<b> has no block mapping"
+			// warning and a non-editable blob. Instead: if it carries attributes
+			// it's almost always a CSS-decorated marker (an icon drawn via
+			// ::before, a divider, a screen-reader label) — keep it as a
+			// block-editable ekwa/div with its tagName + class/style intact so the
+			// styling hook survives. A bare, attribute-less <b></b> is pure noise —
+			// drop it silently.
+			if ( $node->hasAttributes() ) {
+				return ekwa_mc_convert_div_block( $node, $depth, $tag );
+			}
+			return '';
 		}
 		return ekwa_mc_convert_div_block( $node, $depth, $tag );
 	}
