@@ -2795,6 +2795,76 @@ function ekwa_inner_banner_heading_data() {
 
 
 /**
+ * Responsive <picture> background for the inner banner.
+ *
+ * Art-directs the featured image by viewport so phones and tablets download a
+ * small variant instead of the full image. Unlike srcset+sizes — which the
+ * browser scales up by device-pixel-ratio (why a ~400px phone was pulling the
+ * 768w file) — <picture> media queries pick a specific file per breakpoint,
+ * DPR-independent. WebP is served when the browser advertises support (Accept
+ * header), with the original JPG/PNG as fallback (same model as ekwa/div; the
+ * response already carries Vary: Accept). Emitted as the LCP image: eager +
+ * fetchpriority=high.
+ *
+ * Breakpoints map to WordPress' default sizes; each <source> is emitted only
+ * when a real intermediate file exists, so a disabled/absent size falls through
+ * to the next-larger source instead of pointing a small breakpoint at the full.
+ *
+ * @param int $thumb_id Featured image attachment id.
+ * @return string <picture> markup, or '' when the attachment is unresolved.
+ */
+function ekwa_inner_banner_bg_picture( $thumb_id ) {
+	$full = wp_get_attachment_image_src( $thumb_id, 'full' );
+	if ( ! $full || empty( $full[0] ) ) {
+		return '';
+	}
+
+	// Serve WebP companions when the browser advertises support; the render_block
+	// filter that swaps <img> URLs doesn't touch <source>, so we resolve here.
+	$use_webp = function_exists( 'ekwa_webp_is_enabled' ) && ekwa_webp_is_enabled()
+		&& function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports()
+		&& function_exists( 'ekwa_webp_url_for' );
+	$swap = static function ( $url ) use ( $use_webp ) {
+		return $use_webp ? ekwa_webp_url_for( $url ) : $url;
+	};
+
+	// Viewport breakpoint → registered size (smallest first). WordPress has no
+	// size between 300 and 768 by default, so ~480px phones get the 300w file
+	// (plenty behind the overlay) rather than the 768w.
+	$ladder = array(
+		'(max-width: 480px)'  => 'medium',        // ~300w — phones
+		'(max-width: 1024px)' => 'medium_large',  // ~768w — tablets
+		'(max-width: 1600px)' => 'large',         // ~1024w — laptops
+	);
+
+	$out = '<picture>';
+	foreach ( $ladder as $media => $size ) {
+		$img = wp_get_attachment_image_src( $thumb_id, $size );
+		// [3] = is_intermediate: false means WP returned the full image (size
+		// disabled or original smaller) — skip so we never ship full to a phone.
+		if ( ! $img || empty( $img[3] ) ) {
+			continue;
+		}
+		$out .= '<source media="' . esc_attr( $media ) . '" srcset="' . esc_url( $swap( $img[0] ) ) . '">';
+	}
+
+	// Default fallback <img> = full original, carrying the decorative alt + LCP
+	// hints. data-ekwa-no-webp stops the render_block filter re-swapping a URL
+	// we've already resolved above.
+	$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
+	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $swap( $full[0] ) ) . '" alt=""';
+	if ( ! empty( $full[1] ) ) { $out .= ' width="' . (int) $full[1] . '"'; }
+	if ( ! empty( $full[2] ) ) { $out .= ' height="' . (int) $full[2] . '"'; }
+	$out .= ' loading="eager" fetchpriority="high"';
+	if ( $decoding_async ) { $out .= ' decoding="async"'; }
+	$out .= ' data-ekwa-no-webp="1">';
+	$out .= '</picture>';
+
+	return $out;
+}
+
+
+/**
  * Server-side render callback for the ekwa/inner-banner block.
  *
  * @param array $attrs Block attributes.
@@ -2815,31 +2885,19 @@ function ekwa_render_inner_banner_block( $attrs ) {
 	$aria_label       = isset( $attrs['ariaLabel'] )      ? trim( (string) $attrs['ariaLabel'] ) : '';
 
 	// Resolve heading data and featured image.
-	$bg_url    = '';
-	$bg_srcset = '';
-	$bg_w      = 0;
-	$bg_h      = 0;
+	$bg_url   = '';
+	$thumb_id = 0;
 	if ( $is_real ) {
 		$post_id   = get_the_ID();
 		$data      = ekwa_inner_banner_heading_data();
 		$is_sample = false;
 
-		// The featured image is emitted below as a real <img> layer (not a CSS
-		// background) so it's LCP-discoverable, responsive via srcset, WebP-
-		// swappable, and can carry fetchpriority=high — none of which a CSS
-		// background-image can do.
+		// The featured image is emitted below as a responsive <picture> (not a
+		// CSS background) so it's LCP-discoverable, art-directed per breakpoint,
+		// WebP-served with a fallback, and carries fetchpriority=high — none of
+		// which a CSS background-image can do. See ekwa_inner_banner_bg_picture().
 		$thumb_id = has_post_thumbnail( $post_id ) ? (int) get_post_thumbnail_id( $post_id ) : 0;
-		if ( $thumb_id ) {
-			$bg_url = (string) wp_get_attachment_image_url( $thumb_id, 'full' );
-			$meta   = wp_get_attachment_metadata( $thumb_id );
-			if ( is_array( $meta ) ) {
-				$bg_w = isset( $meta['width'] )  ? (int) $meta['width']  : 0;
-				$bg_h = isset( $meta['height'] ) ? (int) $meta['height'] : 0;
-			}
-			if ( function_exists( 'ekwa_perf_srcset_enabled' ) && ekwa_perf_srcset_enabled() ) {
-				$bg_srcset = (string) wp_get_attachment_image_srcset( $thumb_id, 'full' );
-			}
-		}
+		$bg_url   = $thumb_id ? (string) wp_get_attachment_image_url( $thumb_id, 'full' ) : '';
 	} else {
 		// Editor-only template preview — no real post context.
 		$data = array(
@@ -2878,22 +2936,11 @@ function ekwa_render_inner_banner_block( $attrs ) {
 
 	$out  = '<section ' . $wrapper_attrs . $aria_attr . '>';
 
-	// Featured-image background layer — a real <img> so it's LCP-discoverable,
-	// responsive (srcset/sizes), WebP-swapped by the render_block filter with a
-	// JPG/PNG fallback for non-WebP browsers, and eager + fetchpriority=high for
-	// the LCP. Decorative (alt=""); the heading carries the page context.
-	if ( $bg_url ) {
-		$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
-		$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $bg_url ) . '"';
-		if ( $bg_srcset ) {
-			$out .= ' srcset="' . esc_attr( $bg_srcset ) . '" sizes="100vw"';
-		}
-		$out .= ' alt=""';
-		if ( $bg_w ) { $out .= ' width="' . $bg_w . '"'; }
-		if ( $bg_h ) { $out .= ' height="' . $bg_h . '"'; }
-		$out .= ' loading="eager" fetchpriority="high"';
-		if ( $decoding_async ) { $out .= ' decoding="async"'; }
-		$out .= '>';
+	// Featured-image background layer — responsive <picture>, art-directed so
+	// phones/tablets fetch a small variant instead of the full image; WebP with
+	// a JPG/PNG fallback; eager + fetchpriority=high for the LCP. Decorative.
+	if ( $thumb_id ) {
+		$out .= ekwa_inner_banner_bg_picture( $thumb_id );
 	}
 
 	// Overlay (only when bg image is present and opacity > 0).

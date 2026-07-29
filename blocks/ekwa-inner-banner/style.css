@@ -27,6 +27,12 @@
 	object-position: center;
 	z-index: 0;
 }
+/* The <picture> wrapper generates no box of its own — the <img> inside is the
+   absolutely-positioned cover layer, so the wrapper must not become a stray
+   flex item on the flex banner. */
+.ekwa-inner-banner > picture {
+	display: contents;
+}
 .ekwa-inner-banner__overlay {
 	position: absolute;
 	inset: 0;
