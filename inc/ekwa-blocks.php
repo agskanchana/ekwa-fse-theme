@@ -2828,13 +2828,16 @@ function ekwa_inner_banner_bg_picture( $thumb_id ) {
 		return $use_webp ? ekwa_webp_url_for( $url ) : $url;
 	};
 
-	// Viewport breakpoint → registered size (smallest first). WordPress has no
-	// size between 300 and 768 by default, so ~480px phones get the 300w file
-	// (plenty behind the overlay) rather than the 768w.
+	// Viewport breakpoint → registered size (smallest first). ekwa-banner-mobile
+	// is our ~480w crop (registered in ekwa_setup()) that fills the gap between
+	// WordPress' default 300w and 768w. Until it's been generated for a given
+	// image, the is_intermediate guard below skips it and the ≤480 viewport
+	// falls through to the next source (768w) — the same as before this size
+	// existed — so a page is always valid; regeneration just improves phones.
 	$ladder = array(
-		'(max-width: 480px)'  => 'medium',        // ~300w — phones
-		'(max-width: 1024px)' => 'medium_large',  // ~768w — tablets
-		'(max-width: 1600px)' => 'large',         // ~1024w — laptops
+		'(max-width: 480px)'  => 'ekwa-banner-mobile', // ~480w — phones
+		'(max-width: 1024px)' => 'medium_large',       // ~768w — tablets
+		'(max-width: 1600px)' => 'large',              // ~1024w — laptops
 	);
 
 	$out = '<picture>';

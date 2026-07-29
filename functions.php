@@ -645,6 +645,14 @@ function ekwa_setup() {
 		'sitemap'         => __( 'Sitemap', 'ekwa' ),
 	) );
 	add_theme_support( 'post-thumbnails' );
+
+	// Phone-sized crop of the inner-banner featured image. WordPress has no
+	// default size between 300w and 768w, so ekwa/inner-banner's <picture>
+	// ladder serves this ~480w variant to phones instead of the heavier 768w.
+	// Proportional (height 0) so object-fit: cover in the banner does the
+	// cropping. Existing images need one thumbnail regeneration to pick it up.
+	add_image_size( 'ekwa-banner-mobile', 480, 0, false );
+
 	add_theme_support( 'title-tag' );
 	add_theme_support( 'responsive-embeds' );
 	add_theme_support( 'html5', array(
