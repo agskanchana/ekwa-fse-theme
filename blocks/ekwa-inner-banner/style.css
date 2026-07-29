@@ -15,6 +15,18 @@
 .ekwa-inner-banner:not(.has-background):not(.ekwa-inner-banner--has-bg) {
 	background-color: var(--wp--preset--color--primary, #1a1a2e);
 }
+/* Featured-image background layer — a real <img> (not a CSS background) so it's
+   LCP-discoverable, responsive via srcset, WebP-served, and can take
+   fetchpriority=high. Covers the banner and sits behind overlays + content. */
+.ekwa-inner-banner__bg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	z-index: 0;
+}
 .ekwa-inner-banner__overlay {
 	position: absolute;
 	inset: 0;
@@ -137,13 +149,22 @@ p.ekwa-inner-banner__heading {
 		radial-gradient(ellipse 70% 90% at 85% 90%, color-mix(in srgb, var(--wp--preset--color--primary-dark, #0f0f1a) 70%, transparent) 0%, transparent 65%),
 		linear-gradient(135deg, var(--wp--preset--color--primary, #1a1a2e) 0%, var(--wp--preset--color--accent-dark, var(--wp--preset--color--accent, #4a4a8e)) 100%);
 }
+/* Featured image present → the photo is the <img> layer (z-index 0); the mesh
+   blends OVER it via a pseudo-element instead of the section background (which
+   would sit behind the <img>). Realizes the original "blend over it" intent. */
 .ekwa-inner-banner.is-style-gradient.ekwa-inner-banner--has-bg {
-	/* Featured image present → blend the mesh over it. */
+	background-image: none;
+}
+.ekwa-inner-banner.is-style-gradient.ekwa-inner-banner--has-bg::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	pointer-events: none;
 	background-image:
 		radial-gradient(ellipse 60% 80% at 15% 20%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 55%, transparent) 0%, transparent 60%),
 		radial-gradient(ellipse 70% 90% at 85% 90%, color-mix(in srgb, var(--wp--preset--color--primary-dark, #0f0f1a) 70%, transparent) 0%, transparent 65%),
-		linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--primary, #1a1a2e) 78%, transparent) 0%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 78%, transparent) 100%),
-		var(--ekwa-banner-bg, none);
+		linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--primary, #1a1a2e) 78%, transparent) 0%, color-mix(in srgb, var(--wp--preset--color--accent, #4a4a8e) 78%, transparent) 100%);
 }
 .ekwa-inner-banner.is-style-gradient .ekwa-inner-banner__overlay {
 	display: none;

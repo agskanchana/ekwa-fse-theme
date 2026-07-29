@@ -2815,11 +2815,31 @@ function ekwa_render_inner_banner_block( $attrs ) {
 	$aria_label       = isset( $attrs['ariaLabel'] )      ? trim( (string) $attrs['ariaLabel'] ) : '';
 
 	// Resolve heading data and featured image.
+	$bg_url    = '';
+	$bg_srcset = '';
+	$bg_w      = 0;
+	$bg_h      = 0;
 	if ( $is_real ) {
 		$post_id   = get_the_ID();
 		$data      = ekwa_inner_banner_heading_data();
-		$bg_url    = has_post_thumbnail( $post_id ) ? get_the_post_thumbnail_url( $post_id, 'full' ) : '';
 		$is_sample = false;
+
+		// The featured image is emitted below as a real <img> layer (not a CSS
+		// background) so it's LCP-discoverable, responsive via srcset, WebP-
+		// swappable, and can carry fetchpriority=high — none of which a CSS
+		// background-image can do.
+		$thumb_id = has_post_thumbnail( $post_id ) ? (int) get_post_thumbnail_id( $post_id ) : 0;
+		if ( $thumb_id ) {
+			$bg_url = (string) wp_get_attachment_image_url( $thumb_id, 'full' );
+			$meta   = wp_get_attachment_metadata( $thumb_id );
+			if ( is_array( $meta ) ) {
+				$bg_w = isset( $meta['width'] )  ? (int) $meta['width']  : 0;
+				$bg_h = isset( $meta['height'] ) ? (int) $meta['height'] : 0;
+			}
+			if ( function_exists( 'ekwa_perf_srcset_enabled' ) && ekwa_perf_srcset_enabled() ) {
+				$bg_srcset = (string) wp_get_attachment_image_srcset( $thumb_id, 'full' );
+			}
+		}
 	} else {
 		// Editor-only template preview — no real post context.
 		$data = array(
@@ -2827,15 +2847,12 @@ function ekwa_render_inner_banner_block( $attrs ) {
 			'page_title' => __( 'Sample Page Title', 'ekwa' ),
 			'menu_name'  => __( 'Menu Name', 'ekwa' ),
 		);
-		$bg_url    = '';
 		$is_sample = true;
 	}
 
-	// Inline styles for min-height + optional background image.
+	// Min-height only — the featured image is an <img> layer, not a CSS
+	// background (see the ekwa-inner-banner__bg <img> emitted below).
 	$inline = 'min-height:' . $min_height . 'px;';
-	if ( $bg_url ) {
-		$inline .= 'background-image:url(' . esc_url( $bg_url ) . ');';
-	}
 
 	// Build wrapper classes — keep our base hook + a flag when a bg image is present.
 	$extra_classes = array( 'ekwa-inner-banner' );
@@ -2860,6 +2877,24 @@ function ekwa_render_inner_banner_block( $attrs ) {
 	$aria_attr = '' !== $aria_label ? ' aria-label="' . esc_attr( $aria_label ) . '"' : '';
 
 	$out  = '<section ' . $wrapper_attrs . $aria_attr . '>';
+
+	// Featured-image background layer — a real <img> so it's LCP-discoverable,
+	// responsive (srcset/sizes), WebP-swapped by the render_block filter with a
+	// JPG/PNG fallback for non-WebP browsers, and eager + fetchpriority=high for
+	// the LCP. Decorative (alt=""); the heading carries the page context.
+	if ( $bg_url ) {
+		$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
+		$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $bg_url ) . '"';
+		if ( $bg_srcset ) {
+			$out .= ' srcset="' . esc_attr( $bg_srcset ) . '" sizes="100vw"';
+		}
+		$out .= ' alt=""';
+		if ( $bg_w ) { $out .= ' width="' . $bg_w . '"'; }
+		if ( $bg_h ) { $out .= ' height="' . $bg_h . '"'; }
+		$out .= ' loading="eager" fetchpriority="high"';
+		if ( $decoding_async ) { $out .= ' decoding="async"'; }
+		$out .= '>';
+	}
 
 	// Overlay (only when bg image is present and opacity > 0).
 	if ( $bg_url && $overlay_opacity > 0 ) {
