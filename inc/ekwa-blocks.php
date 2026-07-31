@@ -12,19 +12,43 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Resolve a block's source directory, preferring the active child theme.
+ *
+ * Any Ekwa block can be overridden by copying blocks/<slug>/ into the child
+ * theme: when the child holds that folder's block.json, the block registers from
+ * the child copy — so its block.json (attributes/supports) plus its style.css,
+ * view.js and editor JS (resolved child-first in ekwa_inline_read() and the
+ * editor-script registration) survive parent-theme updates. The parent's
+ * render_callback is always kept, so dynamic blocks' server output stays
+ * parent-controlled. Blocks with no child copy are unaffected.
+ *
+ * @param string $slug Block folder name, e.g. 'ekwa-button'.
+ * @return string Absolute path to the block directory to register.
+ */
+function ekwa_block_dir( $slug ) {
+	if ( get_stylesheet_directory() !== get_template_directory() ) {
+		$child = get_stylesheet_directory() . '/blocks/' . $slug;
+		if ( file_exists( $child . '/block.json' ) ) {
+			return $child;
+		}
+	}
+	return get_template_directory() . '/blocks/' . $slug;
+}
+
+/**
  * Register custom blocks and their editor scripts.
  */
 function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-conditional-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-conditional-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-conditional-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-data' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-conditional',
+		ekwa_block_dir( 'ekwa-conditional' ),
 		array(
 			'render_callback' => 'ekwa_render_conditional_block',
 		)
@@ -33,14 +57,14 @@ function ekwa_register_blocks() {
 	// Google Map block.
 	wp_register_script(
 		'ekwa-map-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-map-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-map-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-map-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-map-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-map',
+		ekwa_block_dir( 'ekwa-map' ),
 		array(
 			'render_callback' => 'ekwa_render_map_block',
 		)
@@ -49,14 +73,14 @@ function ekwa_register_blocks() {
 	// Elfsight Review block (platform.js is loaded on first user interaction).
 	wp_register_script(
 		'ekwa-elfsight-review-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-elfsight-review-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-elfsight-review-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-elfsight-review-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-elfsight-review-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-elfsight-review',
+		ekwa_block_dir( 'ekwa-elfsight-review' ),
 		array(
 			'render_callback' => 'ekwa_render_elfsight_review_block',
 		)
@@ -65,14 +89,14 @@ function ekwa_register_blocks() {
 	// Icon block (standalone FA icon element).
 	wp_register_script(
 		'ekwa-icon-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-icon-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-icon-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-icon-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-icon-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-icon',
+		ekwa_block_dir( 'ekwa-icon' ),
 		array(
 			'render_callback' => 'ekwa_render_icon_block',
 		)
@@ -81,7 +105,7 @@ function ekwa_register_blocks() {
 	// Inline FA icon format (inserted into RichText blocks via toolbar).
 	wp_register_script(
 		'ekwa-icon-format',
-		get_template_directory_uri() . '/assets/js/ekwa-icon-format.js',
+		get_theme_file_uri( 'assets/js/ekwa-icon-format.js' ),
 		array( 'wp-rich-text', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
@@ -90,14 +114,14 @@ function ekwa_register_blocks() {
 	// Phone number block.
 	wp_register_script(
 		'ekwa-phone-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-phone-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-phone-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-phone',
+		ekwa_block_dir( 'ekwa-phone' ),
 		array(
 			'render_callback' => 'ekwa_render_phone_block',
 		)
@@ -106,14 +130,14 @@ function ekwa_register_blocks() {
 	// Address block.
 	wp_register_script(
 		'ekwa-address-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-address-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-address-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-address',
+		ekwa_block_dir( 'ekwa-address' ),
 		array(
 			'render_callback' => 'ekwa_render_address_block',
 		)
@@ -122,14 +146,14 @@ function ekwa_register_blocks() {
 	// Working Hours block.
 	wp_register_script(
 		'ekwa-hours-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-hours-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-hours-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-hours',
+		ekwa_block_dir( 'ekwa-hours' ),
 		array(
 			'render_callback' => 'ekwa_render_hours_block',
 		)
@@ -138,14 +162,14 @@ function ekwa_register_blocks() {
 	// Copyright block.
 	wp_register_script(
 		'ekwa-copyright-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-copyright-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-copyright-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-copyright',
+		ekwa_block_dir( 'ekwa-copyright' ),
 		array(
 			'render_callback' => 'ekwa_render_copyright_block',
 		)
@@ -154,14 +178,14 @@ function ekwa_register_blocks() {
 	// SVG Logo block — renders the SVG markup stored in Settings → Branding.
 	wp_register_script(
 		'ekwa-svg-logo-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-svg-logo-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-svg-logo-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-svg-logo',
+		ekwa_block_dir( 'ekwa-svg-logo' ),
 		array(
 			'render_callback' => 'ekwa_render_svg_logo_block',
 		)
@@ -170,14 +194,14 @@ function ekwa_register_blocks() {
 	// Inline SVG block — arbitrary sanitized SVG markup (Mockup Converter target).
 	wp_register_script(
 		'ekwa-svg-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-svg-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-svg-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-svg-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-svg-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-svg',
+		ekwa_block_dir( 'ekwa-svg' ),
 		array(
 			'render_callback' => 'ekwa_render_svg_block',
 		)
@@ -186,14 +210,14 @@ function ekwa_register_blocks() {
 	// Social Icons block.
 	wp_register_script(
 		'ekwa-social-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-social-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-social-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'wp-api-fetch' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-social',
+		ekwa_block_dir( 'ekwa-social' ),
 		array(
 			'render_callback' => 'ekwa_render_social_block',
 		)
@@ -202,14 +226,14 @@ function ekwa_register_blocks() {
 	// Sitemap block.
 	wp_register_script(
 		'ekwa-sitemap-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-sitemap-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-sitemap-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-sitemap',
+		ekwa_block_dir( 'ekwa-sitemap' ),
 		array(
 			'render_callback' => 'ekwa_render_sitemap_block',
 		)
@@ -218,14 +242,14 @@ function ekwa_register_blocks() {
 	// Search block.
 	wp_register_script(
 		'ekwa-search-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-search-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-search-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-search',
+		ekwa_block_dir( 'ekwa-search' ),
 		array(
 			'render_callback' => 'ekwa_render_search_block',
 		)
@@ -234,14 +258,14 @@ function ekwa_register_blocks() {
 	// Scroll-to-top block.
 	wp_register_script(
 		'ekwa-scroll-top-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-scroll-top-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-scroll-top-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-scroll-top',
+		ekwa_block_dir( 'ekwa-scroll-top' ),
 		array(
 			'render_callback' => 'ekwa_render_scroll_top_block',
 		)
@@ -250,14 +274,14 @@ function ekwa_register_blocks() {
 	// Hamburger menu block (mobile off-canvas nav).
 	wp_register_script(
 		'ekwa-hamburger-menu-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-hamburger-menu-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-hamburger-menu-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-hamburger-menu',
+		ekwa_block_dir( 'ekwa-hamburger-menu' ),
 		array(
 			'render_callback' => 'ekwa_render_hamburger_menu_block',
 		)
@@ -266,16 +290,16 @@ function ekwa_register_blocks() {
 	// Header menu block (multi-level desktop nav with optional mega menus).
 	wp_register_script(
 		'ekwa-header-menu-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-header-menu-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-header-menu-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-header-menu-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-header-menu-editor.js' ) ),
 		true
 	);
 	// Front-end CSS/JS for this block is inlined on render — see
 	// inc/ekwa-inline-assets.php (blocks/ekwa-header-menu/style.css + view.js).
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-header-menu',
+		ekwa_block_dir( 'ekwa-header-menu' ),
 		array(
 			'render_callback' => 'ekwa_render_header_menu_block',
 		)
@@ -284,14 +308,14 @@ function ekwa_register_blocks() {
 	// Inner page banner block.
 	wp_register_script(
 		'ekwa-inner-banner-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-inner-banner-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-inner-banner-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-inner-banner',
+		ekwa_block_dir( 'ekwa-inner-banner' ),
 		array(
 			'render_callback' => 'ekwa_render_inner_banner_block',
 		)
@@ -300,14 +324,14 @@ function ekwa_register_blocks() {
 	// Page title block (conditional).
 	wp_register_script(
 		'ekwa-page-title-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-page-title-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-page-title-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-page-title',
+		ekwa_block_dir( 'ekwa-page-title' ),
 		array(
 			'render_callback' => 'ekwa_render_page_title_block',
 		)
@@ -316,14 +340,14 @@ function ekwa_register_blocks() {
 	// Phone dropdown block.
 	wp_register_script(
 		'ekwa-phone-dropdown-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-phone-dropdown-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-phone-dropdown-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-phone-dropdown',
+		ekwa_block_dir( 'ekwa-phone-dropdown' ),
 		array(
 			'render_callback' => 'ekwa_render_phone_dropdown_block',
 		)
@@ -332,14 +356,14 @@ function ekwa_register_blocks() {
 	// Address dropdown block.
 	wp_register_script(
 		'ekwa-address-dropdown-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-address-dropdown-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-address-dropdown-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-address-dropdown',
+		ekwa_block_dir( 'ekwa-address-dropdown' ),
 		array(
 			'render_callback' => 'ekwa_render_address_dropdown_block',
 		)
@@ -348,14 +372,14 @@ function ekwa_register_blocks() {
 	// Mobile dock block (floating bottom bar).
 	wp_register_script(
 		'ekwa-mobile-dock-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-mobile-dock-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-mobile-dock-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-mobile-dock',
+		ekwa_block_dir( 'ekwa-mobile-dock' ),
 		array(
 			'render_callback' => 'ekwa_render_mobile_dock_block',
 		)
@@ -364,18 +388,18 @@ function ekwa_register_blocks() {
 	// Shared link-source Inspector helper (used by ekwa-link, ekwa-button, ekwa-card-link).
 	wp_register_script(
 		'ekwa-link-source-control',
-		get_template_directory_uri() . '/assets/js/ekwa-link-source-control.js',
+		get_theme_file_uri( 'assets/js/ekwa-link-source-control.js' ),
 		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n', 'wp-html-entities' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-link-source-control.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-link-source-control.js' ) ),
 		true
 	);
 
 	// Shared custom-HTML-attributes Inspector helper (used by ekwa-div, ekwa-text).
 	wp_register_script(
 		'ekwa-custom-attributes-control',
-		get_template_directory_uri() . '/assets/js/ekwa-custom-attributes-control.js',
+		get_theme_file_uri( 'assets/js/ekwa-custom-attributes-control.js' ),
 		array( 'wp-element', 'wp-components', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-custom-attributes-control.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-custom-attributes-control.js' ) ),
 		true
 	);
 	wp_localize_script(
@@ -390,14 +414,14 @@ function ekwa_register_blocks() {
 	// Card link block (linked card wrapper with InnerBlocks).
 	wp_register_script(
 		'ekwa-card-link-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-card-link-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-card-link-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-card-link-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-card-link-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-card-link',
+		ekwa_block_dir( 'ekwa-card-link' ),
 		array(
 			'render_callback' => 'ekwa_render_card_link_block',
 		)
@@ -406,14 +430,14 @@ function ekwa_register_blocks() {
 	// Section block (semantic section wrapper with bg image + overlay).
 	wp_register_script(
 		'ekwa-section-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-section-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-section-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-section',
+		ekwa_block_dir( 'ekwa-section' ),
 		array(
 			'render_callback' => 'ekwa_render_section_block',
 		)
@@ -422,14 +446,14 @@ function ekwa_register_blocks() {
 	// Container block (centered max-width wrapper).
 	wp_register_script(
 		'ekwa-container-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-container-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-container-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-container',
+		ekwa_block_dir( 'ekwa-container' ),
 		array(
 			'render_callback' => 'ekwa_render_container_block',
 		)
@@ -438,14 +462,14 @@ function ekwa_register_blocks() {
 	// Flex block (flexbox container).
 	wp_register_script(
 		'ekwa-flex-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-flex-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-flex-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-flex',
+		ekwa_block_dir( 'ekwa-flex' ),
 		array(
 			'render_callback' => 'ekwa_render_flex_block',
 		)
@@ -454,14 +478,14 @@ function ekwa_register_blocks() {
 	// Grid block (CSS Grid with responsive breakpoints).
 	wp_register_script(
 		'ekwa-grid-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-grid-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-grid-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-grid',
+		ekwa_block_dir( 'ekwa-grid' ),
 		array(
 			'render_callback' => 'ekwa_render_grid_block',
 		)
@@ -473,14 +497,14 @@ function ekwa_register_blocks() {
 	// ekwa/related-articles in carousel mode).
 	wp_register_script(
 		'ekwa-carousel-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-carousel-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-carousel-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-carousel-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-carousel-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-carousel',
+		ekwa_block_dir( 'ekwa-carousel' ),
 		array(
 			'render_callback' => 'ekwa_render_carousel_block',
 		)
@@ -489,14 +513,14 @@ function ekwa_register_blocks() {
 	// Button block (clean <a> or <button>).
 	wp_register_script(
 		'ekwa-button-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-button-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-button-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-button-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-button-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-button',
+		ekwa_block_dir( 'ekwa-button' ),
 		array(
 			'render_callback' => 'ekwa_render_button_block',
 		)
@@ -505,14 +529,14 @@ function ekwa_register_blocks() {
 	// Button Group block (flex wrapper for buttons).
 	wp_register_script(
 		'ekwa-button-group-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-button-group-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-button-group-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-button-group',
+		ekwa_block_dir( 'ekwa-button-group' ),
 		array(
 			'render_callback' => 'ekwa_render_button_group_block',
 		)
@@ -521,14 +545,14 @@ function ekwa_register_blocks() {
 	// Text block (inline text element — <span>, <small>, etc.).
 	wp_register_script(
 		'ekwa-text-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-text-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-text-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-text-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-text-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-text',
+		ekwa_block_dir( 'ekwa-text' ),
 		array(
 			'render_callback' => 'ekwa_render_text_block',
 		)
@@ -537,14 +561,14 @@ function ekwa_register_blocks() {
 	// Image block (clean <img> — no figure wrapper).
 	wp_register_script(
 		'ekwa-image-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-image-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-image-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-image-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-image-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-image',
+		ekwa_block_dir( 'ekwa-image' ),
 		array(
 			'render_callback' => 'ekwa_render_image_block',
 		)
@@ -553,14 +577,14 @@ function ekwa_register_blocks() {
 	// Div block (clean wrapper — any HTML tag, no layout styles).
 	wp_register_script(
 		'ekwa-div-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-div-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-div-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-data', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-div-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-div-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-div',
+		ekwa_block_dir( 'ekwa-div' ),
 		array(
 			'render_callback' => 'ekwa_render_div_block',
 		)
@@ -569,14 +593,14 @@ function ekwa_register_blocks() {
 	// Figure block (clean <figure> wrapper for image + caption).
 	wp_register_script(
 		'ekwa-figure-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-figure-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-figure-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-figure-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-figure-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-figure',
+		ekwa_block_dir( 'ekwa-figure' ),
 		array(
 			'render_callback' => 'ekwa_render_figure_block',
 		)
@@ -585,14 +609,14 @@ function ekwa_register_blocks() {
 	// Video block (clean <video> — no figure wrapper).
 	wp_register_script(
 		'ekwa-video-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-video-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-video-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-video-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-video-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-video',
+		ekwa_block_dir( 'ekwa-video' ),
 		array(
 			'render_callback' => 'ekwa_render_video_block',
 		)
@@ -601,14 +625,14 @@ function ekwa_register_blocks() {
 	// Link block (clean <a> — no button styles).
 	wp_register_script(
 		'ekwa-link-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-link-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-link-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-link-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-link-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-link',
+		ekwa_block_dir( 'ekwa-link' ),
 		array(
 			'render_callback' => 'ekwa_render_link_block',
 		)
@@ -617,14 +641,14 @@ function ekwa_register_blocks() {
 	// FAQ block (collapsible Q&A list with FAQPage schema markup).
 	wp_register_script(
 		'ekwa-faq-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-faq-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-faq-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-faq-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-faq-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-faq',
+		ekwa_block_dir( 'ekwa-faq' ),
 		array(
 			'render_callback' => 'ekwa_render_faq_block',
 		)
@@ -633,14 +657,14 @@ function ekwa_register_blocks() {
 	// FAQ Item child block.
 	wp_register_script(
 		'ekwa-faq-item-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-faq-item-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-faq-item-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-faq-item-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-faq-item-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-faq-item',
+		ekwa_block_dir( 'ekwa-faq-item' ),
 		array(
 			'render_callback' => 'ekwa_render_faq_item_block',
 		)
@@ -649,14 +673,14 @@ function ekwa_register_blocks() {
 	// FAQ Container block (content-style FAQ: separate question + answer children).
 	wp_register_script(
 		'ekwa-faq-container-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-faq-container-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-faq-container-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-faq-container-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-faq-container-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-faq-container',
+		ekwa_block_dir( 'ekwa-faq-container' ),
 		array(
 			'render_callback' => 'ekwa_render_faq_container_block',
 		)
@@ -665,14 +689,14 @@ function ekwa_register_blocks() {
 	// FAQ Question child block.
 	wp_register_script(
 		'ekwa-faq-question-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-faq-question-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-faq-question-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-faq-question-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-faq-question-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-faq-question',
+		ekwa_block_dir( 'ekwa-faq-question' ),
 		array(
 			'render_callback' => 'ekwa_render_faq_question_block',
 		)
@@ -681,14 +705,14 @@ function ekwa_register_blocks() {
 	// FAQ Answer child block.
 	wp_register_script(
 		'ekwa-faq-answer-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-faq-answer-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-faq-answer-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-faq-answer-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-faq-answer-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-faq-answer',
+		ekwa_block_dir( 'ekwa-faq-answer' ),
 		array(
 			'render_callback' => 'ekwa_render_faq_answer_block',
 		)
@@ -698,14 +722,14 @@ function ekwa_register_blocks() {
 	// substituting practice values from Ekwa Settings).
 	wp_register_script(
 		'ekwa-policy-pages-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-policy-pages-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-policy-pages-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-policy-pages-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-policy-pages-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-policy-pages',
+		ekwa_block_dir( 'ekwa-policy-pages' ),
 		array(
 			'render_callback' => 'ekwa_render_policy_pages_block',
 		)
@@ -733,13 +757,13 @@ function ekwa_register_blocks() {
 		$handle = 'ekwa-' . $slug . '-editor';
 		wp_register_script(
 			$handle,
-			get_template_directory_uri() . '/assets/js/' . $handle . '.js',
+			get_theme_file_uri( 'assets/js/' . $handle . '.js' ),
 			$config['deps'],
-			filemtime( get_template_directory() . '/assets/js/' . $handle . '.js' ),
+			filemtime( get_theme_file_path( 'assets/js/' . $handle . '.js' ) ),
 			true
 		);
 		register_block_type(
-			get_template_directory() . '/blocks/ekwa-' . $slug,
+			ekwa_block_dir( 'ekwa-' . $slug ),
 			array(
 				'render_callback' => 'ekwa_render_' . str_replace( '-', '_', $slug ) . '_block',
 			)

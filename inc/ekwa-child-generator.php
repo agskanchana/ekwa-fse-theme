@@ -288,7 +288,25 @@ function ekwa_child_generator_files( $name, $slug, $parent_dir ) {
 		. "  assets/css/critical.css       -> read for the Critical CSS option\n"
 		. "  assets/js/delayed-scripts.js  -> loaded on first interaction\n\n"
 		. "Do not rename the two handles. Activate this theme (Appearance → Themes)\n"
-		. "after uploading. Requires the '{$parent_dir}' parent theme to be installed.\n";
+		. "after uploading. Requires the '{$parent_dir}' parent theme to be installed.\n\n"
+		. "== Overriding Ekwa blocks ==\n\n"
+		. "Customize any Ekwa block from this child theme so your changes survive\n"
+		. "parent-theme updates. Easiest way:\n\n"
+		. "  Ekwa Settings → General → \"Edit blocks in the child theme\"\n"
+		. "  → pick a block → \"Copy to child\".\n\n"
+		. "That copies the block into this theme:\n\n"
+		. "  blocks/<name>/block.json      -> attributes / supports\n"
+		. "  blocks/<name>/style.css       -> front-end + editor CSS\n"
+		. "  blocks/<name>/view.js         -> front-end JS (if the block has one)\n"
+		. "  assets/js/<name>-editor.js    -> editor controls (if the block has one)\n\n"
+		. "Once the folder (with its block.json) lives here, the child copy wins and\n"
+		. "the parent leaves it alone. Edit those files freely. Two rules:\n\n"
+		. "  - Keep the block's \"name\" in block.json unchanged.\n"
+		. "  - A dynamic block's server-side PHP output stays in the parent; here you\n"
+		. "    control its attributes, markup shell, CSS and JS.\n\n"
+		. "A copied block is frozen at copy time -- it won't receive the parent's\n"
+		. "later fixes until you re-copy it. Ekwa Settings shows a notice when the\n"
+		. "parent ships a newer version of a block you overrode.\n";
 
 	return array(
 		'style.css'                    => $style,

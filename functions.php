@@ -281,6 +281,20 @@ require_once get_template_directory() . '/inc/ekwa-responsive.php';
 require_once get_template_directory() . '/inc/ekwa-child-generator.php';
 
 /**
+ * Copy Ekwa blocks into the active child theme so they can be edited there,
+ * safe from parent-theme updates (Ekwa Settings → General). Pairs with the
+ * child-first block resolver (ekwa_block_dir) in inc/ekwa-blocks.php.
+ */
+require_once get_template_directory() . '/inc/ekwa-block-overrides.php';
+
+/**
+ * Edit a copied child-theme block with AI (Gemini) — preview, apply-with-backup,
+ * and one-click revert. Loaded after the AI modules and block-overrides so it can
+ * reuse their helpers.
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-edit-block.php';
+
+/**
  * Editable front-end JS files (delayed-scripts.js / ekwa-child.js) in Design Setup.
  */
 require_once get_template_directory() . '/inc/ekwa-js-editor.php';
@@ -365,14 +379,23 @@ function ekwa_editor_styles() {
 
 	// The per-block partials are the single source of truth for block CSS. The
 	// front end inlines only the blocks in use; the editor loads the full set so
-	// every block previews correctly. Paths are relative to the theme root.
-	$theme_dir = get_template_directory();
-	$partials  = array_merge(
-		glob( $theme_dir . '/blocks/*/style.css' ) ?: array(),
-		glob( $theme_dir . '/blocks/_core-styles/*.css' ) ?: array()
-	);
-	foreach ( $partials as $partial ) {
-		add_editor_style( 'blocks/' . ltrim( str_replace( $theme_dir . '/blocks/', '', $partial ), '/' ) );
+	// every block previews correctly. Paths are RELATIVE and resolved child-first
+	// by core (get_theme_file_uri() in get_editor_stylesheets()), so a child's
+	// overridden blocks/<name>/style.css previews automatically. Union the parent
+	// and active-child globs — deduped on the relative path — so child-only blocks
+	// also preview; when no child theme is active the two bases coincide.
+	$rel_paths = array();
+	foreach ( array_unique( array( get_template_directory(), get_stylesheet_directory() ) ) as $base ) {
+		$partials = array_merge(
+			glob( $base . '/blocks/*/style.css' ) ?: array(),
+			glob( $base . '/blocks/_core-styles/*.css' ) ?: array()
+		);
+		foreach ( $partials as $partial ) {
+			$rel_paths[ 'blocks/' . ltrim( str_replace( $base . '/blocks/', '', $partial ), '/' ) ] = true;
+		}
+	}
+	foreach ( array_keys( $rel_paths ) as $rel ) {
+		add_editor_style( $rel );
 	}
 }
 add_action( 'after_setup_theme', 'ekwa_editor_styles' );

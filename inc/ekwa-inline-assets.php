@@ -179,6 +179,10 @@ function ekwa_inline_minify( $code, $rel ) {
 /**
  * Read a theme file once per request (statically cached, minified when enabled).
  *
+ * Resolved child-first via get_theme_file_path(): if the active child theme holds
+ * the same relative file (e.g. an overridden blocks/<name>/style.css or view.js),
+ * that copy wins and survives parent-theme updates. Falls back to the parent.
+ *
  * @param string $rel Path relative to the theme root.
  * @return string File contents, or '' if missing/empty.
  */
@@ -187,7 +191,7 @@ function ekwa_inline_read( $rel ) {
 	if ( isset( $cache[ $rel ] ) ) {
 		return $cache[ $rel ];
 	}
-	$path = get_template_directory() . '/' . ltrim( $rel, '/' );
+	$path = get_theme_file_path( ltrim( $rel, '/' ) );
 	$body = is_readable( $path ) ? (string) file_get_contents( $path ) : '';
 	if ( '' !== $body && ekwa_inline_minify_enabled() ) {
 		$body = ekwa_inline_minify( $body, $rel );

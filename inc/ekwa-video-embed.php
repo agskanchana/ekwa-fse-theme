@@ -34,25 +34,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 function ekwa_video_embed_register_blocks() {
 	wp_register_script(
 		'ekwa-youtube-video-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-youtube-video-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-youtube-video-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-youtube-video-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-youtube-video-editor.js' ) ),
 		true
 	);
 	wp_register_script(
 		'ekwa-vimeo-video-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-vimeo-video-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-vimeo-video-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-vimeo-video-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-vimeo-video-editor.js' ) ),
 		true
 	);
 
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-youtube-video',
+		ekwa_block_dir( 'ekwa-youtube-video' ),
 		array( 'render_callback' => 'ekwa_render_youtube_video_block' )
 	);
 	register_block_type(
-		get_template_directory() . '/blocks/ekwa-vimeo-video',
+		ekwa_block_dir( 'ekwa-vimeo-video' ),
 		array( 'render_callback' => 'ekwa_render_vimeo_video_block' )
 	);
 }

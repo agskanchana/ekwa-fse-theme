@@ -68,9 +68,9 @@ function ekwa_slider_animations() {
 function ekwa_slider_register_blocks() {
 	wp_register_script(
 		'ekwa-slider-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-slider-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-slider-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-slider-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-slider-editor.js' ) ),
 		true
 	);
 	wp_localize_script( 'ekwa-slider-editor', 'ekwaSliderConfig', array(
@@ -80,22 +80,22 @@ function ekwa_slider_register_blocks() {
 
 	wp_register_script(
 		'ekwa-hero-video-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-hero-video-editor.js',
+		get_theme_file_uri( 'assets/js/ekwa-hero-video-editor.js' ),
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		filemtime( get_template_directory() . '/assets/js/ekwa-hero-video-editor.js' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-hero-video-editor.js' ) ),
 		true
 	);
 
-	register_block_type( get_template_directory() . '/blocks/ekwa-slider', array(
+	register_block_type( ekwa_block_dir( 'ekwa-slider' ), array(
 		'render_callback' => 'ekwa_render_slider_block',
 	) );
-	register_block_type( get_template_directory() . '/blocks/ekwa-slide', array(
+	register_block_type( ekwa_block_dir( 'ekwa-slide' ), array(
 		'render_callback' => 'ekwa_render_slide_block',
 	) );
-	register_block_type( get_template_directory() . '/blocks/ekwa-slide-content', array(
+	register_block_type( ekwa_block_dir( 'ekwa-slide-content' ), array(
 		'render_callback' => 'ekwa_render_slide_content_block',
 	) );
-	register_block_type( get_template_directory() . '/blocks/ekwa-hero-video', array(
+	register_block_type( ekwa_block_dir( 'ekwa-hero-video' ), array(
 		'render_callback' => 'ekwa_render_hero_video_block',
 	) );
 }

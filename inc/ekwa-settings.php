@@ -1225,6 +1225,8 @@ function ekwa_render_settings_page() {
 
 				<?php if ( function_exists( "ekwa_child_generator_card" ) ) { ekwa_child_generator_card(); } ?>
 
+					<?php if ( function_exists( "ekwa_block_overrides_card" ) ) { ekwa_block_overrides_card(); } ?>
+
 				</div><!-- /general -->
 
 			<!-- ========== BRANDING TAB ========== -->
