@@ -47,7 +47,7 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 	}
 
 	// Canonical rendered-markup signatures — a mockup written with the EXACT
-	// structures the dynamic blocks render (see the Mockup Author Guide in
+	// structures the dynamic blocks render (see the mockup authoring kit in
 	// Ekwa Settings → Design Setup) maps straight back to those blocks, and
 	// the mockup's own CSS then styles the live output 1:1. Checked before
 	// every heuristic.
@@ -193,7 +193,7 @@ function ekwa_mc_has_class_descendant( $node, $tag, $class ) {
 
 /**
  * Canonical detection: the classes every dynamic block RENDERS double as
- * converter signatures. A mockup built from the Author Guide's snippets
+ * converter signatures. A mockup built from the canonical snippets
  * (nav.ekwa-header-nav menus, span.ekwa-phone-number, a.ekwa-address,
  * div.ekwa-working-hours, …) converts 100% into the matching dynamic blocks,
  * whole subtree consumed. Anything else falls through to the heuristics.

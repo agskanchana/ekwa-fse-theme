@@ -440,18 +440,63 @@ function ekwa_tokens_render_tab() {
 	$bgimages   = ekwa_tokens_bgimages();
 	$bp         = ekwa_fonts_conditional_bp();
 
-	$guide_url   = wp_nonce_url( add_query_arg( 'action', 'ekwa_mockup_guide', admin_url( 'admin-post.php' ) ), 'ekwa_mockup_kit' );
-	$starter_url = wp_nonce_url( add_query_arg( 'action', 'ekwa_mockup_starter', admin_url( 'admin-post.php' ) ), 'ekwa_mockup_kit' );
+	$mockup_prompts = ekwa_mockup_ai_prompts();
 	?>
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Mockup authoring kit', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'Give these to whoever builds the mockups. Mockups written with the canonical structures convert 100% into the dynamic blocks, and the mockup CSS styles the live site 1:1 — because the snippets are the exact markup the blocks render.', 'ekwa' ); ?>
+			<?php esc_html_e( 'Copy one of these prompts into ChatGPT, Claude, or any AI. Each is self-contained — the canonical block structures are baked in — so the mockup it produces converts 100% into the dynamic blocks and its CSS styles the live site 1:1. Use the first to align a mockup you already have; the second to build one from scratch. Nothing to hand around — just copy the text.', 'ekwa' ); ?>
 		</p>
-		<p>
-			<a href="<?php echo esc_url( $guide_url ); ?>" class="button button-secondary"><?php esc_html_e( 'Download Author Guide (.html)', 'ekwa' ); ?></a>
-			<a href="<?php echo esc_url( $starter_url ); ?>" class="button button-secondary" style="margin-left:8px;"><?php esc_html_e( 'Download starter template (.html)', 'ekwa' ); ?></a>
-		</p>
+		<?php
+		$ekwa_prompt_headings = array(
+			'retrofit' => __( 'Align an existing mockup', 'ekwa' ),
+			'create'   => __( 'Create a new mockup from scratch', 'ekwa' ),
+		);
+		$ekwa_prompt_i = 0;
+		foreach ( $ekwa_prompt_headings as $ekwa_pk => $ekwa_ph ) :
+			if ( empty( $mockup_prompts[ $ekwa_pk ] ) ) {
+				continue;
+			}
+			$ekwa_p   = $mockup_prompts[ $ekwa_pk ];
+			$ekwa_pid = 'ekwa-mockup-prompt-' . $ekwa_pk;
+			$ekwa_prompt_i++;
+			?>
+			<div style="margin-top:<?php echo $ekwa_prompt_i > 1 ? '1.5em' : '0'; ?>;">
+				<h3 style="margin:0 0 .25em;"><?php echo esc_html( $ekwa_ph ); ?></h3>
+				<p class="description" style="margin:0 0 .5em;"><?php echo esc_html( $ekwa_p['intro'] ); ?></p>
+				<p style="margin:0 0 .4em;">
+					<button type="button" class="button button-primary ekwa-copy-prompt" data-target="<?php echo esc_attr( $ekwa_pid ); ?>"><?php esc_html_e( 'Copy prompt', 'ekwa' ); ?></button>
+					<span class="ekwa-copy-status" style="margin-left:8px;color:#646970;"></span>
+				</p>
+				<textarea id="<?php echo esc_attr( $ekwa_pid ); ?>" rows="6" class="large-text code" readonly onclick="this.select();"><?php echo esc_textarea( $ekwa_p['prompt'] ); ?></textarea>
+			</div>
+			<?php
+		endforeach;
+		?>
+		<script>
+		( function () {
+			var btns = document.querySelectorAll( '.ekwa-copy-prompt' );
+			Array.prototype.forEach.call( btns, function ( btn ) {
+				btn.addEventListener( 'click', function () {
+					var ta = document.getElementById( btn.getAttribute( 'data-target' ) );
+					if ( ! ta ) { return; }
+					var status = btn.parentNode.querySelector( '.ekwa-copy-status' );
+					function done( ok ) {
+						if ( ! status ) { return; }
+						status.textContent = ok ? '<?php echo esc_js( __( 'Copied to clipboard.', 'ekwa' ) ); ?>' : '<?php echo esc_js( __( 'Select the text and press Ctrl/Cmd+C.', 'ekwa' ) ); ?>';
+						status.style.color = ok ? '#008a20' : '#996800';
+					}
+					ta.focus();
+					ta.select();
+					if ( navigator.clipboard && navigator.clipboard.writeText ) {
+						navigator.clipboard.writeText( ta.value ).then( function () { done( true ); }, function () { done( false ); } );
+					} else {
+						try { done( document.execCommand( 'copy' ) ); } catch ( e ) { done( false ); }
+					}
+				} );
+			} );
+		} )();
+		</script>
 	</div>
 
 	<div class="ekwa-section">

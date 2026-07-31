@@ -1,7 +1,7 @@
 <?php
 /**
  * Mockup Contract — canonical markup library, readiness checker, and the
- * downloadable Author Guide / starter template.
+ * copyable AI authoring prompts.
  *
  * Every ekwa dynamic block renders fixed markup. When a mockup is written
  * with those EXACT structures, two things follow: (1) the converter maps the
@@ -11,8 +11,12 @@
  * source of truth for those structures:
  *
  *   - ekwa_mockup_canonical_snippets()  — the snippet library
+ *   - ekwa_mockup_ai_prompts()          — the copyable "align / create" prompts
  *   - ekwa_mockup_readiness_check()     — whole-file pre-flight analyzer
- *   - admin-post handlers               — Author Guide + starter downloads
+ *
+ * The prompts are surfaced (copy-to-clipboard) in Ekwa Settings → Design Setup;
+ * authors paste one into any AI instead of downloading a file. See
+ * ekwa_tokens_render_tab() in inc/ekwa-tokens.php.
  *
  * @package ekwa
  */
@@ -238,13 +242,13 @@ function ekwa_mockup_canonical_snippets() {
 }
 
 /**
- * The "you don't design the mobile experience" note — shared by the guide,
- * the starter template, and the AI prompts so the message is consistent.
+ * The "you don't design the mobile experience" note — shared by the AI prompts
+ * (and the authoring-kit UI) so the message stays consistent.
  *
  * @return string Plain text.
  */
 function ekwa_mockup_mobile_note() {
-	return __( 'Design the DESKTOP header and footer only. Do NOT create a mobile header, hamburger button, off-canvas menu, or mobile bottom bar in your mockup — the Ekwa theme generates the entire mobile experience automatically from the same menu and settings. A responsive body (your @media rules for sections) is expected; a hand-built mobile header is not.', 'ekwa' );
+	return __( 'Design the DESKTOP header and footer only. Below 1200px the Ekwa theme automatically hides your desktop header and builds the entire mobile experience itself — its own mobile header (logo + search + hamburger), off-canvas menu, and mobile bottom bar, all from the same menu and settings. So do NOT create a mobile header; and if the mockup you are adapting already has one, REMOVE it completely: the hamburger / menu-toggle button and its markup, the off-canvas or slide-down menu, any mobile-only bottom/sticky bar, the JavaScript that opens and closes them, and the @media rules that restyle the header into a mobile bar or show/hide those pieces. Keep only the desktop header — the theme hides it below 1200px for you. A responsive BODY (your @media rules for the page sections) is expected and encouraged; a hand-built mobile header is not.', 'ekwa' );
 }
 
 /**
@@ -280,7 +284,7 @@ function ekwa_mockup_ai_prompts() {
 			'title'  => __( 'Prompt A — Make an existing mockup Ekwa-compatible', 'ekwa' ),
 			'intro'  => __( 'Paste this into ChatGPT / Claude / any AI, then paste your existing mockup HTML where indicated. It rewrites only the dynamic header/footer elements to the canonical structures without redesigning anything.', 'ekwa' ),
 			'prompt' => "You are adapting an existing HTML mockup so it is compatible with the Ekwa WordPress theme's Mockup Converter. The theme has dynamic blocks that render real site data (menu, phone, address, hours, social, copyright, logo, search, map) from WordPress settings.\n\n"
-				. "YOUR TASK: rewrite ONLY the header and footer dynamic elements to use the exact canonical structures below, so the converter maps them to the right blocks and my existing CSS keeps working. Do NOT redesign the site, change the visual layout, or touch the body sections — keep every class, wrapper, and style; only swap the inner structure of the dynamic elements and add the ekwa-* classes. Where an element can't be restructured, add the appropriate data-ekwa=\"...\" attribute instead.\n\n"
+				. "YOUR TASK: rewrite ONLY the header and footer dynamic elements to use the exact canonical structures below, so the converter maps them to the right blocks and my existing CSS keeps working. Do NOT redesign the site, change the visual layout, or touch the body sections — keep every class, wrapper, and style; only swap the inner structure of the dynamic elements and add the ekwa-* classes. Where an element can't be restructured, add the appropriate data-ekwa=\"...\" attribute instead.\n\nREMOVE THE MOBILE HEADER: if my mockup includes a hamburger / menu-toggle button, an off-canvas or slide-down mobile menu, a mobile-only bottom or sticky bar, the JavaScript that toggles any of them, or @media rules that turn the header into a mobile bar — delete all of it. The theme supplies its own mobile header and hides the desktop header below 1200px automatically; leave only the desktop header, and keep the body's own responsive @media rules.\n\n"
 				. $rules . "\n\n"
 				. $cheat . "\n\n"
 				. "Return the full updated HTML. Here is my current mockup:\n\n[PASTE YOUR HTML HERE]",
@@ -293,34 +297,8 @@ function ekwa_mockup_ai_prompts() {
 				. "Use semantic HTML5 (<header>, <main>, <footer>) and, for the dynamic elements, the EXACT canonical structures below so they convert 1:1 into the theme's dynamic blocks.\n\n"
 				. $rules . "\n\n"
 				. $cheat . "\n\n"
-				. "Output a single index.html plus a style.css (or an embedded <style>). Make the body fully responsive with @media queries, but remember: no mobile header.",
+				. "Output a single index.html plus a style.css (or an embedded <style>). Make the body fully responsive with @media queries, but remember: no mobile header — the theme adds its own and hides your desktop header below 1200px.",
 		),
-	);
-}
-
-/**
- * The data-ekwa token vocabulary (documented in the guide; parsed by
- * ekwa_mc_detect_token in inc/ekwa-converter-detect.php).
- *
- * @return array<string,string> token => description.
- */
-function ekwa_mockup_token_vocabulary() {
-	return array(
-		'phone'            => __( 'Force the element to convert to ekwa/phone. Modifiers: data-ekwa-location="2", data-ekwa-type="existing", data-ekwa-prefix="Call us:".', 'ekwa' ),
-		'phone-dropdown'   => __( 'Force ekwa/phone-dropdown.', 'ekwa' ),
-		'address'          => __( 'Force ekwa/address. Modifiers: data-ekwa-location, data-ekwa-mode="icon|text|address|full".', 'ekwa' ),
-		'address-dropdown' => __( 'Force ekwa/address-dropdown.', 'ekwa' ),
-		'hours'            => __( 'Force ekwa/hours. Modifier: data-ekwa-location.', 'ekwa' ),
-		'social'           => __( 'Force ekwa/social.', 'ekwa' ),
-		'copyright'        => __( 'Force ekwa/copyright.', 'ekwa' ),
-		'logo'             => __( 'Force ekwa/svg-logo.', 'ekwa' ),
-		'menu'             => __( 'Force ekwa/header-menu (the live WP menu).', 'ekwa' ),
-		'navigation'       => __( 'Force a core/navigation block (footer quick links etc.).', 'ekwa' ),
-		'search'           => __( 'Force ekwa/search.', 'ekwa' ),
-		'hamburger'        => __( 'Force ekwa/hamburger-menu.', 'ekwa' ),
-		'map'              => __( 'Force ekwa/map (Google map).', 'ekwa' ),
-		'scroll-top'       => __( 'Force ekwa/scroll-top.', 'ekwa' ),
-		'static'           => __( 'Opt OUT: convert this element normally, skip all dynamic detection (escape hatch for false positives). "ignore" is an alias.', 'ekwa' ),
 	);
 }
 
@@ -581,226 +559,4 @@ function ekwa_mockup_readiness_check( $html ) {
 	}
 
 	return array( 'sections' => $sections );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DOWNLOADS — Author Guide + starter template (generated from the library)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-add_action( 'admin_post_ekwa_mockup_guide', 'ekwa_mockup_download_guide' );
-add_action( 'admin_post_ekwa_mockup_starter', 'ekwa_mockup_download_starter' );
-
-/**
- * Stream a generated HTML file.
- *
- * @param string $filename
- * @param string $html
- */
-function ekwa_mockup_stream_html( $filename, $html ) {
-	nocache_headers();
-	header( 'Content-Type: text/html; charset=utf-8' );
-	header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-	echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-	exit;
-}
-
-/**
- * The Mockup Author Guide — self-contained HTML, shareable with designers.
- */
-function ekwa_mockup_download_guide() {
-	if ( ! current_user_can( 'edit_posts' ) ) {
-		wp_die( esc_html__( 'You are not allowed to do this.', 'ekwa' ) );
-	}
-	check_admin_referer( 'ekwa_mockup_kit' );
-	ekwa_mockup_stream_html( 'ekwa-mockup-guide.html', ekwa_mockup_build_guide_html() );
-}
-
-/**
- * Build the Author Guide HTML (separate from the handler so it's testable).
- *
- * @return string
- */
-function ekwa_mockup_build_guide_html() {
-	$snippets = ekwa_mockup_canonical_snippets();
-	$tokens   = ekwa_mockup_token_vocabulary();
-	$prompts  = ekwa_mockup_ai_prompts();
-	$bp       = function_exists( 'ekwa_responsive_breakpoints' ) ? ekwa_responsive_breakpoints() : array( 'tablet' => 1199, 'mobile' => 599 );
-
-	// Render one element's block (with the megamenu variant when present).
-	$render_spec = function ( $spec ) {
-		$out = '<section><h3>' . esc_html( $spec['label'] ) . ' <code>' . esc_html( $spec['block'] ) . '</code></h3>'
-			. '<pre><code>' . esc_html( $spec['snippet'] ) . '</code></pre>'
-			. '<p>' . esc_html( $spec['notes'] ) . '</p>';
-		if ( ! empty( $spec['megamenu'] ) ) {
-			$out .= '<p class="sub"><strong>' . esc_html__( 'Megamenu variant', 'ekwa' ) . '</strong> — ' . esc_html__( 'replace a normal dropdown item with this to get a megamenu:', 'ekwa' ) . '</p>'
-				. '<pre><code>' . esc_html( $spec['megamenu'] ) . '</code></pre>';
-		}
-		if ( ! empty( $spec['alt_snippet'] ) ) {
-			$out .= '<p class="sub"><strong>' . esc_html( $spec['alt_label'] ) . '</strong></p>'
-				. '<pre><code>' . esc_html( $spec['alt_snippet'] ) . '</code></pre>';
-		}
-		$out .= '<p class="alt">' . sprintf( esc_html__( 'Fallback: add data-ekwa="%s" to any element to force this mapping.', 'ekwa' ), esc_html( $spec['token'] ) ) . '</p>'
-			. '</section>';
-		return $out;
-	};
-
-	// Group the elements.
-	$groups = array( 'header' => '', 'footer' => '', 'optional' => '' );
-	foreach ( $snippets as $spec ) {
-		$g = isset( $spec['group'] ) ? $spec['group'] : 'optional';
-		$groups[ $g ] .= $render_spec( $spec );
-	}
-
-	$token_rows = '';
-	foreach ( $tokens as $token => $desc ) {
-		$token_rows .= '<tr><td><code>data-ekwa="' . esc_html( $token ) . '"</code></td><td>' . esc_html( $desc ) . '</td></tr>';
-	}
-
-	$prompt_html = '';
-	foreach ( $prompts as $p ) {
-		$prompt_html .= '<section><h3>' . esc_html( $p['title'] ) . '</h3>'
-			. '<p>' . esc_html( $p['intro'] ) . '</p>'
-			. '<pre class="prompt"><code>' . esc_html( $p['prompt'] ) . '</code></pre></section>';
-	}
-
-	$css = 'body{font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;max-width:880px;margin:40px auto;padding:0 20px;color:#1e2933}'
-		. 'h1{font-size:28px}h2{margin-top:48px;font-size:22px;color:#0e7c6b;border-bottom:2px solid #0e7c6b;padding-bottom:6px}'
-		. 'h3{margin-top:32px;font-size:17px}h3 code{font-size:12.5px;background:#e6f4f1;color:#0e7c6b;padding:2px 8px;border-radius:4px;margin-left:6px}'
-		. 'pre{background:#0f172a;color:#e2e8f0;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.55}'
-		. 'pre.prompt{background:#0b2b26;white-space:pre-wrap}'
-		. 'table{border-collapse:collapse;width:100%;font-size:13.5px}td,th{border:1px solid #d6dde4;padding:7px 10px;text-align:left;vertical-align:top}'
-		. '.lead{font-size:16.5px;color:#374551}.alt{font-size:13px;color:#5b6b7c}.sub{font-size:13.5px}'
-		. '.rule{background:#f4f7fb;border-left:4px solid #0e7c6b;padding:10px 14px;margin:14px 0}'
-		. '.warn{background:#fffbf0;border-left:4px solid #dba617;padding:12px 16px;margin:18px 0;border-radius:4px}';
-
-	$html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' . esc_html__( 'Ekwa Mockup Author Guide', 'ekwa' ) . '</title>'
-		. '<style>' . $css . '</style></head><body>'
-		. '<h1>' . esc_html__( 'Ekwa Mockup Author Guide', 'ekwa' ) . '</h1>'
-		. '<p class="lead">' . esc_html__( 'Build the mockup with the canonical structures in this guide and two things happen automatically: the Mockup Converter maps each element to the matching dynamic block (real phone numbers, addresses, hours, menus — all pulled from site settings), and your mockup CSS styles the live site 1:1, because these are the exact structures the blocks render.', 'ekwa' ) . '</p>'
-
-		. '<div class="warn"><strong>' . esc_html__( 'Desktop only — no mobile header.', 'ekwa' ) . '</strong><br>' . esc_html( ekwa_mockup_mobile_note() ) . '</div>'
-
-		. '<div class="rule"><strong>' . esc_html__( 'Ground rules', 'ekwa' ) . '</strong><ul>'
-		. '<li>' . esc_html__( 'Wrap the site header in <header>, the footer in <footer>, body content in <main>.', 'ekwa' ) . '</li>'
-		. '<li>' . esc_html__( 'Use tel:+1… links for phone numbers, mailto: for email, and real Google Maps URLs (or "#") for direction links.', 'ekwa' ) . '</li>'
-		. '<li>' . sprintf( esc_html__( 'Keep image/video filenames unique — the importer matches by filename. Breakpoints on this site: mobile ≤ %1$dpx, desktop > %2$dpx.', 'ekwa' ), (int) $bp['mobile'], (int) $bp['tablet'] ) . '</li>'
-		. '<li>' . esc_html__( 'Define colors and fonts as CSS variables in :root — they import as design tokens.', 'ekwa' ) . '</li>'
-		. '<li>' . esc_html__( 'Keep the ekwa-* class names exactly; add your own classes alongside them. When in doubt, stamp data-ekwa="…" on the element (vocabulary at the end).', 'ekwa' ) . '</li>'
-		. '<li>' . esc_html__( 'Hero sliders & background-video heroes: design one static slide (or a poster image) — no slider JS, dots or arrows. "Convert with AI" maps them to the theme\'s ekwa/slider and ekwa/hero-video blocks, which bring nine transitions (fade, slide, slide-up, zoom, zoom-out, blur, parallax push, wipe, flip), per-caption entrance animations, arrows, dots and autoplay built in.', 'ekwa' ) . '</li>'
-		. '<li>' . esc_html__( 'YouTube/Vimeo videos: a real embedded iframe (or just the video URL) is enough — no custom play button or lightbox needed. "Convert with AI" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.', 'ekwa' ) . '</li>'
-		. '</ul></div>'
-
-		. '<h2>' . esc_html__( 'Header elements', 'ekwa' ) . '</h2>' . $groups['header']
-		. '<h2>' . esc_html__( 'Footer elements', 'ekwa' ) . '</h2>' . $groups['footer']
-		. '<h2>' . esc_html__( 'Optional variants', 'ekwa' ) . '</h2>'
-		. '<p>' . esc_html__( 'Use these in place of the single phone/address when the site has multiple numbers or locations.', 'ekwa' ) . '</p>' . $groups['optional']
-
-		. '<h2>' . esc_html__( 'AI prompts', 'ekwa' ) . '</h2>'
-		. '<p>' . esc_html__( 'Copy a prompt into ChatGPT, Claude, or any AI. Each is self-contained (the canonical structures are embedded), so it works even without attaching this guide.', 'ekwa' ) . '</p>'
-		. $prompt_html
-
-		. '<h2>' . esc_html__( 'data-ekwa token vocabulary', 'ekwa' ) . '</h2><table><tr><th>' . esc_html__( 'Token', 'ekwa' ) . '</th><th>' . esc_html__( 'Effect', 'ekwa' ) . '</th></tr>' . $token_rows . '</table>'
-		. '</body></html>';
-
-	return $html;
-}
-
-/**
- * The starter template — a working mockup skeleton assembled from the
- * canonical snippets. Authors copy it and build on top.
- */
-function ekwa_mockup_download_starter() {
-	if ( ! current_user_can( 'edit_posts' ) ) {
-		wp_die( esc_html__( 'You are not allowed to do this.', 'ekwa' ) );
-	}
-	check_admin_referer( 'ekwa_mockup_kit' );
-	ekwa_mockup_stream_html( 'ekwa-mockup-starter.html', ekwa_mockup_build_starter_html() );
-}
-
-/**
- * Build the starter-template HTML (separate from the handler so it's testable).
- *
- * @return string
- */
-function ekwa_mockup_build_starter_html() {
-	$s = ekwa_mockup_canonical_snippets();
-
-	$html = '<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mockup Starter — Ekwa</title>
-<link rel="stylesheet" href="style.css">
-<!--
-  EKWA MOCKUP STARTER
-  - The header/footer below use the CANONICAL structures: they convert 1:1 to
-    the Ekwa dynamic blocks, and your CSS here styles the live site directly.
-  - Keep the ekwa-* classes intact; add your own classes alongside them.
-  - DESKTOP ONLY: do NOT add a mobile header, hamburger, or off-canvas menu —
-    the theme builds the entire mobile experience automatically. Just make the
-    body responsive with @media rules.
-  - For a megamenu, the data-ekwa vocabulary, and AI prompts, see
-    ekwa-mockup-guide.html.
--->
-</head>
-<body>
-
-<header class="site-header">
-	<div class="site-header__inner">
-		' . $s['logo']['snippet'] . '
-
-		' . $s['menu']['snippet'] . '
-
-		<div class="site-header__actions">
-			' . $s['phone']['snippet'] . '
-			' . $s['search']['snippet'] . '
-		</div>
-	</div>
-</header>
-
-<main>
-	<section class="hero">
-		<div class="hero__inner">
-			<h1>Headline that sells the outcome</h1>
-			<p>Supporting sentence that earns the call to action.</p>
-			<a class="btn btn--primary" href="#">Book an Appointment</a>
-		</div>
-	</section>
-
-	<section class="services">
-		<h2>What we offer</h2>
-		<div class="services__grid">
-			<div class="card"><h3>Service one</h3><p>Short description.</p></div>
-			<div class="card"><h3>Service two</h3><p>Short description.</p></div>
-			<div class="card"><h3>Service three</h3><p>Short description.</p></div>
-		</div>
-	</section>
-</main>
-
-<footer class="site-footer">
-	<div class="site-footer__grid">
-		<div class="site-footer__col">
-			' . $s['address']['snippet'] . '
-			' . $s['phone']['snippet'] . '
-		</div>
-		<div class="site-footer__col">
-			' . $s['hours']['snippet'] . '
-		</div>
-		<div class="site-footer__col">
-			' . $s['social']['snippet'] . '
-		</div>
-		<div class="site-footer__col">
-			' . $s['map']['snippet'] . '
-		</div>
-	</div>
-	<div class="site-footer__bar">
-		' . $s['copyright']['snippet'] . '
-	</div>
-</footer>
-
-</body>
-</html>';
-
-	return $html;
 }

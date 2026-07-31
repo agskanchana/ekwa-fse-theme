@@ -287,7 +287,7 @@ require_once get_template_directory() . '/inc/ekwa-js-editor.php';
 
 /**
  * Mockup contract: canonical snippet library, readiness checker, and the
- * Author Guide / starter-template downloads (Ekwa Settings → Design Setup).
+ * copyable AI authoring prompts (Ekwa Settings → Design Setup).
  */
 require_once get_template_directory() . '/inc/ekwa-mockup-contract.php';
 
