@@ -189,6 +189,7 @@ HERO SLIDERS & VIDEO HEROES — mockups often ship custom slider widgets (slick/
 
 EVERYTHING ELSE — structure:
 - Containers (<div>, <section>, <header>, <footer>, <nav>, <main>, <aside>) → ekwa/div with {"tagName":"…"} and {"className":"…"} copied VERBATIM from the source (so the mockup CSS still targets them). Keep the nesting exactly.
+- KEEP EVERY id. An element with id="hero-video" becomes {"anchor":"hero-video"} on its block — every block supports it and renders it back as the id. Mockups hang real behaviour off ids (getElementById handlers, in-page anchor links, #id CSS), so a dropped id breaks things silently. On core blocks (heading, paragraph, list, quote, table) write the id on the saved element too: <h2 class="wp-block-heading" id="hero-video">.
 - Headings <h1>–<h6> → core/heading with the matching level. Paragraphs → core/paragraph. Lists <ul>/<ol> → core/list. Copy the inner text/HTML exactly.
 - <img> → ekwa/image with src, alt, width, height.
 - A link or button that is a call-to-action (has a button class like .btn/.b/.button, or is an obvious CTA) → ekwa/button {"text":"…","url":"…"} (add {"variant":"outline"} for outline styles). A plain text link → ekwa/link {"text":"…","url":"…"}. Preserve href exactly.

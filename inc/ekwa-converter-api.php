@@ -397,9 +397,20 @@ function ekwa_mc_missing_classes( $html, $markup ) {
 			foreach ( $classes as $class ) {
 				// wp-block-* is WordPress' own; ekwa-* classes are the mockup's
 				// opt-in signatures, which the blocks re-emit themselves.
-				if ( ! preg_match( '/^(?:wp-block-|ekwa-)/', $class ) ) {
-					$source[ $class ] = true;
+				if ( preg_match( '/^(?:wp-block-|ekwa-)/', $class ) ) {
+					continue;
 				}
+				// A foreign icon-font class is *meant* to change — it's rewritten
+				// to Font Awesome, and that pass reports its own summary (and
+				// anything it couldn't map). Flagging it here too would just be
+				// noise: "ri-search-line is missing" when it became fa-solid
+				// fa-magnifying-glass exactly as intended.
+				if ( function_exists( 'ekwa_mc_icon_base_name' )
+					&& ( null !== ekwa_mc_icon_base_name( strtolower( $class ) )
+						|| ekwa_mc_icon_is_family_token( strtolower( $class ) ) ) ) {
+					continue;
+				}
+				$source[ $class ] = true;
 			}
 
 			// ids matter as much as classes — mockups hang scroll handlers and

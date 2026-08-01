@@ -1,23 +1,33 @@
 <?php
 /**
- * Design Tokens — site-wide CSS variables for colors, background images, and
- * the saved mockup stylesheet.
+ * Design Tokens — the site's stylesheet, background-image variables, and the
+ * design tokens the AI tools reuse.
  *
- * The workflow goal is to stop using the child theme's style.css entirely:
- * every section carries its own Scoped CSS, and anything global lives here as
- * a CSS variable emitted in <head> (and inside the editor canvas):
+ * THE MODEL: the mockup stylesheet IS the site's global stylesheet. You paste
+ * it once and it is printed in <head> as-is. Its `:root` block defines every
+ * design token, including responsive `@media` overrides, because nothing is
+ * split out of it. Sections still carry their own Scoped CSS; the Fonts module
+ * still owns @font-face and font variables (self-hosting + conditional mobile
+ * loading), which is why those are stripped from the printed sheet.
  *
- *   - Color variables    — pasted (or auto-extracted from the saved mockup
- *                          stylesheet) as `--name: value;` lines.
- *   - Background images  — a repeater of variable => image URL, so section CSS
- *                          (including ::before/::after pseudo-elements, which
- *                          blocks can't own) can use background:var(--bg-hero).
- *   - Font variables     — emitted by the Fonts module (ekwa-fonts.php), with
- *                          optional conditional loading (web-safe on mobile,
- *                          custom font from the breakpoint up).
+ *   Mockup stylesheet   → <style id="ekwa-global-css"> in <head>
+ *   Background images   → :root{--bg-hero:url(…)} so section CSS (and the
+ *                         ::before/::after pseudo-elements blocks can't own)
+ *                         can reference them
+ *   Fonts tab           → @font-face + font variables, printed after the
+ *                         stylesheet so self-hosting wins
  *
- * All tokens are also serialized into an AI prompt section so Generate with
- * AI / Build with AI reuse the exact same variables.
+ * LEGACY MODEL (pre-simplification, still fully supported): the stylesheet used
+ * to be split three ways — variables extracted into a "CSS variables" field, a
+ * shrinking "Global CSS" pool printed in <head>, and per-section CSS moved out
+ * by the converter's AI extraction. Splitting proved lossy in ways that failed
+ * silently (rules dropped from the pool, `@media` context flattened out of
+ * variables, the field and the front end drifting apart), so it was retired.
+ *
+ * Sites that already have those options populated keep the old behaviour
+ * EXACTLY — see ekwa_tokens_legacy_mode(). Nothing is migrated or rewritten;
+ * the legacy fields simply move under a "Legacy" heading. Block `scopedCss`
+ * renders in both models, forever.
  *
  * @package ekwa
  */
@@ -27,13 +37,61 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * The saved mockup stylesheet (pasted once in Design Tokens). Used for font
- * detection, AI stylesheet context, and the converter's AI CSS extraction.
+ * The saved mockup stylesheet — the site's global CSS (see the file header).
  *
  * @return string
  */
 function ekwa_tokens_mockup_css() {
 	return (string) get_option( 'ekwa_mockup_css', '' );
+}
+
+/**
+ * Is this site still on the legacy split-stylesheet model?
+ *
+ * True when either legacy option holds anything, which can only happen on a
+ * site that used the old Design Setup. Those sites keep printing the Global CSS
+ * pool and the extracted CSS variables exactly as before, and the mockup
+ * stylesheet stays reference-only for them — otherwise the two would both print
+ * and every rule the converter had moved into a section would be duplicated.
+ *
+ * @return bool
+ */
+function ekwa_tokens_legacy_mode() {
+	return '' !== trim( (string) get_option( 'ekwa_global_css', '' ) )
+		|| '' !== trim( (string) get_option( 'ekwa_tokens_colors', '' ) );
+}
+
+/**
+ * The CSS printed site-wide in <head>.
+ *
+ * @return string
+ */
+function ekwa_tokens_site_css() {
+	if ( ekwa_tokens_legacy_mode() ) {
+		return trim( ekwa_tokens_global_css() );
+	}
+	return ekwa_tokens_printable_mockup_css();
+}
+
+/**
+ * The mockup stylesheet, ready to print: `@import` and `@font-face` removed.
+ *
+ * `@import` would add a blocking request for something the site doesn't serve,
+ * and `@font-face` is the Fonts tab's job — it self-hosts the files and can
+ * skip the download on mobile, neither of which works if the mockup declares
+ * its own faces. Everything else, `:root` included, is printed untouched.
+ *
+ * @return string
+ */
+function ekwa_tokens_printable_mockup_css() {
+	$css = trim( ekwa_tokens_mockup_css() );
+	if ( '' === $css ) {
+		return '';
+	}
+	$css = preg_replace( '/@import\b[^;]+;/i', '', $css );
+	$css = preg_replace( '/@font-face\s*\{[^}]*\}/is', '', $css );
+	$css = preg_replace( "/\n{3,}/", "\n\n", (string) $css );
+	return trim( (string) $css );
 }
 
 /**
@@ -459,6 +517,99 @@ function ekwa_tokens_set_global_css( $css ) {
 }
 
 /**
+ * Every CSS custom property the site actually defines, from all four sources.
+ *
+ * @return array<string,true> Lowercased names, no leading dashes.
+ */
+function ekwa_tokens_defined_var_names() {
+	$names = array();
+
+	// 1. Whatever declares the site's tokens: the mockup stylesheet's own
+	//    :root (current model), or the legacy CSS variables field.
+	$declared = ekwa_tokens_legacy_mode() ? ekwa_tokens_colors() : ekwa_tokens_mockup_css();
+	foreach ( ekwa_tokens_parse_var_groups( $declared ) as $group ) {
+		foreach ( array_keys( $group['decls'] ) as $name ) {
+			$names[ strtolower( $name ) ] = true;
+		}
+	}
+
+	// 2. Background image variables.
+	foreach ( ekwa_tokens_bgimages() as $row ) {
+		if ( ! empty( $row['name'] ) && ! empty( $row['url'] ) ) {
+			$names[ strtolower( ekwa_tokens_sanitize_var_name( $row['name'] ) ) ] = true;
+		}
+	}
+
+	// 3. Self-hosted fonts — their own variable plus the mockup aliases the
+	//    Fonts module emits for them.
+	if ( function_exists( 'ekwa_fonts_get_all' ) ) {
+		foreach ( ekwa_fonts_get_all() as $font ) {
+			$var = ekwa_fonts_sanitize_var_name( $font['var_name'] ?? '' );
+			if ( '' !== $var ) {
+				$names[ strtolower( $var ) ] = true;
+			}
+		}
+	}
+	if ( function_exists( 'ekwa_fonts_mockup_var_aliases' ) ) {
+		foreach ( array_keys( ekwa_fonts_mockup_var_aliases() ) as $alias ) {
+			$names[ strtolower( $alias ) ] = true;
+		}
+	}
+
+	return $names;
+}
+
+/**
+ * Custom properties a stylesheet READS but nothing defines.
+ *
+ * `color: var(--color-text)` where `--color-text` was never declared is not a
+ * CSS error — the declaration is simply thrown away at computed-value time, so
+ * the element silently keeps its inherited colour. Nothing warns, and the CSS
+ * looks perfectly fine in the editor, which makes this one of the easiest ways
+ * for a converted mockup to end up "missing styles" with no visible cause.
+ *
+ * Two things are deliberately NOT reported: references that supply a fallback
+ * (`var(--x, 1rem)` degrades on purpose), and WordPress' own `--wp--*` presets.
+ * Properties the stylesheet declares itself count as defined.
+ *
+ * @param string $css       Stylesheet to check.
+ * @param array  $extra     Extra defined names to treat as available.
+ * @return string[] Undefined variable names (no leading dashes), in first-use order.
+ */
+function ekwa_tokens_undefined_vars( $css, $extra = array() ) {
+	$css = (string) $css;
+	if ( '' === trim( $css ) ) {
+		return array();
+	}
+
+	$defined = ekwa_tokens_defined_var_names();
+	foreach ( (array) $extra as $name ) {
+		$defined[ strtolower( ltrim( (string) $name, '-' ) ) ] = true;
+	}
+
+	// Anything this sheet declares itself is defined for its own purposes.
+	if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:/i', $css, $own ) ) {
+		foreach ( $own[1] as $name ) {
+			$defined[ strtolower( ltrim( $name, '-' ) ) ] = true;
+		}
+	}
+
+	$missing = array();
+	// `var(--name)` with NO fallback — a comma means the author planned for it.
+	if ( preg_match_all( '/var\(\s*--([a-z0-9_-]+)\s*\)/i', $css, $refs ) ) {
+		foreach ( $refs[1] as $name ) {
+			$key = strtolower( $name );
+			if ( isset( $defined[ $key ] ) || 0 === strpos( $key, 'wp--' ) ) {
+				continue;
+			}
+			$missing[ $key ] = true;
+		}
+	}
+
+	return array_keys( $missing );
+}
+
+/**
  * "1,204 lines · 38 KB" — the at-a-glance size of a CSS blob, shown on the
  * collapsed Global CSS field so its bulk is visible without opening it.
  *
@@ -484,6 +635,11 @@ function ekwa_tokens_css_size_label( $css ) {
  * so any var() it references is already defined.
  */
 function ekwa_tokens_print_global_css() {
+	// Legacy sites only — the pool keeps printing exactly where it always did.
+	// New sites print the mockup stylesheet earlier (priority 4) instead.
+	if ( ! ekwa_tokens_legacy_mode() ) {
+		return;
+	}
 	$css = trim( ekwa_tokens_global_css() );
 	if ( '' === $css ) {
 		return;
@@ -493,17 +649,36 @@ function ekwa_tokens_print_global_css() {
 add_action( 'wp_head', 'ekwa_tokens_print_global_css', 6 );
 
 /**
+ * Print the mockup stylesheet as the site's global CSS (current model).
+ *
+ * Priority 4 puts it BEFORE the token and font `:root` rules (priority 5), so
+ * the Fonts tab's variables override any the stylesheet declares for the same
+ * name — that's what keeps self-hosting and conditional mobile loading working
+ * on a sheet that also defines its own font tokens.
+ */
+function ekwa_tokens_print_mockup_css() {
+	if ( ekwa_tokens_legacy_mode() ) {
+		return;
+	}
+	$css = ekwa_tokens_printable_mockup_css();
+	if ( '' === $css ) {
+		return;
+	}
+	echo '<style id="ekwa-global-css">' . ekwa_tokens_sanitize_css_blob( $css ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+}
+add_action( 'wp_head', 'ekwa_tokens_print_mockup_css', 4 );
+
+/**
  * Same CSS inside the editor (canvas + shell) so authored sections preview
- * with real token values — plus the global pool so base typography matches
+ * with real token values — plus the site stylesheet so base typography matches
  * the front end.
  */
 function ekwa_tokens_editor_assets() {
 	$css = ekwa_tokens_root_css();
-	// The global pool is printed in <head> on the front end by
-	// ekwa_tokens_print_global_css(); here it's added ONLY in the editor (this
-	// hook also fires front-side via enqueue_block_assets) so the canvas previews
-	// with the same base styles without double-printing the pool on the front end.
-	$global = is_admin() ? trim( ekwa_tokens_global_css() ) : '';
+	// The site CSS is printed in <head> on the front end; here it's added ONLY
+	// in the editor (this hook also fires front-side via enqueue_block_assets)
+	// so the canvas previews with the same base styles without double-printing.
+	$global = is_admin() ? trim( ekwa_tokens_site_css() ) : '';
 	if ( '' === $css && '' === $global ) {
 		return;
 	}
@@ -523,32 +698,24 @@ add_action( 'enqueue_block_assets', 'ekwa_tokens_editor_assets' );
  * Save handler — called from ekwa_save_settings() (main settings form).
  */
 function ekwa_tokens_save_settings() {
-	// Saved mockup stylesheet.
+	// The mockup stylesheet — the site's global CSS. Stored raw; it's sanitized
+	// for the <style> element at print time.
 	if ( isset( $_POST['ekwa_mockup_css'] ) ) {
-		// Raw CSS: keep as-is (it's never output; only parsed/sent to AI).
 		update_option( 'ekwa_mockup_css', wp_unslash( $_POST['ekwa_mockup_css'] ), false ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 	}
 
-	// Colors — sanitize to safe declaration lines. When left empty but a
-	// mockup stylesheet exists, auto-extract its custom properties.
+	// ── Legacy fields ────────────────────────────────────────────────────
+	// Only rendered (and therefore only posted) by sites still on the split
+	// model. Emptying one now means EMPTY — the old "clear to re-derive from
+	// the mockup" behaviour would have refilled it and pinned the site to the
+	// legacy path forever, so clearing both is how a site opts in to printing
+	// the mockup stylesheet directly.
 	if ( isset( $_POST['ekwa_tokens_colors'] ) ) {
-		$colors = ekwa_tokens_sanitize_colors( wp_unslash( $_POST['ekwa_tokens_colors'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-		if ( '' === $colors && '' !== trim( ekwa_tokens_mockup_css() ) ) {
-			$colors = ekwa_tokens_extract_vars_from_css( ekwa_tokens_mockup_css() );
-		}
-		update_option( 'ekwa_tokens_colors', $colors );
+		update_option( 'ekwa_tokens_colors', ekwa_tokens_sanitize_colors( wp_unslash( $_POST['ekwa_tokens_colors'] ) ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 	}
 
-	// Global CSS pool. Persist the edited value as-is (this is where the thinning
-	// pool is stored — the field shows its current, shrinking contents). Saving
-	// it EMPTY (re)seeds it from the mockup stylesheet minus its variables — the
-	// same "clear to re-derive" convention as the Colors field above.
 	if ( isset( $_POST['ekwa_global_css'] ) ) {
-		$global = ekwa_tokens_sanitize_css_blob( wp_unslash( $_POST['ekwa_global_css'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-		if ( '' === trim( $global ) && '' !== trim( ekwa_tokens_mockup_css() ) ) {
-			$global = ekwa_tokens_strip_css_variables( ekwa_tokens_mockup_css() );
-		}
-		update_option( 'ekwa_global_css', $global, false );
+		update_option( 'ekwa_global_css', ekwa_tokens_sanitize_css_blob( wp_unslash( $_POST['ekwa_global_css'] ) ), false ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 	}
 
 	// Background image variables (repeater: parallel name/url arrays).
@@ -730,10 +897,29 @@ function ekwa_tokens_render_tab() {
 
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Mockup stylesheet', 'ekwa' ); ?></h2>
-		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'Paste the mockup\'s style.css here once. It is never output to the page — it feeds font detection (Fonts tab), the AI generators\' stylesheet context, and the converter\'s "Extract section CSS with AI".', 'ekwa' ); ?>
-		</p>
-		<textarea name="ekwa_mockup_css" rows="10" class="large-text code" placeholder="/* paste the full mockup stylesheet */"><?php echo esc_textarea( $mockup_css ); ?></textarea>
+		<?php if ( ekwa_tokens_legacy_mode() ) : ?>
+			<p class="description" style="margin-bottom:1em;">
+				<?php esc_html_e( 'Paste the mockup\'s style.css here once. On this site it is NOT printed to the page — the legacy Global CSS pool below is still in use and prints instead. It feeds font detection (Fonts tab) and the AI tools\' stylesheet context.', 'ekwa' ); ?>
+			</p>
+		<?php else : ?>
+			<p class="description" style="margin-bottom:1em;">
+				<?php esc_html_e( 'This is your site\'s stylesheet. Paste the mockup\'s style.css here and it is printed as-is in the <head> of every page — including its :root variables, which become the site\'s design tokens (responsive @media overrides and all). It also feeds font detection on the Fonts tab and the AI tools\' stylesheet context.', 'ekwa' ); ?>
+			</p>
+			<p class="description" style="margin-bottom:1em;">
+				<?php esc_html_e( 'Two things are handled for you and should stay out of it: @font-face and @import are stripped before printing (the Fonts tab self-hosts your typefaces and can skip the download on mobile), and any hard-coded image path is flagged below — upload the image, add it under “Background image variables”, and reference it with var(--your-name). Per-section CSS still belongs in that section\'s Scoped CSS.', 'ekwa' ); ?>
+			</p>
+		<?php endif; ?>
+		<details class="ekwa-collapsible" id="ekwa-mockup-css-details" open>
+			<summary>
+				<span class="ekwa-collapsible__label"><?php esc_html_e( 'Edit the stylesheet', 'ekwa' ); ?></span>
+				<span class="ekwa-collapsible__meta" id="ekwa-mockup-css-meta"><?php echo esc_html( ekwa_tokens_css_size_label( $mockup_css ) ); ?></span>
+			</summary>
+			<div class="ekwa-collapsible__body">
+				<textarea id="ekwa-mockup-css" name="ekwa_mockup_css" rows="10" class="large-text code ekwa-code-css" spellcheck="false" placeholder="/* paste the full mockup stylesheet */"><?php echo esc_textarea( $mockup_css ); ?></textarea>
+			</div>
+		</details>
+		<div id="ekwa-mockup-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
+		<div id="ekwa-mockup-css-var-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
 	</div>
 
 	<div class="ekwa-section">
@@ -799,32 +985,32 @@ function ekwa_tokens_render_tab() {
 		</script>
 	</div>
 
+	<?php
+	// ── Legacy: the split-stylesheet model ───────────────────────────────
+	// Rendered only on sites that still have these populated. They're posted
+	// (and therefore saved) only while they're on screen, so a new site can
+	// never accidentally fall back into the old model.
+	if ( ekwa_tokens_legacy_mode() ) :
+		$ekwa_pool = ekwa_tokens_global_css();
+		?>
 	<div class="ekwa-section">
-		<h2><?php esc_html_e( 'CSS variables', 'ekwa' ); ?></h2>
+		<h2><?php esc_html_e( 'Legacy: split stylesheet', 'ekwa' ); ?></h2>
+		<div class="notice notice-warning inline" style="margin:0 0 1em;padding:8px 12px;">
+			<p style="margin:0 0 .5em;"><strong><?php esc_html_e( 'This site still uses the older split-stylesheet setup, and keeps working exactly as before.', 'ekwa' ); ?></strong></p>
+			<p style="margin:0;"><?php esc_html_e( 'The stylesheet used to be broken into three pieces — variables extracted here, a shrinking “Global CSS” pool printed in <head>, and per-section CSS moved out by the converter. Splitting it lost rules in ways nothing reported, so it was retired: the Mockup stylesheet above is now printed directly instead. While either field below holds anything, the Global CSS pool is what prints and the Mockup stylesheet is not. To switch this site over, move whatever you still need into the Mockup stylesheet above, then clear both fields and save. Section Scoped CSS keeps working either way — nothing you have built is affected.', 'ekwa' ); ?></p>
+		</div>
+
+		<h3><?php esc_html_e( 'CSS variables', 'ekwa' ); ?></h3>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5; --space-lg: 2rem; --radius: 8px;). Not just colours — any :root variable your CSS reuses. Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
-		</p>
-		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'Variables that change at a breakpoint keep their media query — wrap them in @media (max-width: 1600px) { … } and they are emitted inside that breakpoint, not flattened into the base :root. Auto-extraction picks these up from the mockup stylesheet on its own.', 'ekwa' ); ?>
+			<?php esc_html_e( 'Emitted in :root on the front end and in the editor. One custom property per line; a group wrapped in @media (max-width: 1600px) { … } is emitted inside that breakpoint. Font families are managed on the Fonts tab, not here.', 'ekwa' ); ?>
 		</p>
 		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--container-width: 1700px;&#10;&#10;@media (max-width: 1440px) {&#10;&#9;--container-width: 1360px;&#10;}"><?php echo esc_textarea( $colors ); ?></textarea>
-	</div>
 
-	<div class="ekwa-section">
-		<h2><?php esc_html_e( 'Global CSS (printed in <head>)', 'ekwa' ); ?></h2>
+		<h3 style="margin-top:1.5em;"><?php esc_html_e( 'Global CSS (printed in <head>)', 'ekwa' ); ?></h3>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'The shared, site-wide CSS every page inherits — resets, body typography, generic components. It seeds from the mockup stylesheet above (minus the CSS/font variables, which the CSS variables and Fonts sections already emit), and shrinks on its own as you use the converter\'s “Extract this section\'s CSS with AI”: each section\'s own rules move out to that section\'s Scoped CSS, and whatever no section claims (body font, buttons, resets) stays here. Edit freely — this box always holds the current pool. Save it EMPTY to re-seed from the mockup stylesheet.', 'ekwa' ); ?>
+			<?php esc_html_e( 'The shared CSS every page inherits on this site. Edit freely — this box holds exactly what is printed. Any hard-coded image path is highlighted below; upload the image, add it under “Background image variables”, and reference it with var(--your-name).', 'ekwa' ); ?>
 		</p>
-		<p class="description" style="margin-bottom:1em;"><?php esc_html_e( 'Heads up: any hard-coded image path — like background: url(images/hero.jpg) — is highlighted in red below, because mockup-relative paths break on the live site. Upload the image to the Media Library, add it under “Background image variables” below, and reference it with var(--your-name). Backgrounds that already use a variable are fine.', 'ekwa' ); ?></p>
-		<?php
-		// The pool routinely runs to a couple of thousand lines, which used to
-		// stretch this tab into an endless scroll. Keep it folded away behind a
-		// summary (auto-open only while it's still short), and cap the editor's
-		// height so it scrolls inside itself rather than down the page.
-		$ekwa_pool       = ekwa_tokens_global_css();
-		$ekwa_pool_lines = '' === trim( $ekwa_pool ) ? 0 : substr_count( $ekwa_pool, "\n" ) + 1;
-		?>
-		<details class="ekwa-collapsible" id="ekwa-global-css-details"<?php echo $ekwa_pool_lines > 40 ? '' : ' open'; ?>>
+		<details class="ekwa-collapsible" id="ekwa-global-css-details" open>
 			<summary>
 				<span class="ekwa-collapsible__label"><?php esc_html_e( 'Edit the Global CSS', 'ekwa' ); ?></span>
 				<span class="ekwa-collapsible__meta" id="ekwa-global-css-meta"><?php echo esc_html( ekwa_tokens_css_size_label( $ekwa_pool ) ); ?></span>
@@ -834,7 +1020,9 @@ function ekwa_tokens_render_tab() {
 			</div>
 		</details>
 		<div id="ekwa-global-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
+		<div id="ekwa-global-css-var-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
 	</div>
+	<?php endif; ?>
 
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Background image variables', 'ekwa' ); ?></h2>
@@ -937,14 +1125,15 @@ function ekwa_tokens_ai_context() {
 		}
 	}
 
-	// Color variables.
-	$colors = trim( ekwa_tokens_colors() );
-	if ( '' !== $colors ) {
-		foreach ( explode( "\n", $colors ) as $line ) {
-			$line = trim( $line );
-			if ( '' !== $line ) {
-				$lines[] = $line;
-			}
+	// Design-token variables — declared in the mockup stylesheet's :root, or in
+	// the legacy CSS variables field on sites still on the split model. Groups
+	// scoped to a breakpoint are labelled so the AI doesn't treat a responsive
+	// override as the base value.
+	$declared = ekwa_tokens_legacy_mode() ? ekwa_tokens_colors() : ekwa_tokens_mockup_css();
+	foreach ( ekwa_tokens_parse_var_groups( $declared ) as $group ) {
+		$suffix = empty( $group['chain'] ) ? '' : '   [only inside ' . implode( ' ', $group['chain'] ) . ']';
+		foreach ( $group['decls'] as $name => $value ) {
+			$lines[] = '--' . $name . ': ' . $value . ';' . $suffix;
 		}
 	}
 

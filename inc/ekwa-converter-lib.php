@@ -542,13 +542,15 @@ function ekwa_mc_convert_heading( $node, $depth, $level ) {
 
 	if ( $class ) { $attrs['className'] = $class; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	$class_attr = 'wp-block-heading';
 	if ( $class ) { $class_attr .= ' ' . $class; }
 
 	return $indent . '<!-- wp:heading' . $attrs_json . ' -->' . "\n" .
-	       $indent . '<h' . $level . ' class="' . $class_attr . '">' . trim( $inner ) . '</h' . $level . '>' . "\n" .
+	       $indent . '<h' . $level . ' class="' . $class_attr . '"' . ekwa_mc_anchor_html_attr( $node ) . '>' . trim( $inner ) . '</h' . $level . '>' . "\n" .
 	       $indent . '<!-- /wp:heading -->' . "\n";
 }
 
@@ -563,12 +565,14 @@ function ekwa_mc_convert_paragraph( $node, $depth ) {
 
 	if ( $class ) { $attrs['className'] = $class; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	$class_attr = $class ? ' class="' . $class . '"' : '';
 
 	return $indent . '<!-- wp:paragraph' . $attrs_json . ' -->' . "\n" .
-	       $indent . '<p' . $class_attr . '>' . trim( $inner ) . '</p>' . "\n" .
+	       $indent . '<p' . $class_attr . ekwa_mc_anchor_html_attr( $node ) . '>' . trim( $inner ) . '</p>' . "\n" .
 	       $indent . '<!-- /wp:paragraph -->' . "\n";
 }
 
@@ -629,6 +633,8 @@ function ekwa_mc_convert_quote( $node, $depth ) {
 		$attrs['className'] = $class;
 		$class_attr        .= ' ' . $class;
 	}
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	$inner = $paragraph_blocks;
@@ -637,7 +643,7 @@ function ekwa_mc_convert_quote( $node, $depth ) {
 	}
 
 	return $indent . '<!-- wp:quote' . $attrs_json . ' -->' . "\n" .
-	       $indent . '<blockquote class="' . $class_attr . '">' . "\n" .
+	       $indent . '<blockquote class="' . $class_attr . '"' . ekwa_mc_anchor_html_attr( $node ) . '>' . "\n" .
 	       $inner .
 	       $indent . '</blockquote>' . "\n" .
 	       $indent . '<!-- /wp:quote -->' . "\n";
@@ -699,6 +705,8 @@ function ekwa_mc_convert_image( $node, $depth ) {
 	if ( $class )  { $attrs['className'] = $class; }
 	if ( isset( $style['object-fit'] ) ) { $attrs['objectFit'] = $style['object-fit']; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/image' . $attrs_json . ' /-->' . "\n";
@@ -717,6 +725,8 @@ function ekwa_mc_convert_figure_block( $node, $depth ) {
 	if ( $class ) {
 		$attrs['className'] = $class;
 	}
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$custom = ekwa_mc_extract_custom_attributes( $node );
 	if ( ! empty( $custom ) ) {
 		$attrs['customAttributes'] = $custom;
@@ -749,6 +759,8 @@ function ekwa_mc_convert_link( $node, $depth ) {
 	if ( $target === '_blank' ) { $attrs['newTab'] = true; }
 	if ( $rel )   { $attrs['rel'] = $rel; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/link' . $attrs_json . ' /-->' . "\n";
@@ -778,6 +790,8 @@ function ekwa_mc_convert_icon( $node, $depth ) {
 
 	$attrs = array( 'iconClass' => $class, 'wrapperClass' => '' );
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/icon' . $attrs_json . ' /-->' . "\n";
@@ -794,6 +808,8 @@ function ekwa_mc_convert_text( $node, $depth, $tag ) {
 
 	if ( $class ) { $attrs['className'] = $class; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$custom = ekwa_mc_extract_custom_attributes( $node );
 	if ( ! empty( $custom ) ) {
 		$attrs['customAttributes'] = $custom;
@@ -802,6 +818,38 @@ function ekwa_mc_convert_text( $node, $depth, $tag ) {
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	return $indent . '<!-- wp:ekwa/text' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * The element's id as a block `anchor` attribute (empty array when it has none).
+ *
+ * Every block the converter emits supports `anchor` and renders it back as
+ * `id`, so an id in the mockup should always survive. Mockups hang real
+ * behaviour off ids — `getElementById('hero-video')` for a mute toggle, a
+ * sticky-header scroll handler on `#header`, in-page anchor links, `#id` CSS —
+ * and losing one fails silently.
+ *
+ * @param DOMElement $node
+ * @return array{anchor?:string}
+ */
+function ekwa_mc_anchor_attr( $node ) {
+	$id = trim( $node->getAttribute( 'id' ) );
+	return ( '' === $id ) ? array() : array( 'anchor' => $id );
+}
+
+/**
+ * The same id as a ready-to-print ` id="…"` HTML attribute.
+ *
+ * Static core blocks (heading, paragraph, list, quote, table, audio) render
+ * their SAVED markup, so the id has to be written onto the element itself —
+ * the block attribute alone would be ignored on the front end.
+ *
+ * @param DOMElement $node
+ * @return string
+ */
+function ekwa_mc_anchor_html_attr( $node ) {
+	$id = trim( $node->getAttribute( 'id' ) );
+	return ( '' === $id ) ? '' : ' id="' . esc_attr( $id ) . '"';
 }
 
 /**
@@ -847,12 +895,14 @@ function ekwa_mc_convert_list( $node, $depth ) {
 	if ( $ordered ) { $attrs['ordered'] = true; }
 	if ( $class )   { $attrs['className'] = $class; }
 
+	$attrs += ekwa_mc_anchor_attr( $node );
+
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	$class_attr = $class ? ' class="' . $class . '"' : '';
 
 	return $indent . '<!-- wp:list' . $attrs_json . ' -->' . "\n" .
-	       $indent . '<' . $tag . $class_attr . '>' . trim( $inner ) . '</' . $tag . '>' . "\n" .
+	       $indent . '<' . $tag . $class_attr . ekwa_mc_anchor_html_attr( $node ) . '>' . trim( $inner ) . '</' . $tag . '>' . "\n" .
 	       $indent . '<!-- /wp:list -->' . "\n";
 }
 
@@ -968,6 +1018,7 @@ function ekwa_mc_convert_table( $node, $depth ) {
 	if ( $class ) {
 		$attrs['className'] = $class;
 	}
+	$attrs += ekwa_mc_anchor_attr( $node );
 
 	$figure_class = 'wp-block-table' . ( $class ? ' ' . $class : '' );
 	$caption_html = $caption ? '<figcaption class="wp-element-caption">' . $caption . '</figcaption>' : '';
@@ -975,7 +1026,7 @@ function ekwa_mc_convert_table( $node, $depth ) {
 	ekwa_mc_warn( 'Converted <table> to an editable core/table block.', 'converted' );
 
 	return $indent . '<!-- wp:table ' . ekwa_mc_json_encode_block_attrs( $attrs ) . ' -->' . "\n" .
-	       $indent . '<figure class="' . $figure_class . '"><table>' . $table_html . '</table>' . $caption_html . '</figure>' . "\n" .
+	       $indent . '<figure class="' . $figure_class . '"' . ekwa_mc_anchor_html_attr( $node ) . '><table>' . $table_html . '</table>' . $caption_html . '</figure>' . "\n" .
 	       $indent . '<!-- /wp:table -->' . "\n";
 }
 
@@ -1077,6 +1128,18 @@ function ekwa_mc_convert_picture( $node, $depth ) {
 		return ekwa_mc_convert_raw_html( $node, $depth );
 	}
 	ekwa_mc_warn( 'Converted <picture> to ekwa/image via its <img> fallback (WebP/srcset regenerate at render).', 'converted' );
+
+	// The <picture> disappears, so hand its id (and class) down to the <img>
+	// that replaces it — otherwise anything targeting #id/.class is orphaned.
+	$picture_id = trim( $node->getAttribute( 'id' ) );
+	if ( '' !== $picture_id && '' === trim( $img->getAttribute( 'id' ) ) ) {
+		$img->setAttribute( 'id', $picture_id );
+	}
+	$picture_class = trim( $node->getAttribute( 'class' ) );
+	if ( '' !== $picture_class ) {
+		$img->setAttribute( 'class', trim( $img->getAttribute( 'class' ) . ' ' . $picture_class ) );
+	}
+
 	return ekwa_mc_convert_image( $img, $depth );
 }
 
@@ -1111,8 +1174,11 @@ function ekwa_mc_convert_audio( $node, $depth ) {
 
 	ekwa_mc_warn( 'Converted <audio> to core/audio.', 'converted' );
 
-	return $indent . '<!-- wp:audio -->' . "\n" .
-	       $indent . '<figure class="wp-block-audio"><audio controls src="' . $src . '"></audio></figure>' . "\n" .
+	$attrs      = ekwa_mc_anchor_attr( $node );
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	return $indent . '<!-- wp:audio' . $attrs_json . ' -->' . "\n" .
+	       $indent . '<figure class="wp-block-audio"' . ekwa_mc_anchor_html_attr( $node ) . '><audio controls src="' . $src . '"></audio></figure>' . "\n" .
 	       $indent . '<!-- /wp:audio -->' . "\n";
 }
 
@@ -1134,7 +1200,9 @@ function ekwa_mc_convert_svg_block( $node, $depth ) {
 
 	ekwa_mc_warn( 'Converted inline <svg> to ekwa/svg (sanitized on render).', 'converted' );
 
-	return $indent . '<!-- wp:ekwa/svg ' . ekwa_mc_json_encode_block_attrs( array( 'svg' => $svg ) ) . ' /-->' . "\n";
+	$attrs = array( 'svg' => $svg ) + ekwa_mc_anchor_attr( $node );
+
+	return $indent . '<!-- wp:ekwa/svg ' . ekwa_mc_json_encode_block_attrs( $attrs ) . ' /-->' . "\n";
 }
 
 /**
@@ -1204,6 +1272,8 @@ function ekwa_mc_convert_video( $node, $depth ) {
 	if ( $node->hasAttribute( 'playsinline' ) ) { $attrs['playsinline'] = true; }
 	if ( $node->hasAttribute( 'controls' ) )    { $attrs['controls']    = true; }
 	if ( $class )                               { $attrs['className']   = $class; }
+
+	$attrs += ekwa_mc_anchor_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 

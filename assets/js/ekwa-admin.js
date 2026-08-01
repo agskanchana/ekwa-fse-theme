@@ -577,74 +577,110 @@
 			} );
 		}
 
-		// ---- Global CSS: CSS editor + background-image path detector ----
-		if ( hasCM && CE.css ) {
-			var cssTa = document.getElementById( 'ekwa-global-css' );
-			if ( cssTa ) {
-				var cssCm = wp.codeEditor.initialize( cssTa, CE.css ).codemirror;
-				var panel = document.getElementById( 'ekwa-global-css-bg-warning' );
-				trackCM( cssCm, cssTa );
+		// ---- CSS editors: syntax highlighting + two live checks ----
+		// Used by the Mockup stylesheet (the site's CSS) and, on sites still on
+		// the legacy split model, the Global CSS pool. Same behaviour for both.
+		function setupCssEditor( slug ) {
+			var ta = document.getElementById( slug );
+			if ( ! ta ) { return; }
 
-				var scan = ekwaDebounce( function () {
-					var lines = cssCm.getValue().split( /\r\n|\r|\n/ );
-					var bad   = [];
-					// url( ... ) literals. var(--x) never matches, so background
-					// *variables* are treated as fine — exactly the intent.
-					var re = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
-					lines.forEach( function ( line, i ) {
-						re.lastIndex = 0;
-						var m;
-						while ( ( m = re.exec( line ) ) ) {
-							var t = ( m[2] || '' ).trim();
-							if ( ! t ) { continue; }
-							if ( /^data:/i.test( t ) ) { continue; }   // self-contained, won't break
-							if ( t.charAt( 0 ) === '#' ) { continue; } // SVG fragment ref, not a path
-							bad.push( { line: i, url: t } );
-							break; // one flag per line is enough
-						}
+			var cm       = wp.codeEditor.initialize( ta, CE.css ).codemirror;
+			var bgPanel  = document.getElementById( slug + '-bg-warning' );
+			var varPanel = document.getElementById( slug + '-var-warning' );
+			var details  = document.getElementById( slug + '-details' );
+			var meta     = document.getElementById( slug + '-meta' );
+			trackCM( cm, ta );
+
+			// ---- hard-coded image paths ----
+			// Mockup-relative url(...) breaks on the live site; a var() never
+			// matches, so background *variables* are treated as fine.
+			var scanBg = ekwaDebounce( function () {
+				var lines = cm.getValue().split( /\r\n|\r|\n/ );
+				var bad   = [];
+				var re    = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+				lines.forEach( function ( line, i ) {
+					re.lastIndex = 0;
+					var m;
+					while ( ( m = re.exec( line ) ) ) {
+						var t = ( m[2] || '' ).trim();
+						if ( ! t ) { continue; }
+						if ( /^data:/i.test( t ) ) { continue; }   // self-contained, won't break
+						if ( t.charAt( 0 ) === '#' ) { continue; } // SVG fragment ref, not a path
+						bad.push( { line: i, url: t } );
+						break; // one flag per line is enough
+					}
+				} );
+				cm.operation( function () {
+					for ( var ln = 0; ln < cm.lineCount(); ln++ ) {
+						cm.removeLineClass( ln, 'background', 'ekwa-cm-error-line' );
+					}
+					bad.forEach( function ( o ) {
+						cm.addLineClass( o.line, 'background', 'ekwa-cm-error-line' );
 					} );
-					cssCm.operation( function () {
-						for ( var ln = 0; ln < cssCm.lineCount(); ln++ ) {
-							cssCm.removeLineClass( ln, 'background', 'ekwa-cm-error-line' );
-						}
-						bad.forEach( function ( o ) {
-							cssCm.addLineClass( o.line, 'background', 'ekwa-cm-error-line' );
-						} );
-					} );
-					renderBgPanel( panel, bad );
-				}, 250 );
+				} );
+				renderBgPanel( bgPanel, bad );
+			}, 250 );
 
-				cssCm.on( 'changes', scan );
-				scan();
-
-				// The editor lives inside a <details> that starts closed on a big
-				// pool, so CodeMirror measures itself against a hidden element and
-				// renders blank until refreshed on first open. Also keep the
-				// collapsed summary's "N lines · N KB" honest while typing.
-				var details = document.getElementById( 'ekwa-global-css-details' );
-				var meta    = document.getElementById( 'ekwa-global-css-meta' );
-
-				if ( details ) {
-					details.addEventListener( 'toggle', function () {
-						if ( details.open ) {
-							try { cssCm.refresh(); } catch ( e ) {}
-						}
-					} );
+			// ---- var() references that resolve to nothing ----
+			// A declaration reading an undefined custom property is thrown away
+			// at computed-value time: no error, no warning, the rule just
+			// doesn't apply. The quietest way for a mockup to "lose" styles.
+			var scanVars = ekwaDebounce( function () {
+				if ( ! varPanel ) { return; }
+				var css     = cm.getValue();
+				var defined = {};
+				( CE.definedVars || [] ).forEach( function ( n ) {
+					defined[ String( n ).toLowerCase() ] = true;
+				} );
+				// Anything this sheet declares itself counts as defined.
+				var decl, dre = /(--[a-z0-9_-]+)\s*:/gi;
+				while ( ( decl = dre.exec( css ) ) ) {
+					defined[ decl[1].replace( /^--/, '' ).toLowerCase() ] = true;
 				}
-
-				if ( meta ) {
-					var metaTpl = ( CE && CE.i18n && CE.i18n.cssMeta ) ? CE.i18n.cssMeta : '%1$s lines · %2$s';
-					var updateMeta = ekwaDebounce( function () {
-						var val = cssCm.getValue();
-						meta.textContent = val.trim()
-							? metaTpl
-								.replace( '%1$s', cssCm.lineCount().toLocaleString() )
-								.replace( '%2$s', formatBytes( val.length ) )
-							: ( ( CE && CE.i18n && CE.i18n.cssEmpty ) || 'empty' );
-					}, 300 );
-					cssCm.on( 'changes', updateMeta );
+				// var(--name) with NO fallback — a comma means it degrades on purpose.
+				var missing = [], seen = {}, ref, rre = /var\(\s*--([a-z0-9_-]+)\s*\)/gi;
+				while ( ( ref = rre.exec( css ) ) ) {
+					var name = ref[1].toLowerCase();
+					if ( defined[ name ] || name.indexOf( 'wp--' ) === 0 || seen[ name ] ) { continue; }
+					seen[ name ] = true;
+					missing.push( name );
 				}
+				renderVarPanel( varPanel, missing );
+			}, 250 );
+
+			cm.on( 'changes', scanBg );
+			cm.on( 'changes', scanVars );
+			scanBg();
+			scanVars();
+
+			// Collapsing the <details> leaves CodeMirror measured against a
+			// hidden element, so it renders blank until refreshed on re-open.
+			if ( details ) {
+				details.addEventListener( 'toggle', function () {
+					if ( details.open ) {
+						try { cm.refresh(); } catch ( e ) {}
+					}
+				} );
 			}
+
+			// Keep the summary's "N lines · N KB" honest while typing.
+			if ( meta ) {
+				var metaTpl = ( CE && CE.i18n && CE.i18n.cssMeta ) ? CE.i18n.cssMeta : '%1$s lines · %2$s';
+				var updateMeta = ekwaDebounce( function () {
+					var val = cm.getValue();
+					meta.textContent = val.trim()
+						? metaTpl
+							.replace( '%1$s', cm.lineCount().toLocaleString() )
+							.replace( '%2$s', formatBytes( val.length ) )
+						: ( ( CE && CE.i18n && CE.i18n.cssEmpty ) || 'empty' );
+				}, 300 );
+				cm.on( 'changes', updateMeta );
+			}
+		}
+
+		if ( hasCM && CE.css ) {
+			setupCssEditor( 'ekwa-mockup-css' ); // the site's stylesheet
+			setupCssEditor( 'ekwa-global-css' ); // legacy pool, when present
 		}
 
 		// ---- delayed-scripts.js / ekwa-child.js: JS editors + base64 mirror ----
@@ -703,6 +739,23 @@
 				'<p><strong>⚠ ' + ekwaEsc( i18n.bgIntro || '' ) + '</strong></p>' +
 				'<ul>' + items + '</ul>' +
 				'<p>' + ekwaEsc( i18n.bgFix || '' ) + '</p>';
+		}
+
+		function renderVarPanel( panel, missing ) {
+			var i18n = ( CE && CE.i18n ) ? CE.i18n : {};
+			if ( ! missing.length ) {
+				panel.className   = 'ekwa-css-bg-warning is-clean';
+				panel.textContent = i18n.varClean || '';
+				return;
+			}
+			panel.className = 'ekwa-css-bg-warning is-warning';
+			var items = missing.map( function ( n ) {
+				return '<li><code>var(--' + ekwaEsc( n ) + ')</code></li>';
+			} ).join( '' );
+			panel.innerHTML =
+				'<p><strong>⚠ ' + ekwaEsc( i18n.varIntro || '' ) + '</strong></p>' +
+				'<ul>' + items + '</ul>' +
+				'<p>' + ekwaEsc( i18n.varFix || '' ) + '</p>';
 		}
 
 		function ekwaDebounce( fn, wait ) {

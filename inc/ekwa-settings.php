@@ -103,12 +103,20 @@ function ekwa_admin_enqueue( $hook ) {
 	wp_localize_script( 'ekwa-admin-js', 'ekwaCodeEditors', array(
 		'css'  => $ekwa_cm_css ? $ekwa_cm_css : false,
 		'js'   => $ekwa_cm_js ? $ekwa_cm_js : false,
+		// Every variable the site defines, so the Global CSS editor can flag a
+		// var() that resolves to nothing (see ekwa_tokens_undefined_vars()).
+		'definedVars' => function_exists( 'ekwa_tokens_defined_var_names' )
+			? array_keys( ekwa_tokens_defined_var_names() )
+			: array(),
 		'i18n' => array(
 			'bgIntro' => __( 'Hard-coded image path(s) found in the Global CSS below. Relative or mockup URLs break on the live site.', 'ekwa' ),
 			'bgFix'   => __( 'Upload each image to the Media Library, add it under “Background image variables”, then replace the url(…) with var(--your-name).', 'ekwa' ),
 			/* translators: 1: line number, 2: the offending url() value. */
 			'bgLine'  => __( 'Line %1$d: %2$s', 'ekwa' ),
 			'bgClean' => __( 'No hard-coded image paths in the Global CSS. ✓', 'ekwa' ),
+			'varIntro' => __( 'These CSS variables are used below but nothing defines them, so every declaration that reads one is silently discarded — that is styling going missing with no visible error.', 'ekwa' ),
+			'varFix'   => __( 'Add each one under “CSS variables” above (or, for a font, register it on the Fonts tab). A var() that supplies a fallback is fine and is not listed.', 'ekwa' ),
+			'varClean' => __( 'Every CSS variable used in the Global CSS is defined. ✓', 'ekwa' ),
 			/* translators: 1: line count, 2: human-readable size (e.g. "38 KB"). Shown on the collapsed Global CSS field. */
 			'cssMeta'  => __( '%1$s lines · %2$s', 'ekwa' ),
 			'cssEmpty' => __( 'empty', 'ekwa' ),

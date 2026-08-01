@@ -659,7 +659,10 @@ function ekwa_mockup_readiness_check( $html ) {
 	// matches by name), so this never shows up visually — but it defeats the
 	// font variable entirely: the theme can't swap in the self-hosted files,
 	// and conditional loading can't stop phones from downloading the font.
-	$font_css = '' !== $saved_css ? $saved_css : ekwa_mockup_inline_css( $html );
+	// Check BOTH the stylesheet saved in Design Setup (what the converter and
+	// the AI actually use) and any CSS inlined in the pasted file — a rule that
+	// only exists in one of them still ships.
+	$font_css = trim( $saved_css . "\n" . ekwa_mockup_inline_css( $html ) );
 	if ( '' !== trim( $font_css ) ) {
 		$literals = ekwa_mockup_literal_font_rules( $font_css );
 		$sections[] = array(
@@ -675,6 +678,30 @@ function ekwa_mockup_readiness_check( $html ) {
 					implode( ', ', array_slice( $literals, 0, 10 ) ) . ( count( $literals ) > 10 ? '…' : '' )
 				),
 			'fix'     => empty( $literals ) ? '' : ":root {\n  --font-heading: 'Playfair Display', serif;\n  --font-body: 'Inter', sans-serif;\n}\n\nbody { font-family: var(--font-body); }\nh1, h2, h3 { font-family: var(--font-heading); }",
+		);
+	}
+
+	// ── CSS variables that resolve to nothing ────────────────────────────
+	// A declaration reading an undefined custom property is discarded at
+	// computed-value time — silently. `body{font-family:var(--font-main)}`
+	// with no --font-main anywhere means the whole site falls back to the
+	// browser default font and nothing anywhere says why.
+	if ( '' !== trim( $font_css ) && function_exists( 'ekwa_tokens_undefined_vars' ) ) {
+		$undefined = ekwa_tokens_undefined_vars( $font_css );
+		$sections[] = array(
+			'id'      => 'css-vars',
+			'label'   => __( 'CSS variables resolve', 'ekwa' ),
+			'status'  => empty( $undefined ) ? 'pass' : 'fail',
+			'message' => empty( $undefined )
+				? __( 'Every var() in the stylesheet has a definition. ✓', 'ekwa' )
+				: sprintf(
+					/* translators: %s: comma-separated variable names. */
+					__( 'Used but never defined: %s. Every declaration that reads one of these is thrown away by the browser — no error, the style just never applies. Declare them in :root (a font goes on the Fonts tab instead), or give each use a fallback like var(--color-text, #333).', 'ekwa' ),
+					'--' . implode( ', --', array_slice( $undefined, 0, 12 ) ) . ( count( $undefined ) > 12 ? '…' : '' )
+				),
+			'fix'     => empty( $undefined ) ? '' : ":root {\n" . implode( "\n", array_map( function ( $n ) {
+				return '  --' . $n . ': /* value */;';
+			}, array_slice( $undefined, 0, 12 ) ) ) . "\n}",
 		);
 	}
 

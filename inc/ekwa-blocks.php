@@ -1102,8 +1102,19 @@ function ekwa_render_icon_block( $attrs ) {
 	if ( $size )  { $icon_style .= 'font-size:' . $size . 'px;'; }
 	if ( $color ) { $icon_style .= 'color:' . esc_attr( $color ) . ';'; }
 
+	// The anchor belongs on the outermost element this block emits. With a
+	// wrapper class that's the <div> (below); without one — the shape the
+	// converter produces for a bare mockup <i> — it has to ride on the <a> or
+	// the <i> itself, or the id is silently dropped.
+	$anchor_attr = $anchor ? ' id="' . esc_attr( $anchor ) . '"' : '';
+	$outer_taken = false;
+
 	$icon_attrs  = ' class="' . esc_attr( $icon_class ) . '" aria-hidden="true"';
 	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
+	if ( $anchor_attr && '' === $wrapper_class && ! $url ) {
+		$icon_attrs .= $anchor_attr;
+		$outer_taken = true;
+	}
 
 	$icon_html = '<i' . $icon_attrs . '></i>';
 
@@ -1118,7 +1129,9 @@ function ekwa_render_icon_block( $attrs ) {
 			$rel_parts[] = $link_rel;
 		}
 		$rel_attr  = $rel_parts ? ' rel="' . esc_attr( implode( ' ', array_unique( $rel_parts ) ) ) . '"' : '';
-		$icon_html = '<a href="' . esc_url( $url ) . '"' . $target_attr . $rel_attr . '>' . $icon_html . '</a>';
+		$link_id   = ( $anchor_attr && '' === $wrapper_class ) ? $anchor_attr : '';
+		if ( $link_id ) { $outer_taken = true; }
+		$icon_html = '<a href="' . esc_url( $url ) . '"' . $link_id . $target_attr . $rel_attr . '>' . $icon_html . '</a>';
 	}
 
 	// No wrapper div when wrapperClass is empty — output bare <i> element.
@@ -1127,7 +1140,7 @@ function ekwa_render_icon_block( $attrs ) {
 	}
 
 	$wrapper_attrs  = ' class="' . esc_attr( $wrapper_class ) . '"';
-	if ( $anchor )  { $wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"'; }
+	if ( $anchor && ! $outer_taken ) { $wrapper_attrs .= $anchor_attr; }
 	if ( $align )   { $wrapper_attrs .= ' style="text-align:' . esc_attr( $align ) . ';"'; }
 
 	return '<div' . $wrapper_attrs . '>' . $icon_html . '</div>';

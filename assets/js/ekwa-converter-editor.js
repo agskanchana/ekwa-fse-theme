@@ -215,7 +215,10 @@
 		// Mockup CSS import + structured report.
 		var s13 = useState( '' );        var cssValue   = s13[0]; var setCssValue   = s13[1];
 		var s14 = useState( 'extract' ); var cssMode    = s14[0]; var setCssMode    = s14[1];
-		var s21 = useState( false );     var aiExtract  = s21[0]; var setAiExtract  = s21[1];
+		// AI CSS extraction is retired — the mockup stylesheet is printed whole
+		// instead of being split section by section, so nothing sends
+		// css_ai_extract any more. The REST parameter still works for an older
+		// editor plugin, and sections keep their existing scopedCss forever.
 		// Menu import — turns the mockup's nav into a real WP menu on main_menu.
 		var s24 = useState( false );     var importMenu  = s24[0]; var setImportMenu  = s24[1];
 		var s25 = useState( false );     var menuReplace = s25[0]; var setMenuReplace = s25[1];
@@ -249,9 +252,6 @@
 				if ( cssValue.trim() ) {
 					aiBody.css      = cssValue;
 					aiBody.css_mode = cssMode;
-				}
-				if ( aiExtract ) {
-					aiBody.css_ai_extract = true;
 				}
 				if ( importMenu ) {
 					aiBody.import_menu  = true;
@@ -295,12 +295,6 @@
 			if ( cssValue.trim() ) {
 				body.css      = cssValue;
 				body.css_mode = cssMode;
-			}
-			if ( aiExtract ) {
-				// Server extracts this section's rules from the pasted CSS (or
-				// the saved Design Tokens mockup stylesheet when none pasted)
-				// and returns them as css_scoped for the wrapper block.
-				body.css_ai_extract = true;
 			}
 			if ( importMenu ) {
 				body.import_menu  = true;
@@ -471,13 +465,7 @@
 						placeholder: '/* paste the mockup’s style.css here */',
 						help: __( 'Fonts and colors are always extracted and shown after conversion.', 'ekwa' ),
 					} ),
-					el( ToggleControl, {
-						label: __( 'Extract this section’s CSS with AI → attach as Scoped CSS', 'ekwa' ),
-						help: __( 'Pulls just the rules that style this HTML (incl. ::before/::after, hover, media queries), rewritten to your design-token variables, and attaches them to the section. Everything left over stays in the site-wide Global CSS in Design Setup — so base styles like the body font are never lost, and that shared pool gets thinner each time you extract a section. Leave the CSS box empty to use the pool; pasting CSS here is a one-off that won’t touch the pool.', 'ekwa' ),
-						checked: aiExtract,
-						onChange: setAiExtract,
-					} ),
-					( cssValue.trim() && ! aiExtract ) ? el( SelectControl, {
+					cssValue.trim() ? el( SelectControl, {
 						label: __( 'CSS destination', 'ekwa' ),
 						value: cssMode,
 						options: [
