@@ -377,7 +377,16 @@ function ekwa_inline_block_assets( $block_content, $block ) {
 	// depends on the .addthis/.share-toggle styles and behavior).
 	$map = ekwa_inline_asset_map();
 	if ( isset( $map[ $name ] ) ) {
-		if ( ! empty( $map[ $name ]['css'] ) ) {
+		// ekwa/header-menu can hand styling entirely to the mockup's own CSS.
+		// Its stylesheet positions the flyouts and mega panel, which a fully
+		// styled mockup header already does — running both means two sets of
+		// positioning rules fighting. The view script still loads: keyboard,
+		// touch and click-outside behaviour is independent of the styling.
+		$skip_css = 'ekwa/header-menu' === $name
+			&& isset( $block['attrs']['useBlockCss'] )
+			&& ! $block['attrs']['useBlockCss'];
+
+		if ( ! empty( $map[ $name ]['css'] ) && ! $skip_css ) {
 			$prepend .= ekwa_inline_get_style( $map[ $name ]['css'] );
 		}
 		if ( ! empty( $map[ $name ]['js'] ) ) {

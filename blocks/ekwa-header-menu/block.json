@@ -2,7 +2,7 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "ekwa/header-menu",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"title": "Ekwa Header Menu",
 	"category": "ekwa-header-footer",
 	"icon": "menu-alt3",
@@ -38,6 +38,26 @@
 		"submenuMinWidth": {
 			"type": "number",
 			"default": 220
+		},
+		"classMap": {
+			"type": "object",
+			"default": {}
+		},
+		"caretTag": {
+			"type": "string",
+			"default": "span"
+		},
+		"wrapLabel": {
+			"type": "boolean",
+			"default": true
+		},
+		"useBlockCss": {
+			"type": "boolean",
+			"default": true
+		},
+		"navLabel": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"editorScript": "ekwa-header-menu-editor"

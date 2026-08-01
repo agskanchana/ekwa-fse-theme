@@ -340,14 +340,21 @@ function ekwa_ai_block_spec_registry() {
 			'block'    => 'ekwa/header-menu',
 			'type'     => 'leaf',
 			'contexts' => array( 'header' ),
-			'desc'     => 'PRIMARY header navigation with submenus/mega-menus. Items come from the Main Menu location at runtime — DO NOT type menu items.',
+			'desc'     => 'PRIMARY header navigation with submenus/mega-menus. Items come from the Main Menu location at runtime — DO NOT type menu items. The block renders its own structure (nav > ul > li > a, nested ul for dropdowns, a panel of columns for mega menus); "classMap" makes it wear the mockup\'s class names so the mockup CSS still matches.',
 			'attrs'    => array(
 				'alignment — left|center|right (default "center")',
 				'itemGap — px between items (default 24)',
 				'submenuMinWidth — px (default 220)',
+				'classMap — object mapping the mockup\'s classes onto the menu\'s parts. Keys: nav, menu, item, hasChildren, link, label, caret, submenu, submenuItem, submenuLink, megaParent, mega, megaGrid, megaColumn, megaImageWrap, megaImage, megaHeading, megaList, megaItem, megaLink. Copy the class from the matching element in the source nav; omit a key when the source has no extra class there. Leave OUT state classes (active/current) and any ekwa-*/menu-item* class the block already emits.',
+				'caretTag — "i" when the mockup draws the dropdown arrow with an icon font, else "span"',
+				'wrapLabel — false when the mockup puts link text directly in the <a> rather than a <span>',
+				'useBlockCss — false when the mockup\'s CSS fully styles the menu',
 				'className',
 			),
-			'examples' => array( "<!-- wp:ekwa/header-menu {\"alignment\":\"center\",\"itemGap\":28} /-->" ),
+			'examples' => array(
+				"<!-- wp:ekwa/header-menu {\"alignment\":\"center\",\"itemGap\":28} /-->",
+				"<!-- wp:ekwa/header-menu {\"classMap\":{\"nav\":\"main-nav\",\"menu\":\"nav-list\",\"item\":\"nav-item\",\"link\":\"nav-link\",\"hasChildren\":\"has-dropdown\",\"submenu\":\"dropdown\",\"megaParent\":\"mega-menu-parent\",\"mega\":\"mega-dropdown\",\"megaColumn\":\"mega-column\"},\"caretTag\":\"i\"} /-->",
+			),
 		),
 
 		'phone' => array(

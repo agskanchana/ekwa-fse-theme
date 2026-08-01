@@ -2182,7 +2182,16 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
  * @return string
  */
 function ekwa_render_header_menu_block( $attrs ) {
-	$nav = ekwa_render_main_nav( 'main_menu' );
+	// The mockup's own class names, applied alongside the canonical ones so a
+	// converted header renders with the exact selectors its stylesheet targets.
+	$nav = ekwa_render_main_nav( 'main_menu', array(
+		'classMap'  => function_exists( 'ekwa_header_menu_sanitize_class_map' )
+			? ekwa_header_menu_sanitize_class_map( $attrs['classMap'] ?? array() )
+			: array(),
+		'caretTag'  => ( isset( $attrs['caretTag'] ) && 'i' === $attrs['caretTag'] ) ? 'i' : 'span',
+		'wrapLabel' => ! isset( $attrs['wrapLabel'] ) || (bool) $attrs['wrapLabel'],
+		'navLabel'  => isset( $attrs['navLabel'] ) ? sanitize_text_field( $attrs['navLabel'] ) : '',
+	) );
 
 	if ( '' === $nav ) {
 		if ( current_user_can( 'edit_theme_options' ) ) {

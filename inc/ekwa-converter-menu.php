@@ -124,6 +124,7 @@ function ekwa_mc_menu_find_nav( $doc ) {
 	$best       = null;
 	$best_score = 0;
 	foreach ( $xpath->query( '//nav' ) as $nav ) {
+		// (the <nav> scan continues below; a bare <ul> fallback follows it)
 		// Skip the mobile drawer — ekwa/hamburger-menu renders that one.
 		if ( ekwa_mc_node_has_class( $nav, 'ekwa-mobile-nav' ) ) {
 			continue;
@@ -144,6 +145,42 @@ function ekwa_mc_menu_find_nav( $doc ) {
 		$score = $links + ( $in_header ? 1000 : 0 );
 		if ( $score > $best_score ) {
 			$best       = $nav;
+			$best_score = $score;
+		}
+	}
+	if ( $best ) {
+		return $best;
+	}
+
+	// No <nav> at all — plenty of mockups hang the menu straight off a bare
+	// <ul>. Take the richest top-level list: several items, at least one of
+	// them holding a nested list or a dropdown panel.
+	foreach ( $xpath->query( '//ul' ) as $ul ) {
+		// Only consider a list that isn't itself inside another list.
+		if ( $xpath->query( 'ancestor::ul|ancestor::li', $ul )->length ) {
+			continue;
+		}
+		$items = ekwa_mc_menu_children( $ul, 'li' );
+		if ( count( $items ) < 2 ) {
+			continue;
+		}
+		$links  = $ul->getElementsByTagName( 'a' )->length;
+		$nested = 0;
+		foreach ( $items as $li ) {
+			if ( ekwa_mc_menu_children( $li, 'ul' ) || ekwa_mc_menu_find_mega_panel( $li ) ) {
+				$nested++;
+			}
+		}
+		$in_header = false;
+		for ( $p = $ul->parentNode; $p && XML_ELEMENT_NODE === $p->nodeType; $p = $p->parentNode ) {
+			if ( 'header' === strtolower( $p->nodeName ) ) {
+				$in_header = true;
+				break;
+			}
+		}
+		$score = $links + ( $nested * 5 ) + ( $in_header ? 1000 : 0 );
+		if ( $score > $best_score ) {
+			$best       = $ul;
 			$best_score = $score;
 		}
 	}
@@ -235,8 +272,13 @@ function ekwa_mc_menu_parse_item( $li ) {
 		$item['columns']  = 0;
 	}
 
-	// ── Plain dropdown: a nested <ul>. ───────────────────────────────────
-	foreach ( ekwa_mc_menu_children( $li, 'ul' ) as $sub ) {
+	// ── Plain dropdown: a nested <ul>, directly or inside a wrapper. ─────
+	$subs = ekwa_mc_menu_children( $li, 'ul' );
+	if ( ! $subs ) {
+		$wrapped = ekwa_mc_menu_find_wrapped_list( $li );
+		$subs    = $wrapped ? array( $wrapped ) : array();
+	}
+	foreach ( $subs as $sub ) {
 		foreach ( ekwa_mc_menu_children( $sub, 'li' ) as $sub_li ) {
 			$child = ekwa_mc_menu_parse_item( $sub_li );
 			if ( $child ) {
@@ -279,11 +321,52 @@ function ekwa_mc_menu_own_text( $node ) {
  * @return DOMElement|null
  */
 function ekwa_mc_menu_find_mega_panel( $li ) {
+	// Known class signatures first.
 	foreach ( ekwa_mc_menu_children( $li ) as $child ) {
 		if ( ekwa_mc_node_has_class( $child, 'ekwa-megamenu' )
 			|| ekwa_mc_node_has_class( $child, 'mega-dropdown' )
 			|| ekwa_mc_node_has_class( $child, 'mega-menu' ) ) {
 			return $child;
+		}
+	}
+
+	// Otherwise recognise it by shape, so a panel called anything at all still
+	// converts: a non-list element inside the <li> that holds MORE THAN ONE
+	// column, each column being an element with its own link(s). One column
+	// isn't a mega menu — that's a plain dropdown in a wrapper, handled by
+	// ekwa_mc_menu_find_wrapped_list().
+	foreach ( ekwa_mc_menu_children( $li ) as $child ) {
+		if ( in_array( strtolower( $child->nodeName ), array( 'ul', 'ol', 'a' ), true ) ) {
+			continue;
+		}
+		if ( count( ekwa_mc_menu_mega_column_nodes( $child ) ) > 1 ) {
+			return $child;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * A submenu <ul> sitting inside a wrapper element rather than directly in the
+ * <li> — `<li><a>…</a><div class="wrap"><ul>…</ul></div></li>`.
+ *
+ * @param DOMElement $li
+ * @return DOMElement|null The <ul>, or null.
+ */
+function ekwa_mc_menu_find_wrapped_list( $li ) {
+	foreach ( ekwa_mc_menu_children( $li ) as $child ) {
+		if ( in_array( strtolower( $child->nodeName ), array( 'ul', 'ol', 'a' ), true ) ) {
+			continue;
+		}
+		foreach ( ekwa_mc_menu_children( $child, 'ul' ) as $ul ) {
+			return $ul;
+		}
+		// One more level — wrappers occasionally come in pairs.
+		foreach ( ekwa_mc_menu_children( $child ) as $grandchild ) {
+			foreach ( ekwa_mc_menu_children( $grandchild, 'ul' ) as $ul ) {
+				return $ul;
+			}
 		}
 	}
 	return null;
@@ -329,7 +412,34 @@ function ekwa_mc_menu_mega_column_nodes( $panel ) {
 			}
 		}
 	}
-	return $columns;
+	if ( $columns ) {
+		return $columns;
+	}
+
+	// No column class anywhere — fall back to shape, so a mega panel whose
+	// columns are called anything at all still converts. A column is an
+	// element that carries links of its own; the grid may be one level down.
+	$looks_like_column = function ( $el ) {
+		return ! in_array( strtolower( $el->nodeName ), array( 'a', 'img', 'br', 'span' ), true )
+			&& $el->getElementsByTagName( 'a' )->length > 0;
+	};
+
+	foreach ( array( $panel, ekwa_mc_menu_children( $panel ) ) as $level ) {
+		$parents = is_array( $level ) ? $level : array( $level );
+		foreach ( $parents as $parent ) {
+			$found = array();
+			foreach ( ekwa_mc_menu_children( $parent ) as $child ) {
+				if ( $looks_like_column( $child ) ) {
+					$found[] = $child;
+				}
+			}
+			if ( count( $found ) > 1 ) {
+				return $found;
+			}
+		}
+	}
+
+	return array();
 }
 
 /**
@@ -412,6 +522,227 @@ function ekwa_mc_menu_parse_column( $col ) {
 	}
 
 	return $item;
+}
+
+/**
+ * Read the mockup's own class names off its nav, position by position, so
+ * ekwa/header-menu can render with them.
+ *
+ * The block renders a fixed structure with canonical classes; the mockup names
+ * the same elements whatever it likes. Handing the block this map is what lets
+ * a converted header keep the mockup's stylesheet working unchanged, instead
+ * of the author having to rename everything to `ekwa-*`.
+ *
+ * Classes the block already emits itself are dropped, so the map only carries
+ * what's genuinely the mockup's.
+ *
+ * @param DOMElement $nav The mockup's navigation element.
+ * @return array<string,string> Slot => class list, omitting empty slots.
+ */
+function ekwa_mc_menu_class_map( $nav ) {
+	if ( ! function_exists( 'ekwa_header_menu_class_slots' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-header-menu.php';
+	}
+	$canonical = ekwa_header_menu_class_slots();
+
+	// Classes the block generates on its own — never echo them back.
+	$owned = array_filter( array_values( $canonical ) );
+	$owned = array_merge( $owned, array( 'menu-item', 'menu-item-has-children', 'menu-item-megamenu', 'has-image', 'sub-menu' ) );
+
+	$map = array();
+	$put = function ( $slot, $node ) use ( &$map, $owned ) {
+		if ( ! $node || isset( $map[ $slot ] ) ) {
+			return;
+		}
+		$classes = preg_split( '/\s+/', (string) $node->getAttribute( 'class' ), -1, PREG_SPLIT_NO_EMPTY );
+		$keep    = array();
+		foreach ( $classes as $class ) {
+			// Skip the block's own classes, WordPress' runtime ones
+			// (menu-item-42, current-menu-item), and state classes — the mockup
+			// marks ONE item active, and baking that onto every link would light
+			// up the whole menu.
+			if ( in_array( $class, $owned, true )
+				|| preg_match( '/^(?:menu-item-\d+|current[-_])/', $class )
+				|| in_array( strtolower( $class ), array( 'active', 'is-active', 'selected', 'is-selected', 'open', 'is-open', 'current' ), true ) ) {
+				continue;
+			}
+			$keep[] = $class;
+		}
+		if ( $keep ) {
+			$map[ $slot ] = implode( ' ', array_unique( $keep ) );
+		}
+	};
+
+	if ( 'nav' === strtolower( $nav->nodeName ) ) {
+		$put( 'nav', $nav );
+	}
+
+	// The top-level list, then the first item that has each shape we care about.
+	$list = ( 'ul' === strtolower( $nav->nodeName ) ) ? $nav : null;
+	if ( ! $list ) {
+		foreach ( $nav->getElementsByTagName( 'ul' ) as $ul ) {
+			$list = $ul;
+			break;
+		}
+	}
+	if ( ! $list ) {
+		return $map;
+	}
+	$put( 'menu', $list );
+
+	foreach ( ekwa_mc_menu_children( $list, 'li' ) as $li ) {
+		$put( 'item', $li );
+
+		$anchor = ekwa_mc_menu_find_own( $li, 'a' );
+		if ( $anchor ) {
+			$put( 'link', $anchor );
+			foreach ( $anchor->getElementsByTagName( 'span' ) as $span ) {
+				if ( ekwa_mc_node_has_class( $span, 'ekwa-menu-label' ) || ! isset( $map['label'] ) ) {
+					$put( 'label', $span );
+					break;
+				}
+			}
+			foreach ( array( 'i', 'span' ) as $caret_tag ) {
+				foreach ( $anchor->getElementsByTagName( $caret_tag ) as $el ) {
+					if ( '' === trim( $el->textContent ) && $el->getAttribute( 'class' ) ) {
+						$put( 'caret', $el );
+						break 2;
+					}
+				}
+			}
+		}
+
+		// Mega panel, if this item has one.
+		$mega = ekwa_mc_menu_find_mega_panel( $li );
+		if ( $mega ) {
+			$put( 'megaParent', $li );
+			$put( 'mega', $mega );
+			foreach ( ekwa_mc_menu_children( $mega ) as $inner ) {
+				if ( ekwa_mc_menu_mega_column_nodes( $inner ) || ekwa_mc_node_has_class( $inner, 'ekwa-megamenu-grid' ) ) {
+					$put( 'megaGrid', $inner );
+					break;
+				}
+			}
+			foreach ( ekwa_mc_menu_mega_column_nodes( $mega ) as $col ) {
+				$put( 'megaColumn', $col );
+				foreach ( $col->getElementsByTagName( 'img' ) as $img ) {
+					$put( 'megaImage', $img );
+					if ( $img->parentNode && XML_ELEMENT_NODE === $img->parentNode->nodeType ) {
+						$put( 'megaImageWrap', $img->parentNode );
+					}
+					break;
+				}
+				$heading = ekwa_mc_menu_find_own( $col, 'a', 'ekwa-megamenu-heading' );
+				if ( ! $heading ) {
+					$heading = ekwa_mc_menu_find_own( $col, 'a', 'dropdown-header' );
+				}
+				if ( ! $heading ) {
+					$heading = ekwa_mc_menu_find_own( $col, 'a' );
+				}
+				$put( 'megaHeading', $heading );
+				foreach ( $col->getElementsByTagName( 'ul' ) as $ul ) {
+					$put( 'megaList', $ul );
+					foreach ( ekwa_mc_menu_children( $ul, 'li' ) as $leaf ) {
+						$put( 'megaItem', $leaf );
+						$put( 'megaLink', ekwa_mc_menu_find_own( $leaf, 'a' ) );
+						break;
+					}
+					break;
+				}
+				break;
+			}
+			continue;
+		}
+
+		// Plain dropdown (nested list, or one inside a wrapper).
+		$subs = ekwa_mc_menu_children( $li, 'ul' );
+		if ( ! $subs ) {
+			$wrapped = ekwa_mc_menu_find_wrapped_list( $li );
+			$subs    = $wrapped ? array( $wrapped ) : array();
+		}
+		foreach ( $subs as $sub ) {
+			$put( 'hasChildren', $li );
+			$put( 'submenu', $sub );
+			foreach ( ekwa_mc_menu_children( $sub, 'li' ) as $sub_li ) {
+				$put( 'submenuItem', $sub_li );
+				$put( 'submenuLink', ekwa_mc_menu_find_own( $sub_li, 'a' ) );
+				break;
+			}
+			break;
+		}
+	}
+
+	// The "has children" and "is a mega parent" slots are read off the same
+	// <li> as `item`, so they arrive carrying its classes too. The block adds
+	// all three to one element — subtract, or every dropdown item would repeat
+	// the base item class.
+	$subtract = function ( $slot, $from ) use ( &$map ) {
+		if ( empty( $map[ $slot ] ) || empty( $map[ $from ] ) ) {
+			return;
+		}
+		$rest = array_diff(
+			preg_split( '/\s+/', $map[ $slot ], -1, PREG_SPLIT_NO_EMPTY ),
+			preg_split( '/\s+/', $map[ $from ], -1, PREG_SPLIT_NO_EMPTY )
+		);
+		if ( $rest ) {
+			$map[ $slot ] = implode( ' ', $rest );
+		} else {
+			unset( $map[ $slot ] );
+		}
+	};
+	$subtract( 'hasChildren', 'item' );
+	$subtract( 'megaParent', 'item' );
+	$subtract( 'megaParent', 'hasChildren' );
+
+	return $map;
+}
+
+/**
+ * The class map plus the structural switches, as ekwa/header-menu attributes.
+ *
+ * @param DOMElement $nav
+ * @return array Block attributes (may be empty).
+ */
+function ekwa_mc_menu_block_attrs( $nav ) {
+	$attrs = array();
+
+	$map = ekwa_mc_menu_class_map( $nav );
+	if ( ! empty( $map ) ) {
+		$attrs['classMap'] = $map;
+	}
+
+	// Does the mockup draw the caret with an icon font (<i>) or a styled span?
+	$caret_tag = '';
+	foreach ( $nav->getElementsByTagName( 'i' ) as $el ) {
+		if ( '' === trim( $el->textContent ) && $el->getAttribute( 'class' ) ) {
+			$caret_tag = 'i';
+			break;
+		}
+	}
+	if ( 'i' === $caret_tag ) {
+		$attrs['caretTag'] = 'i';
+	}
+
+	// Does it wrap link text in a <span>, or is the text bare?
+	$wraps = false;
+	foreach ( $nav->getElementsByTagName( 'a' ) as $a ) {
+		foreach ( $a->getElementsByTagName( 'span' ) as $span ) {
+			if ( '' !== trim( $span->textContent ) ) {
+				$wraps = true;
+				break 2;
+			}
+		}
+	}
+	if ( ! $wraps ) {
+		$attrs['wrapLabel'] = false;
+	}
+
+	$label = trim( $nav->getAttribute( 'aria-label' ) );
+	if ( '' !== $label ) {
+		$attrs['navLabel'] = $label;
+	}
+
+	return $attrs;
 }
 
 /**

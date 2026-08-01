@@ -219,7 +219,9 @@ function ekwa_mc_detect_canonical( $node, $depth, $tag ) {
 		// assigned WP menu's item meta.
 		if ( ekwa_mc_node_has_class( $node, 'ekwa-header-nav' )
 			|| ekwa_mc_has_class_descendant( $node, 'ul', 'ekwa-header-menu' ) ) {
-			return $leaf( 'ekwa/header-menu' );
+			// Hand the block the mockup's own class names so the header renders
+			// with the selectors the mockup's stylesheet already targets.
+			return $leaf( 'ekwa/header-menu', ekwa_mc_header_menu_attrs( $node ) );
 		}
 		// nav.ekwa-mobile-nav is rendered BY ekwa/hamburger-menu — emit nothing.
 		if ( ekwa_mc_node_has_class( $node, 'ekwa-mobile-nav' ) ) {
@@ -335,7 +337,9 @@ function ekwa_mc_detect_token( $node, $depth, $token ) {
 			return $leaf( 'ekwa/svg-logo' );
 
 		case 'menu':
-			return $leaf( 'ekwa/header-menu' );
+			// data-ekwa="menu" forces the mapping on any markup — read its
+			// classes so the block can wear them (see ekwa_mc_menu_class_map()).
+			return $leaf( 'ekwa/header-menu', ekwa_mc_header_menu_attrs( $node ) );
 
 		case 'navigation':
 			return $leaf( 'core/navigation' );
@@ -885,6 +889,24 @@ function ekwa_mc_detect_search( $node, $depth ) {
 }
 
 /**
+ * ekwa/header-menu attributes for a mockup nav — the class map plus the
+ * structural switches. Safe to call before the menu module has loaded.
+ *
+ * @param DOMElement $node The nav (or list) element.
+ * @return array
+ */
+function ekwa_mc_header_menu_attrs( $node ) {
+	if ( ! function_exists( 'ekwa_mc_menu_block_attrs' ) ) {
+		$file = get_template_directory() . '/inc/ekwa-converter-menu.php';
+		if ( ! file_exists( $file ) ) {
+			return array();
+		}
+		require_once $file;
+	}
+	return ekwa_mc_menu_block_attrs( $node );
+}
+
+/**
  * Build a `className` attribute array from an element's classes, minus the
  * canonical signature class(es) the block already renders itself.
  *
@@ -993,6 +1015,15 @@ function ekwa_mc_detect_header_menu( $node, $depth ) {
 		if ( $minw > 0 && $minw !== 220 ) {
 			$attrs['submenuMinWidth'] = $minw;
 		}
+	}
+
+	// The nav inside the wrapper carries the mockup's own class names.
+	$inner = $node->getElementsByTagName( 'nav' )->item( 0 );
+	if ( ! $inner ) {
+		$inner = $node->getElementsByTagName( 'ul' )->item( 0 );
+	}
+	if ( $inner ) {
+		$attrs = array_merge( $attrs, ekwa_mc_header_menu_attrs( $inner ) );
 	}
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
