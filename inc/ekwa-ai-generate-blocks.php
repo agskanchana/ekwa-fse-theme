@@ -536,16 +536,25 @@ function ekwa_ai_repair_block_markup( $markup ) {
  *    class="wp-block-list">` therefore drops the mockup's class on the floor
  *    and the dropdown loses its CSS. The class is copied onto the element.
  *
- * @param string $markup Block-comment markup.
+ * @param string $markup  Block-comment markup.
+ * @param array  $options {
+ *     @type bool $bare_icons Emit ekwa/icon with no wrapper <div> unless the
+ *                            block names one. Set by the mockup converter: a
+ *                            bare <i> in the source must stay a bare <i>, but
+ *                            the block's own "way-icon" default is deliberate
+ *                            for generated content (service cards), so this is
+ *                            opt-in rather than a change to the default.
+ * }
  * @return array{markup:string,notes:array<int,string>,fixed:int}
  */
-function ekwa_ai_repair_block_structure( $markup ) {
+function ekwa_ai_repair_block_structure( $markup, $options = array() ) {
 	$notes = array();
 	if ( '' === trim( (string) $markup ) ) {
 		return array( 'markup' => (string) $markup, 'notes' => $notes, 'fixed' => 0 );
 	}
 
-	$stats  = array( 'unwrapped' => 0, 'classed' => 0 );
+	$stats  = array( 'unwrapped' => 0, 'classed' => 0, 'icons' => 0 );
+	$stats['bare_icons'] = ! empty( $options['bare_icons'] );
 	$blocks = parse_blocks( $markup );
 	$blocks = ekwa_ai_repair_blocks_walk( $blocks, $stats );
 
@@ -571,15 +580,26 @@ function ekwa_ai_repair_block_structure( $markup ) {
 			$stats['classed']
 		);
 	}
+	if ( $stats['icons'] > 0 ) {
+		$notes[] = sprintf(
+			_n(
+				'Dropped the wrapper <div> from %d icon so it renders as the bare <i> the mockup had.',
+				'Dropped the wrapper <div> from %d icons so they render as the bare <i> the mockup had.',
+				$stats['icons'],
+				'ekwa'
+			),
+			$stats['icons']
+		);
+	}
 
-	if ( ! $stats['unwrapped'] && ! $stats['classed'] ) {
+	if ( ! $stats['unwrapped'] && ! $stats['classed'] && ! $stats['icons'] ) {
 		return array( 'markup' => $markup, 'notes' => $notes, 'fixed' => 0 );
 	}
 
 	return array(
 		'markup' => serialize_blocks( $blocks ),
 		'notes'  => $notes,
-		'fixed'  => $stats['unwrapped'] + $stats['classed'],
+		'fixed'  => $stats['unwrapped'] + $stats['classed'] + $stats['icons'],
 	);
 }
 
@@ -600,6 +620,7 @@ function ekwa_ai_repair_blocks_walk( $blocks, &$stats ) {
 
 		$block = ekwa_ai_repair_text_attribute_html( $block, $stats );
 		$block = ekwa_ai_repair_static_class( $block, $stats );
+		$block = ekwa_ai_repair_bare_icon( $block, $stats );
 
 		$out[] = $block;
 	}
@@ -729,6 +750,41 @@ function ekwa_ai_repair_html_to_blocks( $html ) {
 	} ) );
 
 	return $blocks;
+}
+
+/**
+ * Keep a converted icon a bare `<i>`.
+ *
+ * `ekwa/icon` defaults `wrapperClass` to "way-icon" (a service-card convention),
+ * so an omitted attribute renders `<div class="way-icon"><i …></i></div>`. When
+ * the source was a bare `<i>` in a flex row — a dropdown caret, a search glyph —
+ * that extra block-level div breaks the layout. Setting the attribute to an
+ * empty string makes the block emit just the `<i>`.
+ *
+ * Only runs for the mockup converter (see the $options['bare_icons'] flag);
+ * generated content keeps the default.
+ *
+ * @param array $block Parsed block.
+ * @param array $stats Counters, by reference.
+ * @return array
+ */
+function ekwa_ai_repair_bare_icon( $block, &$stats ) {
+	if ( empty( $stats['bare_icons'] ) ) {
+		return $block;
+	}
+	if ( ! isset( $block['blockName'] ) || 'ekwa/icon' !== $block['blockName'] ) {
+		return $block;
+	}
+	// An explicit wrapperClass is a deliberate choice — leave it.
+	if ( isset( $block['attrs']['wrapperClass'] ) ) {
+		return $block;
+	}
+
+	$block['attrs']                 = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+	$block['attrs']['wrapperClass'] = '';
+	$stats['icons']++;
+
+	return $block;
 }
 
 /**

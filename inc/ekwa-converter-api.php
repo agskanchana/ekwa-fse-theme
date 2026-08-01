@@ -81,6 +81,13 @@ function ekwa_register_converter_routes() {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			// Drop a single outer <header>/<footer>/<main> — the template part
+			// being edited already renders that landmark.
+			'drop_outer_landmark' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 
@@ -186,6 +193,15 @@ function ekwa_rest_convert_markup( $request ) {
 		}
 	}
 
+	// Landmark demotion runs on the SOURCE html, before conversion, so both
+	// engines see the same tree (and the menu import below still finds the nav).
+	$demoted = '';
+	if ( $request->get_param( 'drop_outer_landmark' ) ) {
+		$landmark = ekwa_mc_demote_root_landmark( $html );
+		$html     = $landmark['html'];
+		$demoted  = $landmark['demoted'];
+	}
+
 	$options = array(
 		'detect_dynamic' => $request->get_param( 'detect_dynamic' ),
 	);
@@ -198,6 +214,10 @@ function ekwa_rest_convert_markup( $request ) {
 		'report'   => isset( $result['report'] ) ? $result['report'] : array(),
 	);
 
+	if ( $demoted ) {
+		$response['warnings'][] = ekwa_mc_demote_notice( $demoted );
+	}
+
 	// ── Optional mockup CSS handling ─────────────────────────────────────
 	$response = ekwa_mc_apply_css_options( $request, $html, $response );
 	if ( is_wp_error( $response ) ) {
@@ -208,6 +228,20 @@ function ekwa_rest_convert_markup( $request ) {
 	$response = ekwa_mc_apply_post_conversion( $request, $html, $response );
 
 	return rest_ensure_response( $response );
+}
+
+/**
+ * The warning shown when an outer landmark tag was demoted to a div.
+ *
+ * @param string $tag The demoted tag name.
+ * @return string
+ */
+function ekwa_mc_demote_notice( $tag ) {
+	return sprintf(
+		/* translators: %s: the HTML tag that was demoted, e.g. "header". */
+		__( 'The outer <%1$s> was converted to a <div>, keeping its classes and id — the template part you are editing already renders its own <%1$s>, and nesting them is invalid HTML (and gives assistive tech two landmarks). CSS written as ".main-header" still matches; a selector written as "%1$s.main-header" would need updating. Turn off "Drop the outer landmark tag" if you are pasting into a page instead.', 'ekwa' ),
+		$tag
+	);
 }
 
 /**
@@ -258,6 +292,35 @@ function ekwa_mc_apply_post_conversion( $request, $html, array $response ) {
 		}
 	}
 
+	// ── Normalize every icon to Font Awesome. ────────────────────────────
+	// Catches what the DOM pass can't reach: AI-generated markup, the HTML
+	// inside a dynamic block's customTemplate, and raw inner HTML.
+	if ( function_exists( 'ekwa_mc_icons_to_fontawesome' ) ) {
+		$icons = ekwa_mc_icons_to_fontawesome( (string) $response['markup'] );
+		if ( $icons['converted'] > 0 ) {
+			$response['markup']     = $icons['markup'];
+			$response['icons_converted'] = $icons['converted'];
+			$response['warnings'][] = sprintf(
+				/* translators: %d: number of icons rewritten. */
+				_n(
+					'Converted %d icon to Font Awesome — the theme only loads Font Awesome, so other icon fonts would not have rendered.',
+					'Converted %d icons to Font Awesome — the theme only loads Font Awesome, so other icon fonts would not have rendered.',
+					$icons['converted'],
+					'ekwa'
+				),
+				$icons['converted']
+			);
+		}
+		if ( ! empty( $icons['unmapped'] ) ) {
+			$response['icons_unmapped'] = $icons['unmapped'];
+			$response['warnings'][]     = sprintf(
+				/* translators: %s: comma-separated icon class names. */
+				__( 'No Font Awesome equivalent for these icons, so they will render as blank: %s. Pick a replacement at fontawesome.com/search and set it on the block (Icon class).', 'ekwa' ),
+				implode( ', ', array_slice( $icons['unmapped'], 0, 12 ) ) . ( count( $icons['unmapped'] ) > 12 ? '…' : '' )
+			);
+		}
+	}
+
 	// ── Fidelity audit: which mockup classes vanished? ───────────────────
 	// A dropped class is invisible in the block markup but silently unstyles
 	// whatever the mockup's CSS targeted, so it's worth naming explicitly.
@@ -265,8 +328,8 @@ function ekwa_mc_apply_post_conversion( $request, $html, array $response ) {
 	if ( ! empty( $lost ) ) {
 		$response['lost_classes'] = $lost;
 		$response['warnings'][]   = sprintf(
-			/* translators: %s: comma-separated CSS class names. */
-			__( 'These mockup classes are not in the converted blocks, so any CSS targeting them will not apply: %s. Add them back via each block\'s Advanced → Additional CSS class(es).', 'ekwa' ),
+			/* translators: %s: comma-separated CSS class names and #ids. */
+			__( 'These mockup selectors are not in the converted blocks, so any CSS or JS targeting them will not apply: %s. Add a class back via the block\'s Advanced → Additional CSS class(es), and an #id via Advanced → HTML anchor.', 'ekwa' ),
 			implode( ', ', array_slice( $lost, 0, 20 ) ) . ( count( $lost ) > 20 ? '…' : '' )
 		);
 	}
@@ -339,6 +402,13 @@ function ekwa_mc_missing_classes( $html, $markup ) {
 				}
 			}
 
+			// ids matter as much as classes — mockups hang scroll handlers and
+			// skip links off them, and a dropped id fails just as quietly.
+			$id = trim( $child->getAttribute( 'id' ) );
+			if ( '' !== $id ) {
+				$source[ '#' . $id ] = true;
+			}
+
 			$walk( $child );
 		}
 	};
@@ -356,9 +426,10 @@ function ekwa_mc_missing_classes( $html, $markup ) {
 	// Anything the markup mentions anywhere counts as kept — className
 	// attributes, inline HTML, and customTemplate payloads all qualify.
 	$missing = array();
-	foreach ( array_keys( $source ) as $class ) {
-		if ( false === strpos( $markup, $class ) ) {
-			$missing[] = $class;
+	foreach ( array_keys( $source ) as $name ) {
+		$needle = ( '#' === $name[0] ) ? substr( $name, 1 ) : $name;
+		if ( false === strpos( $markup, $needle ) ) {
+			$missing[] = $name;
 		}
 	}
 

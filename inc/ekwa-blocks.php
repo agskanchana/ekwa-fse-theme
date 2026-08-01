@@ -1919,7 +1919,14 @@ function ekwa_render_search_block( $attrs ) {
 	if ( $button_bg   ) { $btn_style .= 'background:' . esc_attr( $button_bg ) . ';'; }
 	if ( $icon_color  ) { $btn_style .= 'color:' . esc_attr( $icon_color ) . ';'; }
 
-	$wrapper_attrs = ' class="ekwa-search-block"';
+	// Extra classes ride along on the wrapper. A mockup's search trigger is
+	// usually positioned by its own class (`.search-icon`), which the converter
+	// carries over as className — dropping it left the block unstyled where the
+	// mockup put it.
+	$extra_class   = isset( $attrs['className'] ) ? trim( sanitize_text_field( $attrs['className'] ) ) : '';
+	$wrapper_class = trim( 'ekwa-search-block ' . $extra_class );
+
+	$wrapper_attrs = ' class="' . esc_attr( $wrapper_class ) . '"';
 	if ( $anchor ) {
 		$wrapper_attrs .= ' id="' . esc_attr( $anchor ) . '"';
 	}
@@ -3987,7 +3994,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$allowed = array(
 		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',
 		'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub',
-		'figcaption',
+		'figcaption', 'button',
 	);
 	if ( ! in_array( $tag, $allowed, true ) ) {
 		$tag = 'div';
@@ -4027,6 +4034,12 @@ function ekwa_render_div_block( $attrs, $content ) {
 		$html .= ' href="' . ( $href ? $href : '#' ) . '"';
 		if ( $target ) { $html .= ' target="' . esc_attr( $target ) . '"'; }
 		if ( $rel )    { $html .= ' rel="' . esc_attr( $rel ) . '"'; }
+	}
+	// A <button> inside a form defaults to type="submit" — mockup buttons are
+	// almost always UI triggers (dropdown toggles, search), so default them to
+	// "button" unless the author set a type via customAttributes.
+	if ( 'button' === $tag && empty( $attrs['customAttributes']['type'] ) ) {
+		$html .= ' type="button"';
 	}
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</' . $tag . '>';

@@ -78,6 +78,11 @@ function ekwa_ai_convert_register_routes() {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			'drop_outer_landmark' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 
@@ -187,7 +192,8 @@ EVERYTHING ELSE — structure:
 - Headings <h1>–<h6> → core/heading with the matching level. Paragraphs → core/paragraph. Lists <ul>/<ol> → core/list. Copy the inner text/HTML exactly.
 - <img> → ekwa/image with src, alt, width, height.
 - A link or button that is a call-to-action (has a button class like .btn/.b/.button, or is an obvious CTA) → ekwa/button {"text":"…","url":"…"} (add {"variant":"outline"} for outline styles). A plain text link → ekwa/link {"text":"…","url":"…"}. Preserve href exactly.
-- A Font Awesome icon (<i class="fa…">) → ekwa/icon {"iconClass":"…"}.
+- An icon (<i class="fa…">) → ekwa/icon {"iconClass":"…","wrapperClass":""}. Always set wrapperClass to "" — the block otherwise wraps the icon in a <div>, which breaks inline/flex rows.
+- ICONS ARE ALWAYS FONT AWESOME 6. The theme loads Font Awesome and no other icon font, so if the mockup uses Remix Icon (ri-*), Bootstrap Icons (bi-*), Themify (ti-*), Ionicons, Material Icons, Line Awesome or Glyphicons, translate the class to the equivalent Font Awesome 6 Free class: fa-solid for regular icons, fa-brands for logos. E.g. ri-search-line → "fa-solid fa-magnifying-glass", ri-phone-fill → "fa-solid fa-phone", ri-map-pin-fill → "fa-solid fa-location-dot", ri-arrow-down-s-line → "fa-solid fa-chevron-down", ri-facebook-circle-fill → "fa-brands fa-facebook", bi-telephone-fill → "fa-solid fa-phone". Keep any non-icon classes on the element. This applies inside customTemplate markup too.
 
 NEVER PUT HTML IN AN ATTRIBUTE. A "text" attribute is rendered as escaped plain text — a tag inside it shows up as literal characters, so the element it described is lost. This is the single most common conversion failure, so check every link you emit:
 - A link containing ONLY text → ekwa/link {"text":"Read more","url":"/about/"}. Fine.
@@ -246,6 +252,15 @@ function ekwa_ai_convert_handle_request( $request ) {
 	// converter uses, so pasting a whole index.html is safe.
 	if ( function_exists( 'ekwa_mc_extract_body' ) ) {
 		$html = ekwa_mc_extract_body( $html );
+	}
+
+	// Demote the outer landmark BEFORE the model sees it, so both engines
+	// behave identically and the model never has to be told about it.
+	$demoted = '';
+	if ( $request->get_param( 'drop_outer_landmark' ) && function_exists( 'ekwa_mc_demote_root_landmark' ) ) {
+		$landmark = ekwa_mc_demote_root_landmark( $html );
+		$html     = $landmark['html'];
+		$demoted  = $landmark['demoted'];
 	}
 
 	$system   = ekwa_ai_convert_system_prompt();
@@ -312,9 +327,13 @@ function ekwa_ai_convert_handle_request( $request ) {
 	// Structural repairs the JSON repairer can't see: HTML smuggled into text
 	// attributes, and static core blocks whose className never reached their
 	// saved markup.
-	$structure    = ekwa_ai_repair_block_structure( $block_markup );
+	$structure    = ekwa_ai_repair_block_structure( $block_markup, array( 'bare_icons' => true ) );
 	$block_markup = $structure['markup'];
 	$warnings     = array_merge( $warnings, $structure['notes'] );
+
+	if ( $demoted && function_exists( 'ekwa_mc_demote_notice' ) ) {
+		$warnings[] = ekwa_mc_demote_notice( $demoted );
+	}
 
 	$warnings      = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $block_markup ) );
 	$rendered_html = ekwa_ai_generate_blocks_render_preview( $block_markup );

@@ -179,6 +179,12 @@ require_once get_template_directory() . '/inc/ekwa-converter-api.php';
 require_once get_template_directory() . '/inc/ekwa-converter-menu.php';
 
 /**
+ * Translate Remix/Bootstrap/Themify/Material/… icon classes to Font Awesome,
+ * the only icon font the theme loads.
+ */
+require_once get_template_directory() . '/inc/ekwa-converter-icons.php';
+
+/**
  * AI governance — role gating, per-user daily rate limits, usage logging,
  * payload ceilings. Loaded before the AI feature modules because they share
  * its permission callback (ekwa_ai_rest_permission).

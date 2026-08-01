@@ -875,7 +875,27 @@ function ekwa_mc_detect_search( $node, $depth ) {
 
 	ekwa_mc_warn( 'Auto-detected ekwa-search-block → ekwa/search' );
 
-	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/search /-->' . "\n";
+	// The block re-emits `ekwa-search-block` itself; carry any OTHER classes
+	// over so the mockup's own positioning (e.g. `.search-icon`) still applies.
+	$attrs = ekwa_mc_extra_classes_attr( $node, array( 'ekwa-search-block' ) );
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	return str_repeat( '  ', $depth ) . '<!-- wp:ekwa/search' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Build a `className` attribute array from an element's classes, minus the
+ * canonical signature class(es) the block already renders itself.
+ *
+ * @param DOMElement $node
+ * @param string[]   $signatures Classes to drop.
+ * @return array Empty, or array{className:string}.
+ */
+function ekwa_mc_extra_classes_attr( $node, $signatures ) {
+	$classes = preg_split( '/\s+/', (string) $node->getAttribute( 'class' ), -1, PREG_SPLIT_NO_EMPTY );
+	$extra   = array_values( array_diff( $classes, $signatures ) );
+	return empty( $extra ) ? array() : array( 'className' => implode( ' ', $extra ) );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

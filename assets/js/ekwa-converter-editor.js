@@ -41,6 +41,33 @@
 			? wp.editPost.PluginMoreMenuItem
 			: null );
 
+	/**
+	 * Are we editing a template part (the header/footer parts), rather than a
+	 * page? Those parts already render their own <header>/<footer> landmark, so
+	 * a converted mockup header must not bring a second one — see the
+	 * "Drop the outer landmark tag" toggle.
+	 */
+	function editingTemplatePart() {
+		try {
+			var editor = wp.data.select( 'core/editor' );
+			if ( editor && typeof editor.getCurrentPostType === 'function' ) {
+				var type = editor.getCurrentPostType();
+				if ( type === 'wp_template_part' || type === 'wp_template' ) {
+					return true;
+				}
+			}
+			// Site editor: the edited entity is exposed on core/edit-site.
+			var site = wp.data.select( 'core/edit-site' );
+			if ( site && typeof site.getEditedPostType === 'function' ) {
+				var siteType = site.getEditedPostType();
+				if ( siteType === 'wp_template_part' || siteType === 'wp_template' ) {
+					return true;
+				}
+			}
+		} catch ( e ) {}
+		return false;
+	}
+
 	// ─── Cross-plugin handoff store ─────────────────────────────────────────
 	// The AI Generator plugin calls window.ekwaMockupConverter.openWithHtml(html)
 	// to pre-fill this modal. We hold the pending HTML and a single open-listener
@@ -192,6 +219,10 @@
 		// Menu import — turns the mockup's nav into a real WP menu on main_menu.
 		var s24 = useState( false );     var importMenu  = s24[0]; var setImportMenu  = s24[1];
 		var s25 = useState( false );     var menuReplace = s25[0]; var setMenuReplace = s25[1];
+		// Pre-ticked when editing a template part, which supplies its own
+		// <header>/<footer> — that's where converted headers actually go.
+		var s26 = useState( editingTemplatePart() );
+		var dropLandmark = s26[0]; var setDropLandmark = s26[1];
 		var s15 = useState( null );      var cssExtract = s15[0]; var setCssExtract = s15[1];
 		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
@@ -225,6 +256,9 @@
 				if ( importMenu ) {
 					aiBody.import_menu  = true;
 					aiBody.menu_replace = menuReplace;
+				}
+				if ( dropLandmark ) {
+					aiBody.drop_outer_landmark = true;
 				}
 				apiFetch( {
 					path: '/ekwa/v1/ai-convert',
@@ -271,6 +305,9 @@
 			if ( importMenu ) {
 				body.import_menu  = true;
 				body.menu_replace = menuReplace;
+			}
+			if ( dropLandmark ) {
+				body.drop_outer_landmark = true;
 			}
 
 			if ( ! useServerM && manifestData ) {
@@ -497,6 +534,19 @@
 						onChange: setAiConvert,
 					} )
 				)
+			);
+
+			// Outer landmark — a converted header goes inside the header template
+			// part, which already renders <header>. Nesting them is invalid HTML
+			// and gives assistive tech two banner landmarks.
+			inputChildren.push(
+				el( ToggleControl, {
+					key: 'drop-landmark',
+					label: __( 'Drop the outer <header>/<footer> tag', 'ekwa' ),
+					help: __( 'The template part you paste into already renders its own <header>/<footer>, so the mockup\'s outer landmark becomes a <div> — classes and id are kept, so “.main-header” CSS still matches. Turn this off when pasting into a normal page.', 'ekwa' ),
+					checked: dropLandmark,
+					onChange: setDropLandmark,
+				} )
 			);
 
 			// Menu import — the header-menu block renders whatever WP menu is on

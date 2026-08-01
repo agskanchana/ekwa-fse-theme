@@ -101,6 +101,73 @@ function ekwa_mc_extract_body( $html ) {
 	return $html;
 }
 
+/**
+ * Demote a single outer `<header>`/`<footer>`/`<main>` to a `<div>`.
+ *
+ * A converted header is pasted INTO the header template part, and that part
+ * already renders the landmark itself — `parts/header.html` is a group with
+ * `tagName:"header"`, so the result was
+ * `<header class="ekwa-desktop-header"><header class="main-header">…`. Nested
+ * `<header>` is invalid (a header may not descend from another header), it
+ * gives screen readers two banner landmarks, and it stacks two positioned
+ * wrappers on top of each other.
+ *
+ * Only the OUTERMOST element is touched, and only when it is the sole root —
+ * every class, id and attribute is kept, so CSS written as `.main-header`
+ * still matches. A selector written as `header.main-header` would not; that's
+ * the trade, and it's reported.
+ *
+ * @param string $html Section HTML.
+ * @return array{html:string,demoted:string} demoted is '' when nothing changed.
+ */
+function ekwa_mc_demote_root_landmark( $html ) {
+	$html      = (string) $html;
+	$landmarks = array( 'header', 'footer', 'main' );
+
+	// Confirm via the DOM that the landmark really is the only root element —
+	// a regex alone can't tell a wrapper from the first of several siblings.
+	$doc = new DOMDocument();
+	libxml_use_internal_errors( true );
+	$doc->loadHTML(
+		'<?xml encoding="utf-8"?><div data-ekwa-mc-root="1">' . ekwa_mc_extract_body( $html ) . '</div>',
+		LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+	);
+	libxml_clear_errors();
+
+	$root = $doc->documentElement;
+	if ( ! $root ) {
+		return array( 'html' => $html, 'demoted' => '' );
+	}
+
+	$elements = array();
+	foreach ( $root->childNodes as $child ) {
+		if ( XML_ELEMENT_NODE === $child->nodeType ) {
+			$elements[] = $child;
+		}
+	}
+	if ( 1 !== count( $elements ) ) {
+		return array( 'html' => $html, 'demoted' => '' );
+	}
+
+	$tag = strtolower( $elements[0]->nodeName );
+	if ( ! in_array( $tag, $landmarks, true ) ) {
+		return array( 'html' => $html, 'demoted' => '' );
+	}
+
+	// Swap the outermost open/close tags only, leaving everything between them
+	// byte-for-byte intact.
+	$open  = preg_replace( '/^(\s*)<' . $tag . '(\s[^>]*)?>/i', '$1<div$2>', $html, 1, $open_count );
+	if ( ! $open_count ) {
+		return array( 'html' => $html, 'demoted' => '' );
+	}
+	$closed = preg_replace( '/<\/' . $tag . '\s*>(\s*)$/i', '</div>$1', $open, 1, $close_count );
+	if ( ! $close_count ) {
+		return array( 'html' => $html, 'demoted' => '' );
+	}
+
+	return array( 'html' => $closed, 'demoted' => $tag );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN ENTRY POINT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -293,12 +360,11 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_link( $node, $depth );
 	}
 
-	// Button — same logic as anchor.
+	// Button — always through the wrapper converter, which keeps it a <button>.
+	// (Routing text-only buttons to ekwa/link turned a dropdown/search trigger
+	// into an <a>, silently changing its semantics and default styling.)
 	if ( $tag === 'button' ) {
-		if ( ekwa_mc_has_element_children( $node ) ) {
-			return ekwa_mc_convert_anchor_wrapper( $node, $depth );
-		}
-		return ekwa_mc_convert_link( $node, $depth );
+		return ekwa_mc_convert_anchor_wrapper( $node, $depth );
 	}
 
 	// Font Awesome icon → ekwa/icon.
@@ -405,6 +471,12 @@ function ekwa_mc_convert_div_block( $node, $depth, $tag_name ) {
 	}
 	if ( $class ) {
 		$attrs['className'] = $class;
+	}
+	// The element id becomes the block's anchor. Dropping it broke anything the
+	// mockup addressed by id — `#header` scroll handlers, skip links, `#id` CSS.
+	$id = trim( $node->getAttribute( 'id' ) );
+	if ( '' !== $id ) {
+		$attrs['anchor'] = $id;
 	}
 	if ( $inline_style ) {
 		// Extract background-image into a dedicated attribute.
@@ -688,7 +760,23 @@ function ekwa_mc_convert_link( $node, $depth ) {
 function ekwa_mc_convert_icon( $node, $depth ) {
 	$indent = str_repeat( '  ', $depth );
 	$class  = $node->getAttribute( 'class' );
-	$attrs  = array( 'iconClass' => $class, 'wrapperClass' => '' );
+
+	// The theme ships Font Awesome and nothing else, so any other icon font is
+	// translated here. Material Icons name the glyph in the element's TEXT
+	// rather than its class, and that text is dropped by this block — so the
+	// conversion has to happen while we still have the node.
+	if ( function_exists( 'ekwa_mc_icon_class_to_fontawesome' ) ) {
+		$mapped = ekwa_mc_icon_class_to_fontawesome( $class, $node->textContent );
+		if ( $mapped['changed'] ) {
+			ekwa_mc_warn( 'Icon converted to Font Awesome: "' . $class . '" → "' . $mapped['class'] . '"', 'converted' );
+			$class = $mapped['class'];
+		}
+		foreach ( $mapped['unmapped'] as $unknown ) {
+			ekwa_mc_warn( 'Icon "' . $unknown . '" has no Font Awesome equivalent — it will not render. Replace it with a fa-solid/fa-brands class.', 'dynamic' );
+		}
+	}
+
+	$attrs = array( 'iconClass' => $class, 'wrapperClass' => '' );
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -1128,17 +1216,28 @@ function ekwa_mc_convert_video( $node, $depth ) {
  */
 function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 	$indent = str_repeat( '  ', $depth );
-	$tag    = strtolower( $node->nodeName );
+	// Keep <button> a button. Rendering a dropdown/search trigger as an <a>
+	// changed its semantics (and its default styling) for no reason — ekwa/div
+	// renders either tag.
+	$tag    = ( 'button' === strtolower( $node->nodeName ) ) ? 'button' : 'a';
 	$url    = $node->getAttribute( 'href' ) ?: '';
 	$class  = $node->getAttribute( 'class' );
 	$target = $node->getAttribute( 'target' );
 	$rel    = $node->getAttribute( 'rel' );
-	$attrs  = array( 'tagName' => 'a' );
+	$attrs  = array( 'tagName' => $tag );
 
-	if ( $url )                     { $attrs['href']      = $url; }
+	if ( $url && 'a' === $tag )     { $attrs['href']      = $url; }
 	if ( $class )                   { $attrs['className'] = $class; }
 	if ( $target === '_blank' )     { $attrs['target']    = '_blank'; }
 	if ( $rel )                     { $attrs['rel']       = $rel; }
+
+	$id = trim( $node->getAttribute( 'id' ) );
+	if ( '' !== $id )               { $attrs['anchor']    = $id; }
+
+	$custom = ekwa_mc_extract_custom_attributes( $node );
+	if ( ! empty( $custom ) ) {
+		$attrs['customAttributes'] = $custom;
+	}
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -1185,7 +1284,41 @@ function ekwa_mc_parse_inline_style( $style_string ) {
  */
 function ekwa_mc_has_fa_class( $node ) {
 	$class = $node->getAttribute( 'class' );
-	return $class && preg_match( '/\b(fa-|fas |far |fab |fal |fad |fa )\b/i', $class );
+	if ( ! $class ) {
+		return false;
+	}
+
+	// Font Awesome is no longer the only icon font mockups ship with — Remix
+	// Icon (ri-*) and Bootstrap Icons (bi-*) are common now. Without them an
+	// <i class="ri-search-line"> fell through to the generic inline-element
+	// path: it still RENDERED correctly, but as an ekwa/div rather than the
+	// ekwa/icon block (no icon picker in the editor), and the two converters
+	// disagreed about the same markup.
+	static $families = array(
+		'fa', 'fas', 'far', 'fab', 'fal', 'fad',      // Font Awesome
+		'las', 'lar', 'lab',                          // Line Awesome
+		'dashicons',                                  // WordPress
+		'material-icons',                             // Material
+		'glyphicon',                                  // Bootstrap 3
+	);
+	static $prefixes = array(
+		'fa-', 'la-', 'ri-', 'bi-', 'ti-', 'ion-', 'icofont-',
+		'feather-', 'dashicons-', 'glyphicon-', 'material-symbols',
+	);
+
+	foreach ( preg_split( '/\s+/', $class, -1, PREG_SPLIT_NO_EMPTY ) as $token ) {
+		$token = strtolower( $token );
+		if ( in_array( $token, $families, true ) ) {
+			return true;
+		}
+		foreach ( $prefixes as $prefix ) {
+			if ( 0 === strpos( $token, $prefix ) ) {
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 /**

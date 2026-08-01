@@ -11,7 +11,8 @@
 	"keywords": [ "search", "find", "modal", "overlay", "popup" ],
 	"supports": {
 		"html": false,
-		"anchor": true
+		"anchor": true,
+		"className": true
 	},
 	"attributes": {
 		"iconSize":        { "type": "number",  "default": 20 },

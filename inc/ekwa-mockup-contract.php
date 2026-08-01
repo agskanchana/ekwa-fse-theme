@@ -277,6 +277,7 @@ function ekwa_mockup_ai_prompts() {
 		. "- Define ALL colors and fonts as CSS variables in :root (they import as design tokens). Use unique, descriptive image filenames.\n"
 		. "- FONTS MUST BE APPLIED THROUGH A VARIABLE, never by name. Declare each typeface once in :root — e.g. --font-heading:'Playfair Display',serif; --font-body:'Inter',sans-serif; — and every rule that sets type uses font-family:var(--font-heading). A literal font-family:'Inter',sans-serif anywhere outside :root is wrong. The theme self-hosts each typeface and re-points that same variable at the local files, which is also what lets it skip downloading the font on mobile — a rule that names the family directly opts out of both. Use the font-family longhand (not the `font:` shorthand) so the variable is visible.\n"
 		. "- Keep the ekwa-* class names EXACTLY as written; you may add your own classes alongside them.\n"
+		. "- ICONS: Font Awesome 6 ONLY — <i class=\"fa-solid fa-phone\" aria-hidden=\"true\"></i> for regular icons and <i class=\"fa-brands fa-facebook-f\"></i> for logos. Do NOT use Remix Icon (ri-*), Bootstrap Icons (bi-*), Themify (ti-*), Ionicons, Material Icons, Line Awesome or Glyphicons, and do NOT add a stylesheet/CDN link for any icon font — the theme bundles Font Awesome 6 Free and loads nothing else, so those icons render as blank boxes on the live site. Use only icons that exist in the FREE set (Solid and Brands); check at fontawesome.com/search with the Free filter on. Always put the icon in its own <i> element (never a background image or a ::before glyph) so it converts to an editable icon block.\n"
 		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/slide-up/zoom/zoom-out/blur/parallax-push/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).\n"
 		. "- YOUTUBE/VIMEO VIDEOS: a real embedded iframe (or even just the video's URL as a placeholder) is enough — do NOT hand-build a custom play button/lightbox. \"Convert with AI\" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.";
 
@@ -376,6 +377,40 @@ function ekwa_mockup_literal_font_rules( $css ) {
 	} );
 
 	return array_keys( $found );
+}
+
+/**
+ * Icon classes in a mockup that belong to a font other than Font Awesome,
+ * split into "the converter can map these" and "these have no equivalent".
+ *
+ * @param string $html Full mockup HTML.
+ * @return array{classes:string[],unmapped:string[]}
+ */
+function ekwa_mockup_foreign_icons( $html ) {
+	if ( ! function_exists( 'ekwa_mc_icon_class_to_fontawesome' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-converter-icons.php';
+	}
+
+	$classes  = array();
+	$unmapped = array();
+
+	if ( preg_match_all( '#<(?:i|span)\b[^>]*\sclass=("|\')([^"\']+)\1#i', (string) $html, $matches ) ) {
+		foreach ( $matches[2] as $class_string ) {
+			$result = ekwa_mc_icon_class_to_fontawesome( $class_string );
+			if ( ! $result['changed'] && empty( $result['unmapped'] ) ) {
+				continue; // Already Font Awesome, or not an icon at all.
+			}
+			$classes[ trim( $class_string ) ] = true;
+			foreach ( $result['unmapped'] as $token ) {
+				$unmapped[ $token ] = true;
+			}
+		}
+	}
+
+	return array(
+		'classes'  => array_keys( $classes ),
+		'unmapped' => array_keys( $unmapped ),
+	);
 }
 
 /**
@@ -640,6 +675,37 @@ function ekwa_mockup_readiness_check( $html ) {
 					implode( ', ', array_slice( $literals, 0, 10 ) ) . ( count( $literals ) > 10 ? '…' : '' )
 				),
 			'fix'     => empty( $literals ) ? '' : ":root {\n  --font-heading: 'Playfair Display', serif;\n  --font-body: 'Inter', sans-serif;\n}\n\nbody { font-family: var(--font-body); }\nh1, h2, h3 { font-family: var(--font-heading); }",
+		);
+	}
+
+	// ── Icon font ────────────────────────────────────────────────────────
+	// The theme bundles Font Awesome 6 Free and loads no other icon font, so a
+	// mockup built on Remix/Bootstrap/Material icons converts to markup whose
+	// glyphs are blank boxes. The converter rewrites what it can recognise;
+	// this reports it up front, plus anything it would not be able to map.
+	$foreign = ekwa_mockup_foreign_icons( $html );
+	if ( ! empty( $foreign['classes'] ) ) {
+		$sections[] = array(
+			'id'      => 'icons',
+			'label'   => __( 'Icon font', 'ekwa' ),
+			'status'  => empty( $foreign['unmapped'] ) ? 'warn' : 'fail',
+			'message' => empty( $foreign['unmapped'] )
+				? sprintf(
+					/* translators: 1: count, 2: comma-separated class names. */
+					__( '%1$d icon(s) use a font other than Font Awesome (%2$s). The converter will rewrite them all to Font Awesome automatically, but the mockup itself will keep looking different until you swap them — the theme loads Font Awesome 6 Free only.', 'ekwa' ),
+					count( $foreign['classes'] ),
+					implode( ', ', array_slice( $foreign['classes'], 0, 8 ) ) . ( count( $foreign['classes'] ) > 8 ? '…' : '' )
+				)
+				: sprintf(
+					/* translators: 1: count, 2: comma-separated class names. */
+					__( '%1$d icon(s) use a font other than Font Awesome, and %2$s have no Font Awesome equivalent — those will render blank. Replace them with fa-solid/fa-brands classes from the Free set (fontawesome.com/search).', 'ekwa' ),
+					count( $foreign['classes'] ),
+					implode( ', ', array_slice( $foreign['unmapped'], 0, 8 ) ) . ( count( $foreign['unmapped'] ) > 8 ? '…' : '' )
+				),
+			'fix'     => '<i class="fa-solid fa-phone" aria-hidden="true"></i>' . "\n"
+				. '<i class="fa-solid fa-location-dot" aria-hidden="true"></i>' . "\n"
+				. '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>' . "\n"
+				. '<i class="fa-brands fa-facebook-f"></i>',
 		);
 	}
 
