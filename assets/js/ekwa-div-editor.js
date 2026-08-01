@@ -137,6 +137,27 @@
 		return style;
 	}
 
+	/**
+	 * Undo the HTML escaping WordPress applies to string block attributes on
+	 * save (core's filter_block_kses_value) for anyone without the
+	 * `unfiltered_html` capability — Authors/Contributors, every user on
+	 * multisite, and everyone on a site defining DISALLOW_UNFILTERED_HTML.
+	 *
+	 * kses is HTML-aware, not CSS-aware, so it escapes exactly the characters
+	 * CSS needs: ".card > .title" becomes ".card &gt; .title" and the rule
+	 * stops matching. Decoding on read means the panel shows real CSS and a
+	 * re-save writes the clean form back. Mirrors ekwa_css_decode_entities().
+	 */
+	function decodeCss( css ) {
+		if ( ! css || css.indexOf( '&' ) === -1 ) { return css || ''; }
+		return css
+			.replace( /&gt;/g, '>' )
+			.replace( /&lt;/g, '<' )
+			.replace( /&quot;/g, '"' )
+			.replace( /&#0?39;/g, "'" )
+			.replace( /&amp;/g, '&' ); // last, or "&amp;gt;" would collapse to ">"
+	}
+
 	registerBlockType( 'ekwa/div', {
 		edit: function ( props ) {
 			var attributes    = props.attributes;
@@ -146,7 +167,7 @@
 			var isSelected    = props.isSelected;
 
 			// Build editor wrapper style from inlineStyle + backgroundImage.
-			var editorStyle = parseStyleString( attributes.inlineStyle || '' );
+			var editorStyle = parseStyleString( decodeCss( attributes.inlineStyle ) );
 			if ( bgImage ) {
 				editorStyle.backgroundImage = "url('" + bgImage + "')";
 				if ( ! editorStyle.backgroundSize )     { editorStyle.backgroundSize = 'cover'; }
@@ -346,7 +367,7 @@
 					},
 						el( ScopedCssEditor, {
 							key: 'scoped-css-editor',
-							value: attributes.scopedCss || '',
+							value: decodeCss( attributes.scopedCss ),
 							onChange: function ( val ) { setAttributes( { scopedCss: val } ); },
 						} ),
 						attributes.scopedCss
@@ -399,7 +420,7 @@
 				el( InspectorControls, null, panels ),
 				el( 'div', blockProps,
 					attributes.scopedCss && ! attributes.scopedCssOffInEditor
-						? el( 'style', null, attributes.scopedCss )
+						? el( 'style', null, decodeCss( attributes.scopedCss ) )
 						: null,
 					tagLabel,
 					el( InnerBlocks, null )

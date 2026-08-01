@@ -29,6 +29,45 @@ if ( ! defined( 'ABSPATH' ) && PHP_SAPI !== 'cli' ) {
 }
 
 /**
+ * Undo the HTML-escaping WordPress applies to CSS stored in a block attribute.
+ *
+ * On save, WordPress runs every *string* block attribute through `wp_kses()`
+ * (core's `filter_block_kses_value()`) for any user without the
+ * `unfiltered_html` capability — Authors and Contributors always, everyone on
+ * multisite, and everyone (admins included) on a site that defines
+ * `DISALLOW_UNFILTERED_HTML`, which hardened and managed hosts commonly do.
+ *
+ * kses is HTML-aware, not CSS-aware, so it escapes the two characters CSS
+ * genuinely needs:
+ *
+ *     .card > .title  →  .card &gt; .title      (child combinator: rule dies)
+ *     url(a.png?x=1&y=2) → url(a.png?x=1&amp;y=2)  (query string breaks)
+ *
+ * Nothing errors; the rules simply stop matching, which reads as "the scoped
+ * CSS disappeared when I saved". kses is idempotent, so the damage never
+ * compounds and one decode fully restores the CSS — done at render time here,
+ * and on read in the editor so a re-save writes the clean form back.
+ *
+ * @param string $css Possibly-escaped CSS.
+ * @return string
+ */
+function ekwa_css_decode_entities( $css ) {
+	$css = (string) $css;
+	if ( false === strpos( $css, '&' ) ) {
+		return $css; // Nothing kses could have escaped.
+	}
+	// Order matters: &amp; last, or "&amp;gt;" would collapse to ">".
+	return strtr( $css, array(
+		'&gt;'   => '>',
+		'&lt;'   => '<',
+		'&quot;' => '"',
+		'&#039;' => "'",
+		'&#39;'  => "'",
+		'&amp;'  => '&',
+	) );
+}
+
+/**
  * At-rules whose body contains further rules (so the walker descends into
  * them). Everything else with a body (@font-face, @keyframes, @page…) is
  * treated as one opaque rule.

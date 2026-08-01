@@ -3967,6 +3967,15 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$inline_style = isset( $attrs['inlineStyle'] )     ? $attrs['inlineStyle'] : '';
 	$scoped_css   = isset( $attrs['scopedCss'] )       ? (string) $attrs['scopedCss'] : '';
 
+	// WordPress kses-escapes every string block attribute on save for users
+	// without `unfiltered_html`, which turns a child combinator into "&gt;" and
+	// an "&" in a url() into "&amp;" — the rules then silently stop matching.
+	// Restore them here so the CSS works regardless of who saved the page.
+	if ( function_exists( 'ekwa_css_decode_entities' ) ) {
+		$scoped_css   = ekwa_css_decode_entities( $scoped_css );
+		$inline_style = ekwa_css_decode_entities( $inline_style );
+	}
+
 	// Serve the WebP companion for the background when the browser advertises
 	// support — mirrors the ekwa/image URL swap. Browsers that don't send an
 	// `image/webp` Accept header keep the original JPG/PNG (graceful fallback),

@@ -100,51 +100,142 @@ function ekwa_tokens_sanitize_var_name( $raw ) {
  * @return string One declaration per line.
  */
 function ekwa_tokens_sanitize_colors( $raw ) {
+	return ekwa_tokens_serialize_var_groups( ekwa_tokens_parse_var_groups( $raw ) );
+}
+
+/**
+ * Parse custom-property declarations into ordered groups, one per at-rule
+ * context.
+ *
+ * Responsive tokens are the reason this isn't a flat list. A mockup routinely
+ * steps a variable down across breakpoints:
+ *
+ *     :root { --container-width: 1700px; }
+ *     @media (max-width: 1600px) { :root { --container-width: 1500px; } }
+ *     @media (max-width: 1440px) { :root { --container-width: 1360px; } }
+ *
+ * Collecting those declarations without their `@media` context collapsed them
+ * into one `:root` block where the LAST one silently won at every viewport —
+ * so a 1700px container rendered at 1200px on desktop, and the mockup's whole
+ * responsive scale was gone.
+ *
+ * Accepts three shapes: a full stylesheet, the field's own stored format
+ * (bare lines plus `@media (…) { … }` groups), and plain declaration lines.
+ *
+ * @param string $raw
+ * @return array<int,array{chain:string[],decls:array<string,string>}> Source order,
+ *         context-free group first. Later declarations of the same name inside
+ *         one group win, matching the CSS cascade.
+ */
+function ekwa_tokens_parse_var_groups( $raw ) {
 	$raw = (string) $raw;
+	if ( ! function_exists( 'ekwa_css_walk' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-css-rules.php';
+	}
+
+	$groups = array();
+
+	/** Add one declaration to the group for an at-rule chain. */
+	$add = function ( $chain, $name, $value ) use ( &$groups ) {
+		$name  = ekwa_tokens_sanitize_var_name( $name );
+		$value = trim( $value );
+		// Values may be colors, gradients, or var() chains — allow a safe
+		// character set; anything markup-ish or executable is dropped.
+		if ( '' === $name || '' === $value
+			|| preg_match( '/[<>{}]|url\s*\(\s*["\']?\s*javascript:|expression\s*\(/i', $value ) ) {
+			return;
+		}
+		$key = implode( '||', $chain );
+		if ( ! isset( $groups[ $key ] ) ) {
+			$groups[ $key ] = array( 'chain' => $chain, 'decls' => array() );
+		}
+		// Re-assign rather than overwrite in place so the last declaration also
+		// takes the last position, as the cascade would.
+		unset( $groups[ $key ]['decls'][ $name ] );
+		$groups[ $key ]['decls'][ $name ] = $value;
+	};
+
+	/** Pull `--name: value` pairs out of a declaration body. */
+	$scan = function ( $body, $chain ) use ( $add ) {
+		$body = rtrim( trim( (string) $body ), ';' ) . ';';
+		if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}\r\n]+?)\s*;/i', $body, $m, PREG_SET_ORDER ) ) {
+			foreach ( $m as $pair ) {
+				$add( $chain, $pair[1], $pair[2] );
+			}
+		}
+	};
 
 	if ( false !== strpos( $raw, '{' ) ) {
-		// Stylesheet input: collect the contents of declaration blocks only.
-		$bodies = array();
-		if ( preg_match_all( '/\{([^{}]*)\}/s', $raw, $bm ) ) {
-			foreach ( $bm[1] as $body ) {
-				$body = trim( $body );
-				if ( '' !== $body ) {
-					// Guarantee a trailing terminator so the last declaration in
-					// a block (CSS lets it omit the semicolon) still matches below.
-					$bodies[] = rtrim( $body, ';' ) . ';';
+		ekwa_css_walk( $raw, function ( $rule ) use ( $scan, $add ) {
+			// Normalize the chain: only at-rules that can legitimately scope a
+			// token are kept as context (@media/@supports/@container).
+			$chain = array();
+			foreach ( $rule['chain'] as $prelude ) {
+				$prelude = trim( preg_replace( '/\s+/', ' ', $prelude ) );
+				if ( preg_match( '/^@(?:media|supports|container)\b/i', $prelude ) ) {
+					$chain[] = $prelude;
 				}
 			}
-		}
-		$src = implode( "\n", $bodies );
-	} else {
-		// Bare declaration lines (manual paste): terminate each with ';' so a
-		// value that omits the semicolon still matches the declaration regex.
-		$src = '';
-		foreach ( preg_split( '/[\r\n]+/', $raw ) as $line ) {
-			$line = trim( $line );
-			if ( '' !== $line ) {
-				$src .= rtrim( $line, ';' ) . ";\n";
+
+			if ( null === $rule['body'] ) {
+				// A bare `--name: value;` sitting directly inside an at-rule —
+				// the shape this field itself stores.
+				if ( preg_match( '/^(--[a-z0-9_-]+)\s*:\s*(.+)$/is', trim( $rule['selector'] ), $m ) ) {
+					$add( $chain, $m[1], $m[2] );
+				}
+				return;
 			}
+			$scan( $rule['body'], $chain );
+		} );
+	} else {
+		// Plain declaration lines, no context.
+		foreach ( preg_split( '/[\r\n]+/', $raw ) as $line ) {
+			$scan( $line, array() );
 		}
 	}
 
+	// Context-free declarations must come first so the media overrides that
+	// follow can actually override them.
+	uasort( $groups, function ( $a, $b ) {
+		return ( empty( $a['chain'] ) ? 0 : 1 ) <=> ( empty( $b['chain'] ) ? 0 : 1 );
+	} );
+
+	return array_values( $groups );
+}
+
+/**
+ * Render parsed groups back into the field's editable text format.
+ *
+ * @param array $groups From ekwa_tokens_parse_var_groups().
+ * @return string
+ */
+function ekwa_tokens_serialize_var_groups( $groups ) {
 	$out = array();
-	// Match `--name: value;` only — the required `;` terminator (added above) plus
-	// a single-line value (no line breaks) keeps values from bleeding across
-	// declarations.
-	if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}\r\n]+?)\s*;/i', $src, $m, PREG_SET_ORDER ) ) {
-		foreach ( $m as $pair ) {
-			$name  = ekwa_tokens_sanitize_var_name( $pair[1] );
-			$value = trim( $pair[2] );
-			// Values may be colors, gradients, or var() chains — allow a safe
-			// character set; anything with markup-ish characters is dropped.
-			if ( '' === $name || '' === $value || preg_match( '/[<>{}]|url\s*\(\s*["\']?\s*javascript:/i', $value ) ) {
-				continue;
-			}
-			$out[] = '--' . $name . ': ' . $value . ';';
+
+	foreach ( $groups as $group ) {
+		if ( empty( $group['decls'] ) ) {
+			continue;
 		}
+		$lines = array();
+		foreach ( $group['decls'] as $name => $value ) {
+			$lines[] = '--' . $name . ': ' . $value . ';';
+		}
+
+		if ( empty( $group['chain'] ) ) {
+			$out[] = implode( "\n", $lines );
+			continue;
+		}
+
+		$body   = implode( "\n", array_map( function ( $l ) { return "\t" . $l; }, $lines ) );
+		$nested = $body;
+		foreach ( array_reverse( $group['chain'] ) as $i => $prelude ) {
+			$indent = str_repeat( "\t", count( $group['chain'] ) - $i - 1 );
+			$nested = $indent . $prelude . " {\n" . $nested . "\n" . $indent . '}';
+		}
+		$out[] = $nested;
 	}
-	return implode( "\n", $out );
+
+	return implode( "\n\n", $out );
 }
 
 /**
@@ -193,22 +284,18 @@ function ekwa_tokens_value_is_font_family( $name, $value ) {
  */
 function ekwa_tokens_extract_vars_from_css( $css ) {
 	// Strip comments first so commented-out variables don't leak in.
-	$css   = preg_replace( '/\/\*.*?\*\//s', '', (string) $css );
-	$lines = ekwa_tokens_sanitize_colors( $css );
-	if ( '' === $lines ) {
-		return '';
-	}
-	$kept = array();
-	foreach ( explode( "\n", $lines ) as $line ) {
-		if ( preg_match( '/^(--[a-z0-9_-]+)\s*:\s*(.+?);?$/i', trim( $line ), $m )
-			&& ekwa_tokens_value_is_font_family( $m[1], $m[2] ) ) {
-			continue; // Owned by the Fonts module — don't duplicate here.
-		}
-		if ( '' !== trim( $line ) ) {
-			$kept[] = $line;
+	$css    = preg_replace( '/\/\*.*?\*\//s', '', (string) $css );
+	$groups = ekwa_tokens_parse_var_groups( $css );
+
+	foreach ( $groups as $i => $group ) {
+		foreach ( $group['decls'] as $name => $value ) {
+			if ( ekwa_tokens_value_is_font_family( $name, $value ) ) {
+				unset( $groups[ $i ]['decls'][ $name ] ); // Owned by the Fonts module.
+			}
 		}
 	}
-	return implode( "\n", $kept );
+
+	return ekwa_tokens_serialize_var_groups( $groups );
 }
 
 /**
@@ -219,24 +306,57 @@ function ekwa_tokens_extract_vars_from_css( $css ) {
  * @return string CSS, or '' when no tokens are configured.
  */
 function ekwa_tokens_root_css() {
-	$decls = '';
+	$groups = ekwa_tokens_parse_var_groups( ekwa_tokens_colors() );
 
-	$colors = trim( ekwa_tokens_colors() );
-	if ( '' !== $colors ) {
-		// Stored pre-sanitized; collapse to single line.
-		$decls .= preg_replace( '/\s*\n\s*/', '', $colors );
-	}
-
+	// Background-image variables are always context-free, so they join the
+	// first (unconditional) group.
+	$bg = array();
 	foreach ( ekwa_tokens_bgimages() as $row ) {
 		$name = isset( $row['name'] ) ? ekwa_tokens_sanitize_var_name( $row['name'] ) : '';
 		$url  = isset( $row['url'] ) ? esc_url( $row['url'] ) : '';
 		if ( '' === $name || '' === $url ) {
 			continue;
 		}
-		$decls .= '--' . $name . ":url('" . $url . "');";
+		$bg[ $name ] = "url('" . $url . "')";
 	}
 
-	return '' === $decls ? '' : ':root{' . $decls . '}';
+	$css = '';
+	$did_bg = false;
+
+	foreach ( $groups as $group ) {
+		$decls = $group['decls'];
+		if ( empty( $group['chain'] ) && ! $did_bg ) {
+			$decls  = array_merge( $decls, $bg );
+			$did_bg = true;
+		}
+		if ( empty( $decls ) ) {
+			continue;
+		}
+
+		$body = '';
+		foreach ( $decls as $name => $value ) {
+			$body .= '--' . $name . ':' . $value . ';';
+		}
+		$rule = ':root{' . $body . '}';
+
+		// Re-wrap in the at-rule chain so responsive token overrides keep the
+		// breakpoint they were written for.
+		foreach ( array_reverse( $group['chain'] ) as $prelude ) {
+			$rule = $prelude . '{' . $rule . '}';
+		}
+		$css .= $rule;
+	}
+
+	// No variables configured but backgrounds are.
+	if ( ! $did_bg && ! empty( $bg ) ) {
+		$body = '';
+		foreach ( $bg as $name => $value ) {
+			$body .= '--' . $name . ':' . $value . ';';
+		}
+		$css .= ':root{' . $body . '}';
+	}
+
+	return $css;
 }
 
 /**
@@ -288,8 +408,13 @@ function ekwa_tokens_strip_css_variables( $css ) {
 	$css = (string) $css;
 	$css = preg_replace( '/@import\b[^;]+;/i', '', $css );
 	$css = preg_replace( '/@font-face\s*\{[^}]*\}/is', '', $css );
-	// Remove :root variable blocks (they hold no nested braces).
+	// Remove :root variable blocks (they hold no nested braces). This also
+	// catches the ones nested in @media — responsive token overrides — which
+	// the CSS variables field now carries with their breakpoint intact.
 	$css = preg_replace( '/:root\b[^{]*\{[^}]*\}/is', '', $css );
+	// Drop the @media shells those left behind, so the pool doesn't accumulate
+	// empty breakpoint blocks.
+	$css = preg_replace( '/@(?:media|supports|container)\b[^{]*\{\s*\}/i', '', (string) $css );
 	$css = preg_replace( "/\n{3,}/", "\n\n", (string) $css );
 	return trim( (string) $css );
 }
@@ -679,7 +804,10 @@ function ekwa_tokens_render_tab() {
 		<p class="description" style="margin-bottom:1em;">
 			<?php esc_html_e( 'One CSS custom property per line (e.g. --brand-primary: #1a6ef5; --space-lg: 2rem; --radius: 8px;). Not just colours — any :root variable your CSS reuses. Emitted globally in :root on the front end and in the editor, and sent to the AI so generated CSS reuses them. Save with this field empty to auto-extract the variables from the mockup stylesheet above — font families are skipped here, manage those on the Fonts tab.', 'ekwa' ); ?>
 		</p>
-		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--brand-dark: #0f2f66;"><?php echo esc_textarea( $colors ); ?></textarea>
+		<p class="description" style="margin-bottom:1em;">
+			<?php esc_html_e( 'Variables that change at a breakpoint keep their media query — wrap them in @media (max-width: 1600px) { … } and they are emitted inside that breakpoint, not flattened into the base :root. Auto-extraction picks these up from the mockup stylesheet on its own.', 'ekwa' ); ?>
+		</p>
+		<textarea name="ekwa_tokens_colors" rows="8" class="large-text code" placeholder="--brand-primary: #1a6ef5;&#10;--container-width: 1700px;&#10;&#10;@media (max-width: 1440px) {&#10;&#9;--container-width: 1360px;&#10;}"><?php echo esc_textarea( $colors ); ?></textarea>
 	</div>
 
 	<div class="ekwa-section">
