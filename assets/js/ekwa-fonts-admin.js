@@ -47,6 +47,19 @@
 	function spinnerOff( $row ) { $row.find( '.spinner' ).removeClass( 'is-active' ).css( 'visibility', 'hidden' ); }
 
 	/**
+	 * Notice above the font list — used to report the Global CSS rewrite, which
+	 * happens on the server and would otherwise be invisible (the per-row
+	 * message is destroyed when the row is replaced with the saved one).
+	 */
+	function showListNotice( text ) {
+		if ( ! text ) { return; }
+		$list.siblings( '.ekwa-fonts-list-notice' ).remove();
+		$( '<div class="notice notice-success inline ekwa-fonts-list-notice"><p></p></div>' )
+			.find( 'p' ).text( text ).end()
+			.insertBefore( $list );
+	}
+
+	/**
 	 * Turn a font-family display name into a valid CSS variable slug.
 	 *   "Playfair Display" -> "playfair-display"
 	 */
@@ -246,6 +259,7 @@
 			spinnerOff( $row );
 			if ( res && res.success ) {
 				$row.replaceWith( res.data.rowHtml );
+				if ( res.data.rewritten ) { showListNotice( res.data.message ); }
 			} else {
 				showMsg( $row, ( res && res.data && res.data.message ) || 'Error', true );
 			}
@@ -297,6 +311,7 @@
 		} ).done( function ( res ) {
 			spinnerOff( $row );
 			if ( res && res.success ) {
+				if ( res.data.rewritten ) { showListNotice( res.data.message ); }
 				// Replace any existing row for this entry id, or append a new one.
 				var existing = $list.find( '.ekwa-fonts-row[data-id="' + res.data.id + '"]' );
 				if ( existing.length ) {

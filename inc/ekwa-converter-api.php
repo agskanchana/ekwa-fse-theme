@@ -69,6 +69,18 @@ function ekwa_register_converter_routes() {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			// Build a real WP menu from the mockup's nav and assign it to the
+			// main_menu location (which is what ekwa/header-menu renders).
+			'import_menu' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			'menu_replace' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 
@@ -192,7 +204,165 @@ function ekwa_rest_convert_markup( $request ) {
 		return $response;
 	}
 
+	// ── Menu import + fidelity audit (shared with /ai-convert) ───────────
+	$response = ekwa_mc_apply_post_conversion( $request, $html, $response );
+
 	return rest_ensure_response( $response );
+}
+
+/**
+ * Steps that run after either converter produces markup: materialize the
+ * mockup's navigation as a real WP menu, and report mockup classes that didn't
+ * survive the conversion.
+ *
+ * @param WP_REST_Request $request  Carries import_menu / menu_replace.
+ * @param string          $html     The source section HTML.
+ * @param array           $response Response payload so far.
+ * @return array Amended payload.
+ */
+function ekwa_mc_apply_post_conversion( $request, $html, array $response ) {
+	if ( ! isset( $response['warnings'] ) || ! is_array( $response['warnings'] ) ) {
+		$response['warnings'] = array();
+	}
+
+	// ── Build the WP menu the header block renders from. ─────────────────
+	if ( $request->get_param( 'import_menu' ) && function_exists( 'ekwa_mc_menu_import_from_html' ) ) {
+		$menu = ekwa_mc_menu_import_from_html( $html, (bool) $request->get_param( 'menu_replace' ) );
+
+		if ( is_wp_error( $menu ) ) {
+			$response['warnings'][] = __( 'Menu import: ', 'ekwa' ) . $menu->get_error_message();
+		} elseif ( null === $menu ) {
+			// Only worth mentioning when the markup actually claims a menu.
+			if ( false !== stripos( (string) $response['markup'], 'wp:ekwa/header-menu' ) ) {
+				$response['warnings'][] = __( 'Menu import: the header-menu block was added, but no navigation list could be read out of this HTML — build the menu under Appearance → Menus and assign it to "Main Menu".', 'ekwa' );
+			}
+		} else {
+			$response['menu_import'] = $menu;
+			$note = sprintf(
+				/* translators: 1: item count, 2: menu name. */
+				__( 'Menu import: created %1$d item(s) in "%2$s" and assigned it to the Main Menu location.', 'ekwa' ),
+				$menu['created'],
+				$menu['menu_name']
+			);
+			if ( ! empty( $menu['replaced'] ) ) {
+				$note .= ' ' . __( 'The previous items in that menu were replaced.', 'ekwa' );
+			}
+			if ( ! empty( $menu['images'] ) ) {
+				$note .= ' ' . sprintf(
+					/* translators: %d: number of mega-menu column images matched. */
+					_n( '%d mega-menu image was matched in the media library.', '%d mega-menu images were matched in the media library.', $menu['images'], 'ekwa' ),
+					$menu['images']
+				);
+			}
+			$response['warnings'][] = $note;
+		}
+	}
+
+	// ── Fidelity audit: which mockup classes vanished? ───────────────────
+	// A dropped class is invisible in the block markup but silently unstyles
+	// whatever the mockup's CSS targeted, so it's worth naming explicitly.
+	$lost = ekwa_mc_missing_classes( $html, (string) $response['markup'] );
+	if ( ! empty( $lost ) ) {
+		$response['lost_classes'] = $lost;
+		$response['warnings'][]   = sprintf(
+			/* translators: %s: comma-separated CSS class names. */
+			__( 'These mockup classes are not in the converted blocks, so any CSS targeting them will not apply: %s. Add them back via each block\'s Advanced → Additional CSS class(es).', 'ekwa' ),
+			implode( ', ', array_slice( $lost, 0, 20 ) ) . ( count( $lost ) > 20 ? '…' : '' )
+		);
+	}
+
+	return $response;
+}
+
+/**
+ * Class tokens present in the source HTML but absent from the converted block
+ * markup — i.e. mockup CSS that will no longer match anything.
+ *
+ * Elements a dynamic block replaces are skipped WITH THEIR WHOLE SUBTREE: the
+ * block renders its own canonical markup from site settings, so those classes
+ * are meant to disappear (and a customTemplate preserves them when the exact
+ * markup matters). Without that, converting a header would report every class
+ * inside the nav and the logo as "lost", which is just noise.
+ *
+ * @param string $html   Source mockup HTML.
+ * @param string $markup Converted block markup.
+ * @return string[] Missing class names, in source order.
+ */
+function ekwa_mc_missing_classes( $html, $markup ) {
+	if ( '' === trim( $html ) || '' === trim( $markup ) ) {
+		return array();
+	}
+	if ( ! function_exists( 'ekwa_mc_extract_body' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-converter-lib.php';
+	}
+
+	$doc = new DOMDocument();
+	libxml_use_internal_errors( true );
+	$doc->loadHTML(
+		'<?xml encoding="utf-8"?><div data-ekwa-audit-root="1">' . ekwa_mc_extract_body( $html ) . '</div>',
+		LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+	);
+	libxml_clear_errors();
+
+	// Signature classes whose element is swapped for a dynamic block. Mirrors
+	// the canonical map in ekwa_mc_detect_canonical().
+	$consumed_signatures = array(
+		'ekwa-header-nav', 'ekwa-header-menu', 'ekwa-mobile-nav', 'ekwa-phone-number',
+		'ekwa-working-hours', 'ekwa-social-icons', 'ekwa-copyright', 'ekwa-svg-logo',
+		'wp-block-site-logo', 'custom-logo-link', 'ekwa-hamburger-btn', 'ekwa-address',
+		'ekwa-search-block', 'ekwa-scroll-top', 'ekwa-mobile-dock',
+	);
+
+	$source = array();
+	$walk   = function ( $node ) use ( &$walk, &$source, $consumed_signatures ) {
+		foreach ( $node->childNodes as $child ) {
+			if ( XML_ELEMENT_NODE !== $child->nodeType ) {
+				continue;
+			}
+			// A forced mapping (data-ekwa="phone") consumes its subtree too;
+			// "static"/"ignore" opt out of detection, so keep walking those.
+			$token = strtolower( trim( $child->getAttribute( 'data-ekwa' ) ) );
+			if ( '' !== $token && ! in_array( $token, array( 'static', 'ignore' ), true ) ) {
+				continue;
+			}
+
+			$classes = preg_split( '/\s+/', $child->getAttribute( 'class' ), -1, PREG_SPLIT_NO_EMPTY );
+			if ( array_intersect( $classes, $consumed_signatures ) ) {
+				continue; // Replaced by a dynamic block — subtree and all.
+			}
+
+			foreach ( $classes as $class ) {
+				// wp-block-* is WordPress' own; ekwa-* classes are the mockup's
+				// opt-in signatures, which the blocks re-emit themselves.
+				if ( ! preg_match( '/^(?:wp-block-|ekwa-)/', $class ) ) {
+					$source[ $class ] = true;
+				}
+			}
+
+			$walk( $child );
+		}
+	};
+
+	$root = $doc->documentElement;
+	if ( ! $root ) {
+		return array();
+	}
+	$walk( $root );
+
+	if ( empty( $source ) ) {
+		return array();
+	}
+
+	// Anything the markup mentions anywhere counts as kept — className
+	// attributes, inline HTML, and customTemplate payloads all qualify.
+	$missing = array();
+	foreach ( array_keys( $source ) as $class ) {
+		if ( false === strpos( $markup, $class ) ) {
+			$missing[] = $class;
+		}
+	}
+
+	return $missing;
 }
 
 /**
@@ -249,27 +419,55 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 			if ( is_wp_error( $split ) ) {
 				$response['warnings'][] = __( 'AI CSS extraction failed: ', 'ekwa' ) . $split->get_error_message();
 			} else {
-				$response['css_scoped']  = $split['scoped'];
+				$scoped = trim( $split['scoped'] );
+
+				// Deterministic backstop: make every font the site self-hosts resolve
+				// through its own CSS variable, even when the model echoed the raw
+				// family name (see ekwa_fonts_rewrite_css_to_vars()).
+				if ( '' !== $scoped && function_exists( 'ekwa_fonts_rewrite_css_to_vars' ) ) {
+					$rewritten = ekwa_fonts_rewrite_css_to_vars( $scoped );
+					$scoped    = $rewritten['css'];
+				}
+
+				$response['css_scoped']  = $scoped;
 				$response['css_extract'] = ekwa_mc_extract_css_tokens( $source_css );
 
 				if ( ! empty( $split['truncated'] ) ) {
-					$response['warnings'][] = __( 'This section’s stylesheet was large enough that the AI response was cut short — the Scoped CSS below may be incomplete, and the site-wide Global CSS was left unchanged. Re-run the extraction (or extract a smaller portion) and review the Scoped CSS before inserting.', 'ekwa' );
+					$response['warnings'][] = __( 'This section’s stylesheet was large enough that the AI response was cut short — the Scoped CSS below may be incomplete. Only the rules it did return were taken out of the Global CSS, so nothing is lost; re-run the extraction (or extract a smaller portion) and review the Scoped CSS before inserting.', 'ekwa' );
 				}
 
-				// Thin the shared pool with the leftover — pool path only, and only
-				// for users who may edit theme-wide CSS.
-				if ( ! $pasted && null !== $split['leftover'] && function_exists( 'ekwa_tokens_set_global_css' ) ) {
+				// Thin the shared pool — pool path only, and only for users who may
+				// edit theme-wide CSS.
+				//
+				// The leftover is computed HERE by subtracting the rules the model
+				// actually claimed (ekwa_css_subtract), never taken from the model's
+				// own "leftover" output. A model that returns an empty/partial/
+				// mangled response can therefore only leave the pool too FULL — the
+				// old code trusted its leftover verbatim, so a response that silently
+				// omitted the section's rules deleted them from <head> while the
+				// Scoped CSS came back empty, leaving the section unstyled.
+				if ( ! $pasted && function_exists( 'ekwa_tokens_set_global_css' ) ) {
 					if ( ! current_user_can( 'edit_theme_options' ) ) {
 						$response['warnings'][] = __( 'Section CSS extracted, but only an administrator can update the site-wide Global CSS.', 'ekwa' );
-					} elseif ( '' === trim( $split['leftover'] ) && '' !== trim( $source_css ) ) {
-						// Safety: never empty the whole shared pool on one response —
-						// an empty leftover means the model swept everything into the
-						// section, which would drop the site's base CSS.
-						$response['warnings'][] = __( 'Global CSS left unchanged — the AI returned no leftover for this section (that would have emptied the shared pool). Double-check this section’s Scoped CSS.', 'ekwa' );
+					} elseif ( '' === $scoped ) {
+						// Nothing was extracted — the pool must stay exactly as it is.
+						$response['warnings'][] = __( 'Global CSS left unchanged — the AI found no rules for this section, so nothing was removed from the site-wide stylesheet. Check that the pasted HTML still carries the mockup’s class names, then try again.', 'ekwa' );
 					} else {
-						ekwa_tokens_set_global_css( $split['leftover'] );
-						$response['css_global_updated'] = true;
-						$response['css_global_bytes']   = strlen( trim( $split['leftover'] ) );
+						$thinned = ekwa_css_subtract( $source_css, $scoped );
+
+						if ( 0 === $thinned['removed'] ) {
+							$response['warnings'][] = __( 'Global CSS left unchanged — the extracted rules didn’t match any rule in the pool (they may have been rewritten rather than copied). The Scoped CSS below is still usable; it will just be duplicated in <head>.', 'ekwa' );
+						} elseif ( '' === trim( $thinned['css'] ) ) {
+							// Everything matched: the model swept the entire pool into
+							// one section. Almost always wrong, and it would drop the
+							// site's base CSS — so keep the pool.
+							$response['warnings'][] = __( 'Global CSS left unchanged — this section claimed every rule in the pool, which would have emptied the site-wide stylesheet. Double-check this section’s Scoped CSS.', 'ekwa' );
+						} else {
+							ekwa_tokens_set_global_css( $thinned['css'] );
+							$response['css_global_updated'] = true;
+							$response['css_global_bytes']   = strlen( trim( $thinned['css'] ) );
+							$response['css_rules_moved']    = $thinned['removed'];
+						}
 					}
 				}
 			}
@@ -334,14 +532,14 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 		$html = substr( $html, 0, 60000 ) . "\n<!-- …truncated -->";
 	}
 
-	$system = "You are a precise CSS splitter for a WordPress block theme.\n"
+	$system = "You are a precise CSS extractor for a WordPress block theme.\n"
 		. "INPUT: an HTML section, then a stylesheet (\"the pool\").\n"
-		. "TASK: split the pool into TWO parts with NO overlap:\n"
-		. "1) SCOPED — the rules that specifically style THIS section (matched by its classes, ids, tags and their descendants). INCLUDE the section's ::before/::after pseudo-element rules, :hover/:focus states, @media variants of those rules, and any @keyframes they reference. REWRITE values to the site's design tokens where one matches: var(--name) for colors, font-family variables for fonts, background-image variables instead of url(...) when the token represents the same image. Do NOT redeclare the token variables themselves.\n"
-		. "2) LEFTOVER — EVERY other rule from the pool, returned VERBATIM (do not rewrite, reorder, merge, or drop anything). This is the shared/base layer: resets, html/body typography, bare element rules (a, img, headings, lists…), generic component rules (e.g. .btn, .container) that aren't unique to this section, utility classes, and other sections' rules. When unsure whether a rule is section-specific or shared, put it in LEFTOVER.\n"
-		. "EXCLUDE from BOTH outputs: :root blocks, @font-face, and @import (those are handled elsewhere). Otherwise every rule in the pool must appear in exactly one part. Invent nothing.\n"
-		. "OUTPUT EXACTLY this, the two markers each on their own line with raw CSS between — no markdown fences, no commentary:\n"
-		. "===EKWA_SCOPED===\n<scoped css>\n===EKWA_LEFTOVER===\n<leftover css>";
+		. "TASK: return ONLY the rules from the pool that specifically style THIS section (matched by its classes, ids, tags and their descendants). INCLUDE the section's ::before/::after pseudo-element rules, :hover/:focus states, @media variants of those rules (keep them inside their original @media wrapper, with the media query written exactly as in the pool), and any @keyframes they reference.\n"
+		. "COPY EACH SELECTOR EXACTLY as it appears in the pool — character for character, including the @media prelude. The selector text is how the rule is matched back to the pool and removed from the site-wide stylesheet; a reworded or merged selector means the rule stays duplicated. You MAY rewrite DECLARATION VALUES to the site's design tokens where one matches: var(--name) for colors, font-family variables for fonts, background-image variables instead of url(...) when the token represents the same image. Do NOT redeclare the token variables themselves.\n"
+		. "LEAVE OUT the shared/base layer: resets, html/body typography, bare element rules (a, img, headings, lists…), generic component rules (e.g. .btn, .container) that aren't unique to this section, utility classes, and other sections' rules. When unsure whether a rule is section-specific or shared, LEAVE IT OUT — anything you omit simply stays in the site-wide stylesheet.\n"
+		. "EXCLUDE entirely: :root blocks, @font-face, and @import (those are handled elsewhere). Invent nothing — every rule you return must exist in the pool.\n"
+		. "OUTPUT: the marker on its own line, then raw CSS — no markdown fences, no commentary, nothing after the CSS:\n"
+		. "===EKWA_SCOPED===\n<the section's css>";
 
 	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
 		$system .= "\n" . ekwa_tokens_ai_context();
@@ -356,13 +554,11 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 		),
 	);
 
-	// This call has to echo the ENTIRE leftover pool back verbatim, so its output
-	// is roughly as large as the input pool (up to the 150k guard above). The
-	// default 16k output cap would silently truncate that — cutting the LEFTOVER
-	// short and, once written back, permanently dropping every pool rule past the
-	// cut. Give it the model's full window and turn OFF "thinking" (a pure
-	// mechanical split needs none, and thinking tokens would eat into the same
-	// budget, reintroducing the truncation it's meant to avoid).
+	// Only this section's rules come back now (the pool is thinned locally by
+	// subtracting them), so the output is a small fraction of the input. The
+	// budget stays generous anyway for section-heavy stylesheets, and "thinking"
+	// stays OFF — copying matching rules out of a stylesheet needs none, and
+	// thinking tokens would eat into the same output budget.
 	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-flash', 65536, 0 );
 	if ( is_wp_error( $result ) ) {
 		return $result;
@@ -378,14 +574,10 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 
 	$split = ekwa_mc_parse_split_css( $out );
 
-	// Even with the raised budget, an unusually large pool can still be cut off.
-	// A truncated LEFTOVER is a partial copy of the pool; writing it back would
-	// drop every rule past the cut and starve the sections extracted afterward.
-	// Refuse to thin the pool in that case: keep the (first-emitted, complete)
-	// SCOPED half, but null the leftover so the caller leaves the pool intact and
-	// the run stays safely repeatable.
+	// A truncated response is a partial list of the section's rules. That is
+	// safe now — the pool only loses what came back — but the Scoped CSS is
+	// incomplete, so flag it for review.
 	if ( isset( $result['finish_reason'] ) && 'MAX_TOKENS' === $result['finish_reason'] ) {
-		$split['leftover']  = null;
 		$split['truncated'] = true;
 	}
 
@@ -393,9 +585,13 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 }
 
 /**
- * Parse the AI's two-part CSS response. Tolerant of missing/misspelled markers:
- * when the LEFTOVER marker is absent, the whole output is treated as scoped and
- * leftover is null (the caller then leaves the pool untouched).
+ * Pull the section's CSS out of the model's response.
+ *
+ * Tolerant of missing/misspelled markers: with no marker at all the whole
+ * output is the section CSS. Older prompts asked for a second "LEFTOVER" half
+ * and a model may still emit one out of habit — it is discarded here, because
+ * the pool is now thinned by subtraction (see ekwa_css_subtract()) rather than
+ * by trusting the model's copy of it.
  *
  * @param string $out Raw model output (fences already stripped).
  * @return array{scoped:string,leftover:?string}

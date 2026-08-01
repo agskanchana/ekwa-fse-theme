@@ -275,6 +275,7 @@ function ekwa_mockup_ai_prompts() {
 		. "- Wrap the site header in <header> and the footer in <footer>; body content in <main>.\n"
 		. "- Phone numbers use tel:+1... links; email uses mailto:; the address/directions link may use \"#\" (the real maps URL comes from settings).\n"
 		. "- Define ALL colors and fonts as CSS variables in :root (they import as design tokens). Use unique, descriptive image filenames.\n"
+		. "- FONTS MUST BE APPLIED THROUGH A VARIABLE, never by name. Declare each typeface once in :root — e.g. --font-heading:'Playfair Display',serif; --font-body:'Inter',sans-serif; — and every rule that sets type uses font-family:var(--font-heading). A literal font-family:'Inter',sans-serif anywhere outside :root is wrong. The theme self-hosts each typeface and re-points that same variable at the local files, which is also what lets it skip downloading the font on mobile — a rule that names the family directly opts out of both. Use the font-family longhand (not the `font:` shorthand) so the variable is visible.\n"
 		. "- Keep the ekwa-* class names EXACTLY as written; you may add your own classes alongside them.\n"
 		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/slide-up/zoom/zoom-out/blur/parallax-push/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).\n"
 		. "- YOUTUBE/VIMEO VIDEOS: a real embedded iframe (or even just the video's URL as a placeholder) is enough — do NOT hand-build a custom play button/lightbox. \"Convert with AI\" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.";
@@ -305,6 +306,77 @@ function ekwa_mockup_ai_prompts() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // READINESS CHECK
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Concatenate every inline <style> block in a document. Used as a CSS source
+ * for the readiness check when nothing is saved in Design Setup yet.
+ *
+ * @param string $html
+ * @return string
+ */
+function ekwa_mockup_inline_css( $html ) {
+	if ( ! preg_match_all( '#<style\b[^>]*>(.*?)</style>#is', (string) $html, $m ) ) {
+		return '';
+	}
+	return implode( "\n", $m[1] );
+}
+
+/**
+ * Selectors whose rules apply a font family by NAME instead of through a CSS
+ * variable.
+ *
+ * Skipped: `:root` (that's where families are *supposed* to be declared),
+ * `@font-face` (its font-family names the face being defined), custom-property
+ * declarations, and stacks made only of generic/system/icon families — those
+ * are fallbacks, not typefaces to self-host.
+ *
+ * @param string $css Stylesheet.
+ * @return string[] Offending selectors, in source order, de-duplicated.
+ */
+function ekwa_mockup_literal_font_rules( $css ) {
+	if ( ! function_exists( 'ekwa_css_walk' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-css-rules.php';
+	}
+
+	$generic = array(
+		'inherit', 'initial', 'unset', 'revert', 'sans-serif', 'serif', 'monospace',
+		'cursive', 'fantasy', 'system-ui', 'ui-sans-serif', 'ui-serif', 'ui-monospace',
+		'-apple-system', 'blinkmacsystemfont', 'segoe ui', 'arial', 'helvetica',
+		'helvetica neue', 'roboto', 'tahoma', 'verdana', 'times new roman', 'georgia',
+		'courier new', 'font awesome 6 free', 'font awesome 6 brands', 'fontawesome',
+		'font awesome 5 free', 'dashicons', 'material icons', 'remixicon',
+	);
+
+	$found = array();
+	ekwa_css_walk( (string) $css, function ( $rule ) use ( &$found, $generic ) {
+		if ( null === $rule['body'] ) {
+			return; // @import & friends.
+		}
+		$selector = trim( $rule['selector'] );
+		if ( ':root' === strtolower( $selector ) || 0 === stripos( $selector, '@font-face' ) ) {
+			return;
+		}
+		// font-family longhand only — a custom property here is a declaration,
+		// which is exactly what we want people to write.
+		if ( ! preg_match_all( '/(?<![-a-z0-9_])font-family\s*:\s*([^;}]+)/i', $rule['body'], $m ) ) {
+			return;
+		}
+		foreach ( $m[1] as $value ) {
+			$value = trim( $value );
+			if ( '' === $value || stripos( $value, 'var(' ) !== false ) {
+				continue;
+			}
+			$first = strtolower( trim( explode( ',', $value )[0], " \t\n\r\"'" ) );
+			if ( '' === $first || in_array( $first, $generic, true ) ) {
+				continue;
+			}
+			$found[ $selector ] = true;
+			return;
+		}
+	} );
+
+	return array_keys( $found );
+}
 
 /**
  * Analyze a whole mockup HTML file and report conversion readiness.
@@ -544,6 +616,30 @@ function ekwa_mockup_readiness_check( $html ) {
 			'message' => $has_style
 				? __( 'The mockup references CSS, but nothing is saved in Design Setup → "Mockup stylesheet". Paste the full stylesheet there so fonts/colors extract and AI CSS extraction works.', 'ekwa' )
 				: __( 'No stylesheet saved in Design Setup and none referenced in the file. Paste the mockup CSS in the "Mockup stylesheet" field above.', 'ekwa' ),
+		);
+	}
+
+	// ── Fonts applied through a variable? ────────────────────────────────
+	// A rule that names the family directly still renders (the @font-face
+	// matches by name), so this never shows up visually — but it defeats the
+	// font variable entirely: the theme can't swap in the self-hosted files,
+	// and conditional loading can't stop phones from downloading the font.
+	$font_css = '' !== $saved_css ? $saved_css : ekwa_mockup_inline_css( $html );
+	if ( '' !== trim( $font_css ) ) {
+		$literals = ekwa_mockup_literal_font_rules( $font_css );
+		$sections[] = array(
+			'id'      => 'font-vars',
+			'label'   => __( 'Fonts use variables', 'ekwa' ),
+			'status'  => empty( $literals ) ? 'pass' : 'warn',
+			'message' => empty( $literals )
+				? __( 'Every font-family declaration goes through a CSS variable (or defines one). Self-hosting and conditional mobile loading will apply cleanly.', 'ekwa' )
+				: sprintf(
+					/* translators: 1: count, 2: comma-separated selectors. */
+					__( '%1$d rule(s) name a font family directly instead of using a variable: %2$s. Move each typeface into a :root variable and reference it with font-family:var(--name) — otherwise the variable the Fonts tab creates is never applied, and the font downloads on mobile even when conditional loading is on.', 'ekwa' ),
+					count( $literals ),
+					implode( ', ', array_slice( $literals, 0, 10 ) ) . ( count( $literals ) > 10 ? '…' : '' )
+				),
+			'fix'     => empty( $literals ) ? '' : ":root {\n  --font-heading: 'Playfair Display', serif;\n  --font-body: 'Inter', sans-serif;\n}\n\nbody { font-family: var(--font-body); }\nh1, h2, h3 { font-family: var(--font-heading); }",
 		);
 	}
 

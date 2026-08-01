@@ -334,6 +334,27 @@ function ekwa_tokens_set_global_css( $css ) {
 }
 
 /**
+ * "1,204 lines · 38 KB" — the at-a-glance size of a CSS blob, shown on the
+ * collapsed Global CSS field so its bulk is visible without opening it.
+ *
+ * @param string $css
+ * @return string
+ */
+function ekwa_tokens_css_size_label( $css ) {
+	$css = (string) $css;
+	if ( '' === trim( $css ) ) {
+		return __( 'empty', 'ekwa' );
+	}
+	$lines = substr_count( $css, "\n" ) + 1;
+	return sprintf(
+		/* translators: 1: line count, 2: human-readable size (e.g. "38 KB"). */
+		_n( '%1$s line · %2$s', '%1$s lines · %2$s', $lines, 'ekwa' ),
+		number_format_i18n( $lines ),
+		size_format( strlen( $css ) )
+	);
+}
+
+/**
  * Print the global pool in <head>, after the token/font :root vars (priority 5)
  * so any var() it references is already defined.
  */
@@ -667,8 +688,24 @@ function ekwa_tokens_render_tab() {
 			<?php esc_html_e( 'The shared, site-wide CSS every page inherits — resets, body typography, generic components. It seeds from the mockup stylesheet above (minus the CSS/font variables, which the CSS variables and Fonts sections already emit), and shrinks on its own as you use the converter\'s “Extract this section\'s CSS with AI”: each section\'s own rules move out to that section\'s Scoped CSS, and whatever no section claims (body font, buttons, resets) stays here. Edit freely — this box always holds the current pool. Save it EMPTY to re-seed from the mockup stylesheet.', 'ekwa' ); ?>
 		</p>
 		<p class="description" style="margin-bottom:1em;"><?php esc_html_e( 'Heads up: any hard-coded image path — like background: url(images/hero.jpg) — is highlighted in red below, because mockup-relative paths break on the live site. Upload the image to the Media Library, add it under “Background image variables” below, and reference it with var(--your-name). Backgrounds that already use a variable are fine.', 'ekwa' ); ?></p>
-			<textarea id="ekwa-global-css" name="ekwa_global_css" rows="10" class="large-text code ekwa-code-css" spellcheck="false" placeholder="/* shared/global CSS — body, resets, shared components */"><?php echo esc_textarea( ekwa_tokens_global_css() ); ?></textarea>
-			<div id="ekwa-global-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
+		<?php
+		// The pool routinely runs to a couple of thousand lines, which used to
+		// stretch this tab into an endless scroll. Keep it folded away behind a
+		// summary (auto-open only while it's still short), and cap the editor's
+		// height so it scrolls inside itself rather than down the page.
+		$ekwa_pool       = ekwa_tokens_global_css();
+		$ekwa_pool_lines = '' === trim( $ekwa_pool ) ? 0 : substr_count( $ekwa_pool, "\n" ) + 1;
+		?>
+		<details class="ekwa-collapsible" id="ekwa-global-css-details"<?php echo $ekwa_pool_lines > 40 ? '' : ' open'; ?>>
+			<summary>
+				<span class="ekwa-collapsible__label"><?php esc_html_e( 'Edit the Global CSS', 'ekwa' ); ?></span>
+				<span class="ekwa-collapsible__meta" id="ekwa-global-css-meta"><?php echo esc_html( ekwa_tokens_css_size_label( $ekwa_pool ) ); ?></span>
+			</summary>
+			<div class="ekwa-collapsible__body">
+				<textarea id="ekwa-global-css" name="ekwa_global_css" rows="10" class="large-text code ekwa-code-css" spellcheck="false" placeholder="/* shared/global CSS — body, resets, shared components */"><?php echo esc_textarea( $ekwa_pool ); ?></textarea>
+			</div>
+		</details>
+		<div id="ekwa-global-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
 	</div>
 
 	<div class="ekwa-section">

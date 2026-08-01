@@ -393,13 +393,48 @@ function ekwa_perf_lazysize_block_html( $html, $block ) {
 	if ( strpos( $html, '<img' ) === false ) {
 		return $html;
 	}
-	return preg_replace_callback(
-		'/<img\s[^>]*>/i',
-		function ( $m ) { return ekwa_perf_lazysize_img_tag( $m[0] ); },
-		$html
-	);
+	return ekwa_perf_lazysize_html( $html );
 }
 add_filter( 'render_block', 'ekwa_perf_lazysize_block_html', 25, 2 );
+
+/**
+ * Lazysize every <img> in a block of HTML, EXCEPT the ones inside a <noscript>
+ * fallback.
+ *
+ * render_block fires for every block, so an image nested inside containers is
+ * seen again by each ancestor. The outer tag is protected by the data-src /
+ * .lazyload guards in ekwa_perf_lazysize_img_tag(), but the copy inside the
+ * <noscript> fallback is deliberately pristine — it passed every guard and got
+ * rewritten again on each pass, so an image five containers deep came out as
+ * five duplicated <img> tags wrapped in five nested <noscript> elements.
+ * (Converted mockup headers nest that deeply as a matter of course.)
+ *
+ * @param string $html Rendered HTML.
+ * @return string
+ */
+function ekwa_perf_lazysize_html( $html ) {
+	// Odd indexes are the captured <noscript> blocks — passed through untouched.
+	$chunks = preg_split( '#(<noscript\b[^>]*>.*?</noscript>)#is', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+	if ( ! is_array( $chunks ) ) {
+		return $html;
+	}
+
+	$out = '';
+	foreach ( $chunks as $i => $chunk ) {
+		if ( $i % 2 || strpos( $chunk, '<img' ) === false ) {
+			$out .= $chunk;
+			continue;
+		}
+		$done = preg_replace_callback(
+			'/<img\s[^>]*>/i',
+			function ( $m ) { return ekwa_perf_lazysize_img_tag( $m[0] ); },
+			$chunk
+		);
+		$out .= ( null === $done ) ? $chunk : $done;
+	}
+
+	return $out;
+}
 
 /**
  * Catches <img> tags inside classic post content that don't go through render_block.

@@ -460,6 +460,44 @@
 	height: 420px;
 }
 
+/* Same clamp for the Global CSS pool — it routinely runs past 2,000 lines, and
+   an auto-height CodeMirror turns that into an endless page scroll. */
+.ekwa-collapsible__body .CodeMirror {
+	height: 420px;
+}
+
+/* Collapsible field (Global CSS). */
+.ekwa-collapsible {
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #fff;
+	margin-bottom: 8px;
+}
+.ekwa-collapsible > summary {
+	cursor: pointer;
+	padding: 10px 12px;
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	font-weight: 600;
+	list-style-position: inside;
+	user-select: none;
+}
+.ekwa-collapsible > summary:hover {
+	background: #f6f7f7;
+}
+.ekwa-collapsible[open] > summary {
+	border-bottom: 1px solid #dcdcde;
+}
+.ekwa-collapsible__meta {
+	font-weight: 400;
+	font-size: 12px;
+	color: #646970;
+}
+.ekwa-collapsible__body {
+	padding: 12px;
+}
+
 /* Background-image path offenders in the Global CSS editor. */
 .ekwa-cm-error-line {
 	background: #fcecec !important;

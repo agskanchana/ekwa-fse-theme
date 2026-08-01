@@ -95,6 +95,13 @@ require_once get_template_directory() . '/inc/ekwa-settings.php';
 require_once get_template_directory() . '/inc/ekwa-location-geocode.php';
 
 /**
+ * CSS rule walker — lossless stylesheet subtraction (used to thin the Global
+ * CSS pool after a section's CSS is extracted) and font-variable rewriting.
+ * Loaded before tokens/fonts, which both build on it.
+ */
+require_once get_template_directory() . '/inc/ekwa-css-rules.php';
+
+/**
  * Load design tokens (color/bg-image variables, saved mockup CSS, conditional
  * font breakpoint) — before fonts, which reads the breakpoint helper.
  */
@@ -164,6 +171,12 @@ require_once get_template_directory() . '/inc/ekwa-block-styles.php';
  * Load mockup converter REST API.
  */
 require_once get_template_directory() . '/inc/ekwa-converter-api.php';
+
+/**
+ * Build a real WP menu from the mockup's navigation during conversion, so
+ * ekwa/header-menu has something to render.
+ */
+require_once get_template_directory() . '/inc/ekwa-converter-menu.php';
 
 /**
  * AI governance — role gating, per-user daily rate limits, usage logging,

@@ -616,6 +616,34 @@
 
 				cssCm.on( 'changes', scan );
 				scan();
+
+				// The editor lives inside a <details> that starts closed on a big
+				// pool, so CodeMirror measures itself against a hidden element and
+				// renders blank until refreshed on first open. Also keep the
+				// collapsed summary's "N lines · N KB" honest while typing.
+				var details = document.getElementById( 'ekwa-global-css-details' );
+				var meta    = document.getElementById( 'ekwa-global-css-meta' );
+
+				if ( details ) {
+					details.addEventListener( 'toggle', function () {
+						if ( details.open ) {
+							try { cssCm.refresh(); } catch ( e ) {}
+						}
+					} );
+				}
+
+				if ( meta ) {
+					var metaTpl = ( CE && CE.i18n && CE.i18n.cssMeta ) ? CE.i18n.cssMeta : '%1$s lines · %2$s';
+					var updateMeta = ekwaDebounce( function () {
+						var val = cssCm.getValue();
+						meta.textContent = val.trim()
+							? metaTpl
+								.replace( '%1$s', cssCm.lineCount().toLocaleString() )
+								.replace( '%2$s', formatBytes( val.length ) )
+							: ( ( CE && CE.i18n && CE.i18n.cssEmpty ) || 'empty' );
+					}, 300 );
+					cssCm.on( 'changes', updateMeta );
+				}
 			}
 		}
 
@@ -689,6 +717,13 @@
 			var d = document.createElement( 'div' );
 			d.textContent = ( s == null ) ? '' : String( s );
 			return d.innerHTML;
+		}
+
+		// Matches WP's size_format() closely enough for the collapsed summary.
+		function formatBytes( n ) {
+			if ( n < 1024 ) { return n + ' B'; }
+			if ( n < 1024 * 1024 ) { return ( n / 1024 ).toFixed( 1 ).replace( /\.0$/, '' ) + ' KB'; }
+			return ( n / 1048576 ).toFixed( 1 ).replace( /\.0$/, '' ) + ' MB';
 		}
 	});
 

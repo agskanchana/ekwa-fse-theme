@@ -736,6 +736,192 @@ function ekwa_fonts_ai_sanitize_entry( $entry ) {
 	);
 }
 
+/* ------------------------------------------------------------------------
+ * Making the variable actually apply
+ *
+ * Self-hosting a font only changes what the page renders if the CSS asks for
+ * it through the variable this module defines. Two ways that breaks:
+ *
+ *   a) the mockup applies the family LITERALLY — `font-family:'Poppins',
+ *      sans-serif`. The @font-face still matches by family name, so it "looks
+ *      right", but the variable is dead: conditional mobile loading can't swap
+ *      it out (the font downloads on phones anyway), and changing the font in
+ *      the Fonts tab changes nothing.
+ *   b) the mockup applies it through ITS OWN variable (`--font-heading`) whose
+ *      :root declaration is stripped from the Global CSS pool (this module owns
+ *      font variables). The variable then resolves to nothing and the text
+ *      falls back to the browser default.
+ *
+ * (a) is fixed by rewriting literal stacks to var(--ours); (b) by emitting the
+ * mockup's own names as aliases of ours. Both are idempotent.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Registered families mapped to their CSS variable name.
+ *
+ * @return array<string,string> lowercased family => var name (no dashes).
+ */
+function ekwa_fonts_family_var_map() {
+	$map = array();
+	foreach ( ekwa_fonts_get_all() as $font ) {
+		$family = trim( (string) ( $font['family'] ?? '' ) );
+		$var    = ekwa_fonts_sanitize_var_name( $font['var_name'] ?? '' );
+		if ( '' === $family || '' === $var ) {
+			continue;
+		}
+		$map[ strtolower( $family ) ] = $var;
+	}
+	return $map;
+}
+
+/**
+ * Rewrite literal font stacks to the variable this module defines for them.
+ *
+ * `font-family: "Poppins", sans-serif` → `font-family: var(--ff-heading)`,
+ * for every family in the Fonts registry. Declarations that already use a
+ * var(), and families the site doesn't self-host, are left exactly as they are
+ * — so running this twice changes nothing the second time.
+ *
+ * Custom-property declarations are rewritten too (`--font-heading:'Poppins',…`
+ * → `--font-heading:var(--ff-heading)`), which keeps a mockup's own token
+ * pointing at the real, conditionally-loaded font.
+ *
+ * Deliberately NOT rewritten: `@font-face` blocks (their font-family names the
+ * face being defined, so a var() there would break it) and the `font:`
+ * shorthand (parsing its grammar reliably isn't worth it — such a rule still
+ * renders correctly via @font-face, it just opts out of conditional loading).
+ *
+ * @param string $css Stylesheet.
+ * @return array{css:string,count:int} Rewritten CSS and how many declarations changed.
+ */
+function ekwa_fonts_rewrite_css_to_vars( $css ) {
+	$css = (string) $css;
+	$map = ekwa_fonts_family_var_map();
+	if ( '' === trim( $css ) || empty( $map ) ) {
+		return array( 'css' => $css, 'count' => 0 );
+	}
+
+	// Split out @font-face blocks so the rewriter never sees them; the odd
+	// indexes of the result are the blocks themselves, passed through untouched.
+	$chunks = preg_split( '/(@font-face\s*\{[^}]*\})/is', $css, -1, PREG_SPLIT_DELIM_CAPTURE );
+	if ( ! is_array( $chunks ) ) {
+		return array( 'css' => $css, 'count' => 0 );
+	}
+
+	$count = 0;
+
+	$replace = function ( $m ) use ( $map, &$count ) {
+		$value = trim( $m[3] );
+
+		// Already tokenized, or empty — nothing to do.
+		if ( '' === $value || stripos( $value, 'var(' ) !== false ) {
+			return $m[0];
+		}
+
+		// The primary (first) family in the stack is the real typeface.
+		$first = strtolower( trim( explode( ',', $value )[0], " \t\n\r\"'" ) );
+		if ( '' === $first || ! isset( $map[ $first ] ) ) {
+			return $m[0];
+		}
+
+		// A custom property only qualifies when its value really is a font
+		// stack — otherwise a colour token that happens to share a name with a
+		// family would be clobbered.
+		$is_custom_prop = '-' === $m[1][0];
+		if ( $is_custom_prop && function_exists( 'ekwa_tokens_value_is_font_family' )
+			&& ! ekwa_tokens_value_is_font_family( $m[1], $value ) ) {
+			return $m[0];
+		}
+
+		// Don't rewrite our own declaration into a reference to itself.
+		if ( $is_custom_prop && ltrim( strtolower( $m[1] ), '-' ) === $map[ $first ] ) {
+			return $m[0];
+		}
+
+		$count++;
+		return $m[1] . $m[2] . 'var(--' . $map[ $first ] . ')';
+	};
+
+	$out = '';
+	foreach ( $chunks as $i => $chunk ) {
+		if ( $i % 2 ) {
+			$out .= $chunk; // Captured @font-face block — verbatim.
+			continue;
+		}
+		$done = preg_replace_callback( '/(font-family|--[a-z0-9_-]+)(\s*:\s*)([^;{}]+)/i', $replace, $chunk );
+		// null = PCRE gave up (backtrack limit); keep the original chunk rather
+		// than dropping CSS on the floor.
+		$out .= ( null === $done ) ? $chunk : $done;
+	}
+
+	return array( 'css' => $out, 'count' => $count );
+}
+
+/**
+ * Rewrite the saved Global CSS pool in place so its font declarations go
+ * through the registry's variables. Called whenever a font is added or its
+ * variable renamed.
+ *
+ * @return int Declarations rewritten (0 when nothing needed changing).
+ */
+function ekwa_fonts_apply_vars_to_global_css() {
+	if ( ! function_exists( 'ekwa_tokens_global_css' ) || ! function_exists( 'ekwa_tokens_set_global_css' ) ) {
+		return 0;
+	}
+	$css = ekwa_tokens_global_css();
+	if ( '' === trim( $css ) ) {
+		return 0;
+	}
+	$res = ekwa_fonts_rewrite_css_to_vars( $css );
+	if ( $res['count'] > 0 ) {
+		ekwa_tokens_set_global_css( $res['css'] );
+	}
+	return $res['count'];
+}
+
+/**
+ * Font variables the MOCKUP defines for families we now self-host, other than
+ * the registry's own variable name.
+ *
+ * The mockup's `:root` is stripped from the Global CSS pool (this module owns
+ * font variables), so any rule still written as `font-family:var(--font-body)`
+ * would resolve to nothing. Aliasing `--font-body` to our variable keeps that
+ * CSS working — through our variable, so conditional loading applies to it too.
+ *
+ * @return array<string,string> alias var name => registry var name.
+ */
+function ekwa_fonts_mockup_var_aliases() {
+	$map = ekwa_fonts_family_var_map();
+	if ( empty( $map ) || ! function_exists( 'ekwa_tokens_mockup_css' ) ) {
+		return array();
+	}
+	$css = (string) ekwa_tokens_mockup_css();
+	if ( '' === trim( $css ) ) {
+		return array();
+	}
+	$css = preg_replace( '/\/\*.*?\*\//s', '', $css );
+
+	$aliases = array();
+	if ( preg_match_all( '/(--[a-z0-9_-]+)\s*:\s*([^;{}]+)/i', $css, $matches, PREG_SET_ORDER ) ) {
+		foreach ( $matches as $decl ) {
+			$value = trim( $decl[2] );
+			if ( '' === $value || stripos( $value, 'var(' ) !== false ) {
+				continue;
+			}
+			$first = strtolower( trim( explode( ',', $value )[0], " \t\n\r\"'" ) );
+			if ( ! isset( $map[ $first ] ) ) {
+				continue;
+			}
+			$alias = ekwa_fonts_sanitize_var_name( $decl[1] );
+			if ( $alias === $map[ $first ] || isset( $aliases[ $alias ] ) ) {
+				continue;
+			}
+			$aliases[ $alias ] = $map[ $first ];
+		}
+	}
+	return $aliases;
+}
+
 /**
  * Find the mockup CSS custom property that already defines a given font family,
  * so the Fonts UI can pre-fill the variable name with the one the mockup ALREADY
@@ -975,11 +1161,21 @@ function ekwa_fonts_ajax_download() {
 	);
 	ekwa_fonts_save_all( $fonts );
 
+	// Point the site's CSS at the new variable — otherwise the mockup keeps
+	// applying the family literally and the variable never does anything.
+	$rewritten = ekwa_fonts_apply_vars_to_global_css();
+
 	ob_start();
 	ekwa_fonts_render_row( $id, $fonts[ $id ] );
 	$row_html = ob_get_clean();
 
-	wp_send_json_success( array( 'message' => sprintf( __( 'Saved %d weight file(s).', 'ekwa' ), count( $saved ) ), 'rowHtml' => $row_html ) );
+	$message = sprintf( __( 'Saved %d weight file(s).', 'ekwa' ), count( $saved ) );
+	if ( $rewritten > 0 ) {
+		/* translators: 1: number of declarations, 2: CSS variable name. */
+		$message .= ' ' . sprintf( _n( 'Rewrote %1$d Global CSS declaration to var(--%2$s).', 'Rewrote %1$d Global CSS declarations to var(--%2$s).', $rewritten, 'ekwa' ), $rewritten, $var_name );
+	}
+
+	wp_send_json_success( array( 'message' => $message, 'rowHtml' => $row_html, 'rewritten' => $rewritten ) );
 }
 add_action( 'wp_ajax_ekwa_fonts_download', 'ekwa_fonts_ajax_download' );
 
@@ -1052,11 +1248,20 @@ function ekwa_fonts_ajax_upload() {
 	}
 	ekwa_fonts_save_all( $fonts );
 
+	// Point the site's CSS at the new variable (see the download handler).
+	$rewritten = ekwa_fonts_apply_vars_to_global_css();
+
 	ob_start();
 	ekwa_fonts_render_row( $existing_id, $fonts[ $existing_id ] );
 	$row_html = ob_get_clean();
 
-	wp_send_json_success( array( 'message' => __( 'Font uploaded.', 'ekwa' ), 'rowHtml' => $row_html, 'id' => $existing_id ) );
+	$message = __( 'Font uploaded.', 'ekwa' );
+	if ( $rewritten > 0 ) {
+		/* translators: 1: number of declarations, 2: CSS variable name. */
+		$message .= ' ' . sprintf( _n( 'Rewrote %1$d Global CSS declaration to var(--%2$s).', 'Rewrote %1$d Global CSS declarations to var(--%2$s).', $rewritten, 'ekwa' ), $rewritten, $var_name );
+	}
+
+	wp_send_json_success( array( 'message' => $message, 'rowHtml' => $row_html, 'id' => $existing_id, 'rewritten' => $rewritten ) );
 }
 add_action( 'wp_ajax_ekwa_fonts_upload', 'ekwa_fonts_ajax_upload' );
 
@@ -1094,7 +1299,9 @@ function ekwa_fonts_ajax_rename() {
 	if ( $id && isset( $fonts[ $id ] ) && '' !== $var_name ) {
 		$fonts[ $id ]['var_name'] = $var_name;
 		ekwa_fonts_save_all( $fonts );
-		wp_send_json_success( array( 'var_name' => $var_name ) );
+		// Re-point any literal font stacks at the renamed variable.
+		$rewritten = ekwa_fonts_apply_vars_to_global_css();
+		wp_send_json_success( array( 'var_name' => $var_name, 'rewritten' => $rewritten ) );
 	}
 	wp_send_json_error( array( 'message' => __( 'Invalid request.', 'ekwa' ) ) );
 }
@@ -1181,6 +1388,16 @@ function ekwa_fonts_build_css() {
 	if ( '' === $face_rules && '' === $root_rules ) {
 		return '';
 	}
+
+	// Alias the mockup's own font variables onto ours. The mockup's :root is
+	// stripped from the Global CSS pool (this module owns font variables), so
+	// without these, CSS still written as var(--font-heading) would resolve to
+	// nothing. Declared as var() references, not copies, so the conditional
+	// media query below governs the aliases too.
+	foreach ( ekwa_fonts_mockup_var_aliases() as $alias => $canonical ) {
+		$root_rules .= sprintf( '--%s:var(--%s);', $alias, $canonical );
+	}
+
 	$css = $face_rules . ':root{' . $root_rules . '}';
 	if ( '' !== $cond_rules ) {
 		$bp   = function_exists( 'ekwa_fonts_conditional_bp' ) ? ekwa_fonts_conditional_bp() : 767;

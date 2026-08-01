@@ -520,6 +520,309 @@ function ekwa_ai_repair_block_markup( $markup ) {
 }
 
 /**
+ * Structural repairs on generated block markup — the class of mistakes that
+ * produce *valid* markup which nonetheless renders wrong.
+ *
+ * 1. HTML SMUGGLED INTO A TEXT ATTRIBUTE. Asked to convert
+ *    `<a href="#"><img src="us.png"> English</a>`, models like to emit
+ *    `ekwa/link {"text":"<img src=\"us.png\"> English"}`. ekwa/link escapes its
+ *    text (as it must), so the reader sees the literal tag and the image is
+ *    gone. The element is re-expressed the way the deterministic converter
+ *    writes it: ekwa/div with tagName="a" wrapping real child blocks.
+ *
+ * 2. className THAT NEVER REACHED THE SAVED MARKUP. core/list, core/paragraph
+ *    and friends are static blocks — they render their stored HTML, not their
+ *    attributes. `<!-- wp:list {"className":"lang-dropdown"} --><ul
+ *    class="wp-block-list">` therefore drops the mockup's class on the floor
+ *    and the dropdown loses its CSS. The class is copied onto the element.
+ *
+ * @param string $markup Block-comment markup.
+ * @return array{markup:string,notes:array<int,string>,fixed:int}
+ */
+function ekwa_ai_repair_block_structure( $markup ) {
+	$notes = array();
+	if ( '' === trim( (string) $markup ) ) {
+		return array( 'markup' => (string) $markup, 'notes' => $notes, 'fixed' => 0 );
+	}
+
+	$stats  = array( 'unwrapped' => 0, 'classed' => 0 );
+	$blocks = parse_blocks( $markup );
+	$blocks = ekwa_ai_repair_blocks_walk( $blocks, $stats );
+
+	if ( $stats['unwrapped'] > 0 ) {
+		$notes[] = sprintf(
+			_n(
+				'Rebuilt %d link that had HTML (an image or icon) inside its text — it is now a real link block with child blocks.',
+				'Rebuilt %d links that had HTML (images or icons) inside their text — they are now real link blocks with child blocks.',
+				$stats['unwrapped'],
+				'ekwa'
+			),
+			$stats['unwrapped']
+		);
+	}
+	if ( $stats['classed'] > 0 ) {
+		$notes[] = sprintf(
+			_n(
+				'Restored the CSS class on %d block whose class was set as an attribute but missing from its markup.',
+				'Restored the CSS class on %d blocks whose class was set as an attribute but missing from their markup.',
+				$stats['classed'],
+				'ekwa'
+			),
+			$stats['classed']
+		);
+	}
+
+	if ( ! $stats['unwrapped'] && ! $stats['classed'] ) {
+		return array( 'markup' => $markup, 'notes' => $notes, 'fixed' => 0 );
+	}
+
+	return array(
+		'markup' => serialize_blocks( $blocks ),
+		'notes'  => $notes,
+		'fixed'  => $stats['unwrapped'] + $stats['classed'],
+	);
+}
+
+/**
+ * Recursive worker for ekwa_ai_repair_block_structure().
+ *
+ * @param array $blocks Parsed blocks.
+ * @param array $stats  Counters, by reference.
+ * @return array Repaired blocks.
+ */
+function ekwa_ai_repair_blocks_walk( $blocks, &$stats ) {
+	$out = array();
+
+	foreach ( $blocks as $block ) {
+		if ( ! empty( $block['innerBlocks'] ) ) {
+			$block['innerBlocks'] = ekwa_ai_repair_blocks_walk( $block['innerBlocks'], $stats );
+		}
+
+		$block = ekwa_ai_repair_text_attribute_html( $block, $stats );
+		$block = ekwa_ai_repair_static_class( $block, $stats );
+
+		$out[] = $block;
+	}
+
+	return $out;
+}
+
+/**
+ * Blocks whose "text" attribute is rendered as escaped plain text, mapped to
+ * the tag they should become when that text turns out to contain HTML.
+ *
+ * @return array<string,string> block name => replacement tagName.
+ */
+function ekwa_ai_repair_text_blocks() {
+	return array(
+		'ekwa/link'   => 'a',
+		'ekwa/button' => 'a',
+		'ekwa/text'   => '',  // '' = keep the block's own tagName (default span).
+	);
+}
+
+/**
+ * Turn `ekwa/link {"text":"<img …> English"}` into an ekwa/div anchor wrapping
+ * real child blocks.
+ *
+ * @param array $block Parsed block.
+ * @param array $stats Counters, by reference.
+ * @return array
+ */
+function ekwa_ai_repair_text_attribute_html( $block, &$stats ) {
+	$targets = ekwa_ai_repair_text_blocks();
+	$name    = isset( $block['blockName'] ) ? $block['blockName'] : '';
+	if ( ! isset( $targets[ $name ] ) ) {
+		return $block;
+	}
+
+	$attrs = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
+	$text  = isset( $attrs['text'] ) ? (string) $attrs['text'] : '';
+
+	// A tag, not merely an entity or a stray "<".
+	if ( '' === $text || ! preg_match( '/<[a-z][a-z0-9]*\b[^>]*>/i', $text ) ) {
+		return $block;
+	}
+
+	$children = ekwa_ai_repair_html_to_blocks( $text );
+	if ( empty( $children ) ) {
+		return $block; // Nothing usable — leave it for a human to look at.
+	}
+
+	$tag = $targets[ $name ];
+	if ( '' === $tag ) {
+		$tag = isset( $attrs['tagName'] ) && $attrs['tagName'] ? (string) $attrs['tagName'] : 'span';
+	}
+
+	$new_attrs = array( 'tagName' => $tag );
+	foreach ( array( 'className', 'target', 'rel' ) as $keep ) {
+		if ( ! empty( $attrs[ $keep ] ) ) {
+			$new_attrs[ $keep ] = $attrs[ $keep ];
+		}
+	}
+	// ekwa/link stores the destination in "url"; ekwa/div uses "href".
+	$url = '';
+	foreach ( array( 'url', 'href' ) as $key ) {
+		if ( ! empty( $attrs[ $key ] ) ) {
+			$url = (string) $attrs[ $key ];
+			break;
+		}
+	}
+	if ( 'a' === $tag && '' !== $url ) {
+		$new_attrs['href'] = $url;
+	}
+	if ( ! empty( $attrs['newTab'] ) ) {
+		$new_attrs['target'] = '_blank';
+	}
+	if ( ! empty( $attrs['customAttributes'] ) && is_array( $attrs['customAttributes'] ) ) {
+		$new_attrs['customAttributes'] = $attrs['customAttributes'];
+	}
+
+	$stats['unwrapped']++;
+
+	return array(
+		'blockName'    => 'ekwa/div',
+		'attrs'        => $new_attrs,
+		'innerBlocks'  => $children,
+		'innerHTML'    => '',
+		'innerContent' => array_fill( 0, count( $children ), null ),
+	);
+}
+
+/**
+ * Convert an HTML fragment into parsed blocks, reusing the deterministic
+ * converter so the result matches what the non-AI path would have produced.
+ *
+ * @param string $html Fragment.
+ * @return array Parsed blocks (empty on failure).
+ */
+function ekwa_ai_repair_html_to_blocks( $html ) {
+	if ( ! function_exists( 'ekwa_mc_convert_html' ) ) {
+		$lib = get_template_directory() . '/inc/ekwa-converter-lib.php';
+		if ( ! file_exists( $lib ) ) {
+			return array();
+		}
+		require_once $lib;
+	}
+
+	// The converter keeps per-run state in a static context; snapshot it so
+	// repairing a block mid-response can't disturb an enclosing conversion.
+	$saved = function_exists( 'ekwa_mc_context' ) ? ekwa_mc_context() : null;
+
+	try {
+		// Dynamic-data detection stays OFF: this fragment is already inside a
+		// converted tree, and re-detecting would swap a decorative flag image
+		// for a site-logo block.
+		$result = ekwa_mc_convert_html( $html, null, array( 'detect_dynamic' => false ) );
+		$blocks = parse_blocks( isset( $result['markup'] ) ? $result['markup'] : '' );
+	} catch ( \Throwable $e ) {
+		$blocks = array();
+	}
+
+	if ( null !== $saved ) {
+		ekwa_mc_context( $saved );
+	}
+
+	// parse_blocks() yields whitespace-only "null name" blocks between siblings.
+	$blocks = array_values( array_filter( $blocks, function ( $b ) {
+		return ! empty( $b['blockName'] );
+	} ) );
+
+	return $blocks;
+}
+
+/**
+ * Static core blocks render their saved HTML, so a className attribute that
+ * isn't also on the element is silently dropped. Copy it across.
+ *
+ * @param array $block Parsed block.
+ * @param array $stats Counters, by reference.
+ * @return array
+ */
+function ekwa_ai_repair_static_class( $block, &$stats ) {
+	static $static_blocks = array( 'core/list', 'core/paragraph', 'core/heading', 'core/quote', 'core/table', 'core/preformatted' );
+
+	$name = isset( $block['blockName'] ) ? $block['blockName'] : '';
+	if ( ! in_array( $name, $static_blocks, true ) ) {
+		return $block;
+	}
+
+	$class = isset( $block['attrs']['className'] ) ? trim( (string) $block['attrs']['className'] ) : '';
+	if ( '' === $class || '' === trim( (string) $block['innerHTML'] ) ) {
+		return $block;
+	}
+
+	$wanted    = preg_split( '/\s+/', $class, -1, PREG_SPLIT_NO_EMPTY );
+	$satisfied = false;
+
+	// Patch only the FIRST opening tag — the block's own wrapper element.
+	$patch = function ( $html ) use ( $wanted, &$satisfied ) {
+		$done = false;
+		$out  = preg_replace_callback(
+			'/<([a-z][a-z0-9]*)((?:\s[^>]*?)?)(\/?)>/i',
+			function ( $m ) use ( $wanted, &$done, &$satisfied ) {
+				if ( $done ) {
+					return $m[0];
+				}
+				$done  = true;
+				$attrs = $m[2];
+
+				if ( preg_match( '/\sclass\s*=\s*"([^"]*)"/i', $attrs, $cm ) ) {
+					$have    = preg_split( '/\s+/', $cm[1], -1, PREG_SPLIT_NO_EMPTY );
+					$missing = array_diff( $wanted, $have );
+					if ( empty( $missing ) ) {
+						$satisfied = true; // Already carries every class.
+						return $m[0];
+					}
+					$new_class = implode( ' ', array_merge( $have, $missing ) );
+					$attrs     = preg_replace( '/\sclass\s*=\s*"[^"]*"/i', ' class="' . esc_attr( $new_class ) . '"', $attrs, 1 );
+					return '<' . $m[1] . $attrs . $m[3] . '>';
+				}
+
+				return '<' . $m[1] . $attrs . ' class="' . esc_attr( implode( ' ', $wanted ) ) . '"' . $m[3] . '>';
+			},
+			$html,
+			1
+		);
+		return array( null === $out ? $html : $out, $done );
+	};
+
+	// serialize_blocks() rebuilds from innerContent, so the chunk holding the
+	// opening tag is the one that has to change — patching the (concatenated)
+	// innerHTML alone would be thrown away for any block with inner blocks.
+	$chunks  = ( ! empty( $block['innerContent'] ) && is_array( $block['innerContent'] ) )
+		? $block['innerContent']
+		: array( $block['innerHTML'] );
+	$changed = false;
+
+	foreach ( $chunks as $i => $chunk ) {
+		if ( ! is_string( $chunk ) || '' === trim( $chunk ) ) {
+			continue;
+		}
+		list( $patched, $found ) = $patch( $chunk );
+		if ( ! $found ) {
+			continue; // No tag in this chunk — keep looking.
+		}
+		if ( $satisfied || $patched === $chunk ) {
+			return $block; // Nothing to do.
+		}
+		$chunks[ $i ] = $patched;
+		$changed      = true;
+		break;
+	}
+
+	if ( ! $changed ) {
+		return $block;
+	}
+
+	$block['innerContent'] = $chunks;
+	$block['innerHTML']    = implode( '', array_filter( $chunks, 'is_string' ) );
+	$stats['classed']++;
+
+	return $block;
+}
+
+/**
  * Apply safe, deterministic fixes to a single JSON attribute blob and return the
  * corrected string, or null if it still won't parse.
  *

@@ -67,6 +67,17 @@ function ekwa_ai_convert_register_routes() {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			// Menu import — handled by the shared ekwa_mc_apply_post_conversion().
+			'import_menu' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			'menu_replace' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 
@@ -178,6 +189,16 @@ EVERYTHING ELSE — structure:
 - A link or button that is a call-to-action (has a button class like .btn/.b/.button, or is an obvious CTA) → ekwa/button {"text":"…","url":"…"} (add {"variant":"outline"} for outline styles). A plain text link → ekwa/link {"text":"…","url":"…"}. Preserve href exactly.
 - A Font Awesome icon (<i class="fa…">) → ekwa/icon {"iconClass":"…"}.
 
+NEVER PUT HTML IN AN ATTRIBUTE. A "text" attribute is rendered as escaped plain text — a tag inside it shows up as literal characters, so the element it described is lost. This is the single most common conversion failure, so check every link you emit:
+- A link containing ONLY text → ekwa/link {"text":"Read more","url":"/about/"}. Fine.
+- A link containing an <img>, an <svg>, a nested <div>/<span> with its own classes, or any other element → NOT ekwa/link. Emit ekwa/div {"tagName":"a","href":"…","className":"…"} and put the link's contents inside it as real child blocks:
+  <!-- wp:ekwa/div {"tagName":"a","href":"#","className":"lang-item"} -->
+  <!-- wp:ekwa/image {"src":"us.png","alt":"English Flag","className":"flag-icon"} /-->
+  <!-- wp:ekwa/text {"text":"English"} /-->
+  <!-- /wp:ekwa/div -->
+  (An <i> icon is the ONE exception: an icon plus text may stay a single ekwa/link when the link is otherwise plain, since ekwa/link renders its own icon.) The same rule applies to ekwa/button and ekwa/text — their "text" is always plain text.
+- KEEP EVERY CLASS ON core/list. A static block renders its SAVED HTML, so the class must be written on the element itself, not only in the attributes: <!-- wp:list {"className":"lang-dropdown"} --><ul class="wp-block-list lang-dropdown">…</ul><!-- /wp:list -->. Setting className without repeating it on the <ul> silently loses the mockup's styling. Same for core/paragraph, core/heading, core/quote and core/table.
+
 OUTPUT: return ONLY the block-comment markup — no <style> block, no <script>, no markdown code fences, no commentary. CSS is handled separately, so do not emit any CSS.
 Attribute JSON must be STRICT valid JSON (double-quoted keys/strings, no trailing commas). Prefer ekwa/* and the core blocks named above; do not invent block names.
 PROMPT;
@@ -288,6 +309,13 @@ function ekwa_ai_convert_handle_request( $request ) {
 		);
 	}
 
+	// Structural repairs the JSON repairer can't see: HTML smuggled into text
+	// attributes, and static core blocks whose className never reached their
+	// saved markup.
+	$structure    = ekwa_ai_repair_block_structure( $block_markup );
+	$block_markup = $structure['markup'];
+	$warnings     = array_merge( $warnings, $structure['notes'] );
+
 	$warnings      = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $block_markup ) );
 	$rendered_html = ekwa_ai_generate_blocks_render_preview( $block_markup );
 
@@ -304,6 +332,11 @@ function ekwa_ai_convert_handle_request( $request ) {
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
+	}
+
+	// Menu import + fidelity audit — also shared with /convert-markup.
+	if ( function_exists( 'ekwa_mc_apply_post_conversion' ) ) {
+		$response = ekwa_mc_apply_post_conversion( $request, $html, $response );
 	}
 
 	return rest_ensure_response( $response );

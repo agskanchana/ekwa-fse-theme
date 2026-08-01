@@ -189,6 +189,9 @@
 		var s13 = useState( '' );        var cssValue   = s13[0]; var setCssValue   = s13[1];
 		var s14 = useState( 'extract' ); var cssMode    = s14[0]; var setCssMode    = s14[1];
 		var s21 = useState( false );     var aiExtract  = s21[0]; var setAiExtract  = s21[1];
+		// Menu import — turns the mockup's nav into a real WP menu on main_menu.
+		var s24 = useState( false );     var importMenu  = s24[0]; var setImportMenu  = s24[1];
+		var s25 = useState( false );     var menuReplace = s25[0]; var setMenuReplace = s25[1];
 		var s15 = useState( null );      var cssExtract = s15[0]; var setCssExtract = s15[1];
 		var s16 = useState( false );     var cssSaved   = s16[0]; var setCssSaved   = s16[1];
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
@@ -218,6 +221,10 @@
 				}
 				if ( aiExtract ) {
 					aiBody.css_ai_extract = true;
+				}
+				if ( importMenu ) {
+					aiBody.import_menu  = true;
+					aiBody.menu_replace = menuReplace;
 				}
 				apiFetch( {
 					path: '/ekwa/v1/ai-convert',
@@ -260,6 +267,10 @@
 				// the saved Design Tokens mockup stylesheet when none pasted)
 				// and returns them as css_scoped for the wrapper block.
 				body.css_ai_extract = true;
+			}
+			if ( importMenu ) {
+				body.import_menu  = true;
+				body.menu_replace = menuReplace;
 			}
 
 			if ( ! useServerM && manifestData ) {
@@ -485,6 +496,26 @@
 						checked: aiConvert,
 						onChange: setAiConvert,
 					} )
+				)
+			);
+
+			// Menu import — the header-menu block renders whatever WP menu is on
+			// the "Main Menu" location, so converting a header without this
+			// leaves the nav empty until it's rebuilt by hand.
+			inputChildren.push(
+				el( 'div', { key: 'menu-import', className: 'ekwa-mc-menuimport' },
+					el( ToggleControl, {
+						label: __( 'Build the WordPress menu from this HTML', 'ekwa' ),
+						help: __( 'Reads the mockup’s navigation — items, dropdowns, mega-menu columns and their images — creates it as a menu of custom links, and assigns it to the “Main Menu” location that the header-menu block renders. Turn this on when converting the header.', 'ekwa' ),
+						checked: importMenu,
+						onChange: setImportMenu,
+					} ),
+					importMenu ? el( ToggleControl, {
+						label: __( 'Replace the existing menu', 'ekwa' ),
+						help: __( 'Off: a Main Menu that already has items is left untouched. On: its items are deleted and rebuilt from this HTML.', 'ekwa' ),
+						checked: menuReplace,
+						onChange: setMenuReplace,
+					} ) : null
 				)
 			);
 

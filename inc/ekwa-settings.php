@@ -109,6 +109,9 @@ function ekwa_admin_enqueue( $hook ) {
 			/* translators: 1: line number, 2: the offending url() value. */
 			'bgLine'  => __( 'Line %1$d: %2$s', 'ekwa' ),
 			'bgClean' => __( 'No hard-coded image paths in the Global CSS. ✓', 'ekwa' ),
+			/* translators: 1: line count, 2: human-readable size (e.g. "38 KB"). Shown on the collapsed Global CSS field. */
+			'cssMeta'  => __( '%1$s lines · %2$s', 'ekwa' ),
+			'cssEmpty' => __( 'empty', 'ekwa' ),
 		),
 	) );
 
