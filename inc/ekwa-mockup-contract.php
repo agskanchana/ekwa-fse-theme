@@ -282,6 +282,7 @@ function ekwa_mockup_ai_prompts() {
 		. "- Keep the ekwa-* class names EXACTLY as written; you may add your own classes alongside them. THE HEADER MENU IS THE EXCEPTION: name its elements however you like, but keep the nesting shape described below — the converter copies your class names onto the menu block so your CSS still matches.\n"
 		. "- HEADER MENU SHAPE (what the converter needs): one <nav> containing one <ul> of <li> items, each with a single <a>. A dropdown is a nested <ul> inside its <li>. A mega menu is a <div> inside its <li> containing one <div> per column, and each column holds an optional <img>, a heading <a>, then a <ul> of links. Put the link's text in a <span> and the dropdown arrow in its own EMPTY <span> or <i>. Don't build dropdowns out of bare <div>/<a> stacks, don't add wrapper elements between the <li> and its dropdown, and don't hand-write mobile menu markup.\n"
 		. "- ICONS: Font Awesome 6 ONLY — <i class=\"fa-solid fa-phone\" aria-hidden=\"true\"></i> for regular icons and <i class=\"fa-brands fa-facebook-f\"></i> for logos. Do NOT use Remix Icon (ri-*), Bootstrap Icons (bi-*), Themify (ti-*), Ionicons, Material Icons, Line Awesome or Glyphicons, and do NOT add a stylesheet/CDN link for any icon font — the theme bundles Font Awesome 6 Free and loads nothing else, so those icons render as blank boxes on the live site. Use only icons that exist in the FREE set (Solid and Brands); check at fontawesome.com/search with the Free filter on. Always put the icon in its own <i> element (never a background image or a ::before glyph) so it converts to an editable icon block.\n"
+		. "- CONTENT CAROUSELS (rows of cards that slide — services, blog posts, testimonials, before/after galleries): write them as a PLAIN container with one element per card, and NOTHING else — no Owl Carousel, Slick or Swiper markup, no `<div class=\"owl-carousel\">`, no library CSS or JS, and no jQuery. The theme has its own carousel block (vanilla JS, no jQuery, keyboard + screen-reader support) and the converter moves your cards straight into it. Style the CARD; the carousel chrome (arrows, dots, spacing, items per view) is configured on the block, so CSS written against .owl-nav / .owl-stage / .owl-item is wasted work. If you must show the intended layout, just lay the cards out with flex or grid.\n"
 		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/slide-up/zoom/zoom-out/blur/parallax-push/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).\n"
 		. "- YOUTUBE/VIMEO VIDEOS: a real embedded iframe (or even just the video's URL as a placeholder) is enough — do NOT hand-build a custom play button/lightbox. \"Convert with AI\" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.";
 
@@ -415,6 +416,31 @@ function ekwa_mockup_foreign_icons( $html ) {
 		'classes'  => array_keys( $classes ),
 		'unmapped' => array_keys( $unmapped ),
 	);
+}
+
+/**
+ * Which JS carousel libraries a mockup's markup depends on.
+ *
+ * @param string $html
+ * @return string[] Library display names.
+ */
+function ekwa_mockup_carousel_libraries_used( $html ) {
+	if ( ! function_exists( 'ekwa_mc_carousel_libraries' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-converter-detect.php';
+	}
+
+	$found = array();
+	foreach ( ekwa_mc_carousel_libraries() as $lib ) {
+		foreach ( $lib['root'] as $class ) {
+			if ( preg_match( '/\sclass=["\'][^"\']*(^|\s|")' . preg_quote( $class, '/' ) . '(\s|"|\')/', (string) $html )
+				|| preg_match( '/\sclass=["\'][^"\']*\b' . preg_quote( $class, '/' ) . '\b/', (string) $html ) ) {
+				$found[ $lib['name'] ] = true;
+				break;
+			}
+		}
+	}
+
+	return array_keys( $found );
 }
 
 /**
@@ -737,6 +763,39 @@ function ekwa_mockup_readiness_check( $html ) {
 				. '<i class="fa-solid fa-location-dot" aria-hidden="true"></i>' . "\n"
 				. '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>' . "\n"
 				. '<i class="fa-brands fa-facebook-f"></i>',
+		);
+	}
+
+	// ── Carousels / jQuery plugins ───────────────────────────────────────
+	// The theme loads no jQuery and no carousel library, so this markup can
+	// never initialise on the live site. The converter lifts the slides into
+	// ekwa/carousel automatically — worth knowing before, because the
+	// library's own CSS is dropped with it.
+	$carousels = ekwa_mockup_carousel_libraries_used( $html );
+	$has_jquery = (bool) preg_match( '#<script[^>]+src=["\'][^"\']*jquery[^"\']*["\']#i', $html );
+	if ( $carousels || $has_jquery ) {
+		$bits = array();
+		if ( $carousels ) {
+			$bits[] = sprintf(
+				/* translators: %s: comma-separated library names. */
+				__( '%s markup found — the converter will move the slides into ekwa/carousel (vanilla JS, no jQuery). Its classes are dropped, so CSS targeting them is wasted: set items per view, arrow position and dots on the block instead.', 'ekwa' ),
+				implode( ', ', $carousels )
+			);
+		}
+		if ( $has_jquery ) {
+			$bits[] = __( 'A jQuery <script> is linked. The theme loads no jQuery on the front end and none is added — remove it along with any plugin that depends on it.', 'ekwa' );
+		}
+		$sections[] = array(
+			'id'      => 'carousel',
+			'label'   => __( 'Carousels & jQuery', 'ekwa' ),
+			'status'  => 'warn',
+			'message' => implode( ' ', $bits ),
+			'fix'     => "<!-- Just the cards. The theme's carousel block does the rest. -->\n"
+				. "<div class=\"services-carousel\">\n"
+				. "  <div class=\"service-card\">…</div>\n"
+				. "  <div class=\"service-card\">…</div>\n"
+				. "  <div class=\"service-card\">…</div>\n"
+				. "</div>",
 		);
 	}
 

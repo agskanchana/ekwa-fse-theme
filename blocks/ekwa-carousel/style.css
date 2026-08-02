@@ -29,8 +29,8 @@
 	position: absolute;
 	top: 50%;
 	transform: translateY(-50%);
-	width: 40px;
-	height: 40px;
+	width: var(--ekwa-arrow-size, 40px);
+	height: var(--ekwa-arrow-size, 40px);
 	border-radius: 50%;
 	border: 1px solid #e5e7eb;
 	background: #fff;
@@ -59,12 +59,25 @@
 .ekwa-carousel__arrow--prev { left: 0; }
 .ekwa-carousel__arrow--next { right: 0; }
 
-/* Arrows outside the items: the container reserves a side gutter
-   (arrow width + spacing, set via --ekwa-arrow-gutter) and the arrows
-   sit inside it, clear of the cards. */
+/* ── Arrow positions ──────────────────────────────────────────────────
+   The .ekwa-carousel__nav wrapper is inert for the side positions: it is
+   static and boxless, so each arrow still resolves its absolute position
+   against .ekwa-carousel itself (the original behaviour). For the corner
+   positions the wrapper becomes the positioned flex row and the arrows go
+   static inside it.
+
+   Every position reserves its own space with padding rather than pulling
+   the arrows out with negative offsets — .ekwa-carousel is overflow:hidden,
+   so anything outside the box would simply be clipped. */
+
+/* Default — arrows overlay the slide edges, vertically centred. */
+
+/* Outside: reserve a side gutter and drop the arrows into it, clear of the
+   cards. Below the mobile breakpoint the gutter would eat too much width,
+   so the arrows step aside and the dots take over. */
 .ekwa-carousel--arrows-outside {
-	padding-left: var(--ekwa-arrow-gutter, 52px);
-	padding-right: var(--ekwa-arrow-gutter, 52px);
+	padding-left: var(--ekwa-arrow-gutter, calc(var(--ekwa-arrow-size, 40px) + var(--ekwa-arrow-offset, 16px)));
+	padding-right: var(--ekwa-arrow-gutter, calc(var(--ekwa-arrow-size, 40px) + var(--ekwa-arrow-offset, 16px)));
 }
 @media (max-width: 600px) {
 	.ekwa-carousel--arrows-outside {
@@ -74,6 +87,41 @@
 	.ekwa-carousel--arrows-outside .ekwa-carousel__arrow {
 		display: none;
 	}
+}
+
+/* Corner positions — the pair sits above or below the slides. */
+.ekwa-carousel[class*="ekwa-carousel--arrows-top-"] .ekwa-carousel__nav,
+.ekwa-carousel[class*="ekwa-carousel--arrows-bottom-"] .ekwa-carousel__nav {
+	position: absolute;
+	display: flex;
+	gap: var(--ekwa-arrow-gap, 12px);
+	z-index: 2;
+}
+.ekwa-carousel[class*="ekwa-carousel--arrows-top-"] .ekwa-carousel__arrow,
+.ekwa-carousel[class*="ekwa-carousel--arrows-bottom-"] .ekwa-carousel__arrow {
+	position: static;
+	transform: none;
+}
+
+/* Reserve the strip the pair occupies (arrow height + offset). */
+.ekwa-carousel[class*="ekwa-carousel--arrows-top-"] {
+	padding-top: calc(var(--ekwa-arrow-size, 40px) + var(--ekwa-arrow-offset, 16px));
+}
+.ekwa-carousel[class*="ekwa-carousel--arrows-bottom-"] {
+	padding-bottom: calc(var(--ekwa-arrow-size, 40px) + var(--ekwa-arrow-offset, 16px));
+}
+
+.ekwa-carousel--arrows-top-left    .ekwa-carousel__nav { top: 0; left: 0; }
+.ekwa-carousel--arrows-top-right   .ekwa-carousel__nav { top: 0; right: 0; }
+.ekwa-carousel--arrows-top-center  .ekwa-carousel__nav { top: 0; left: 50%; transform: translateX(-50%); }
+.ekwa-carousel--arrows-bottom-left   .ekwa-carousel__nav { bottom: 0; left: 0; }
+.ekwa-carousel--arrows-bottom-right  .ekwa-carousel__nav { bottom: 0; right: 0; }
+.ekwa-carousel--arrows-bottom-center .ekwa-carousel__nav { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+/* With the arrows already below the slides, the dots don't need their own
+   top margin fighting for the same strip. */
+.ekwa-carousel[class*="ekwa-carousel--arrows-bottom-"] .ekwa-carousel__dots {
+	margin-top: 12px;
 }
 
 /* Dots */

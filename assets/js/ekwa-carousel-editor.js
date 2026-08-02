@@ -16,6 +16,7 @@
 	var PanelBody          = wp.components.PanelBody;
 	var ToggleControl      = wp.components.ToggleControl;
 	var RangeControl       = wp.components.RangeControl;
+	var SelectControl      = wp.components.SelectControl;
 	var TextControl        = wp.components.TextControl;
 	var __                 = wp.i18n.__;
 
@@ -95,6 +96,44 @@
 						onChange: function ( v ) { set( { showArrows: v } ); },
 						__nextHasNoMarginBottom: true,
 					} ),
+
+					a.showArrows && el( SelectControl, {
+						label:   __( 'Arrow position', 'ekwa' ),
+						value:   a.arrowPosition || 'inside',
+						options: [
+							{ label: __( 'Over the slides (left & right)', 'ekwa' ), value: 'inside' },
+							{ label: __( 'Beside the slides (left & right)', 'ekwa' ), value: 'outside' },
+							{ label: __( 'Above — left', 'ekwa' ),    value: 'top-left' },
+							{ label: __( 'Above — centre', 'ekwa' ),  value: 'top-center' },
+							{ label: __( 'Above — right', 'ekwa' ),   value: 'top-right' },
+							{ label: __( 'Below — left', 'ekwa' ),    value: 'bottom-left' },
+							{ label: __( 'Below — centre', 'ekwa' ),  value: 'bottom-center' },
+							{ label: __( 'Below — right', 'ekwa' ),   value: 'bottom-right' }
+						],
+						help:    __( '“Beside” and the above/below positions reserve their own space, so the arrows never cover a slide.', 'ekwa' ),
+						onChange: function ( v ) { set( { arrowPosition: v } ); },
+						__nextHasNoMarginBottom: true,
+					} ),
+
+					a.showArrows && ( a.arrowPosition || 'inside' ) !== 'inside' && el( RangeControl, {
+						label:    __( 'Arrow offset (px)', 'ekwa' ),
+						help:     __( 'Distance from the slides.', 'ekwa' ),
+						value:    a.arrowOffset === undefined ? 16 : a.arrowOffset,
+						min:      0,
+						max:      80,
+						onChange: function ( v ) { set( { arrowOffset: v } ); },
+						__nextHasNoMarginBottom: true,
+					} ),
+
+					a.showArrows && ( a.arrowPosition || 'inside' ).indexOf( '-' ) > 0 && el( RangeControl, {
+						label:    __( 'Gap between arrows (px)', 'ekwa' ),
+						value:    a.arrowGap === undefined ? 12 : a.arrowGap,
+						min:      0,
+						max:      48,
+						onChange: function ( v ) { set( { arrowGap: v } ); },
+						__nextHasNoMarginBottom: true,
+					} ),
+
 					el( ToggleControl, {
 						label:    __( 'Show dots', 'ekwa' ),
 						checked:  !! a.showDots,

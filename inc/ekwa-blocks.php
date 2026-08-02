@@ -3582,6 +3582,19 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	$mobile_bp    = isset( $attrs['mobileBreakpoint'] ) ? max( 1, absint( $attrs['mobileBreakpoint'] ) ) : 600;
 	$show_arrows  = ! empty( $attrs['showArrows'] );
 	$show_dots    = ! empty( $attrs['showDots'] );
+
+	// Where the prev/next buttons sit. "inside" is the original behaviour —
+	// overlaying the slide edges — so existing carousels are unaffected.
+	$arrow_positions = array(
+		'inside', 'outside',
+		'top-left', 'top-center', 'top-right',
+		'bottom-left', 'bottom-center', 'bottom-right',
+	);
+	$arrow_pos    = isset( $attrs['arrowPosition'] ) && in_array( $attrs['arrowPosition'], $arrow_positions, true )
+		? $attrs['arrowPosition']
+		: 'inside';
+	$arrow_gap    = isset( $attrs['arrowGap'] )    ? max( 0, absint( $attrs['arrowGap'] ) )    : 12;
+	$arrow_offset = isset( $attrs['arrowOffset'] ) ? max( 0, absint( $attrs['arrowOffset'] ) ) : 16;
 	$autoplay     = ! empty( $attrs['autoplay'] );
 	$autoplay_int = isset( $attrs['autoplayInterval'] ) ? max( 500, absint( $attrs['autoplayInterval'] ) ) : 5000;
 	$loop         = ! empty( $attrs['loop'] );
@@ -3614,8 +3627,16 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	$data .= ' data-gap="'           . esc_attr( $gap ) . '"';
 	$data .= ' data-speed="'         . esc_attr( $speed ) . '"';
 
+	$root_class = 'ekwa-carousel ekwa-carousel--arrows-' . $arrow_pos;
+	$root_style = sprintf(
+		'--ekwa-arrow-gap:%dpx;--ekwa-arrow-offset:%dpx;',
+		$arrow_gap,
+		$arrow_offset
+	);
+
 	$wrapper_attrs = get_block_wrapper_attributes( array(
-		'class'      => 'ekwa-carousel',
+		'class'      => $root_class,
+		'style'      => $root_style,
 		'aria-label' => $aria_label ? $aria_label : __( 'Carousel', 'ekwa' ),
 	) );
 
@@ -3625,8 +3646,15 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	$html .=   '</div>';
 
 	if ( $show_arrows ) {
+		// The arrows live in a wrapper so the corner positions can lay them out
+		// as a pair. For the inside/outside positions the wrapper is inert
+		// (static, no box), leaving each arrow positioned against the carousel
+		// exactly as before. The wrapper is also what a converted Owl carousel
+		// maps its `.owl-nav` class onto.
+		$html .= '<div class="ekwa-carousel__nav">';
 		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>';
 		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>';
+		$html .= '</div>';
 	}
 
 	if ( $show_dots ) {

@@ -188,6 +188,15 @@ HERO SLIDERS & VIDEO HEROES — mockups often ship custom slider widgets (slick/
   Drop the mockup's own slider dots/arrows/JS — the block renders its own. Animations: none|fadeIn|fadeInUp|fadeInDown|fadeInLeft|fadeInRight|zoomIn|slideInUp|blurIn.
 - A hero with a background <video> → ekwa/hero-video {"videoUrl":"…","posterUrl":"…","overlayOpacity":40} wrapping the caption blocks. Drop the mockup's <video> markup.
 
+CONTENT CAROUSELS — a row of cards the mockup scrolls with a library: Owl Carousel (.owl-carousel), Slick (.slick-slider) or Swiper (.swiper). The theme loads NONE of those libraries and no jQuery, so that markup would never become a carousel. Convert it to ekwa/carousel, with each slide as one top-level inner block:
+  <!-- wp:ekwa/carousel {"desktopItems":3,"showArrows":true,"showDots":false} -->
+  <!-- wp:ekwa/div {"className":"blog-card"} --> …card content… <!-- /wp:ekwa/div -->
+  <!-- /wp:ekwa/carousel -->
+- Keep each slide's OWN classes (.blog-card, .ba-card) — that's the design. DROP every library class: owl-carousel, owl-stage, owl-stage-outer, owl-item, owl-nav, owl-dots, slick-*, swiper-*. The block renders its own structure, so those classes would style nothing.
+- Drop the library's arrows and dots markup too — the block renders its own.
+- desktopItems: never more than the number of slides (a 2-card gallery with 3-up leaves an empty column). tabletItems ≤ desktopItems.
+- Use "arrowPosition" to place the arrows: "outside" when the mockup puts them beside the cards, "top-right"/"top-left" when they sit above the row, "inside" (default) when they overlay the slide edges.
+
 EVERYTHING ELSE — structure:
 - Containers (<div>, <section>, <header>, <footer>, <nav>, <main>, <aside>) → ekwa/div with {"tagName":"…"} and {"className":"…"} copied VERBATIM from the source (so the mockup CSS still targets them). Keep the nesting exactly.
 - KEEP EVERY id. An element with id="hero-video" becomes {"anchor":"hero-video"} on its block — every block supports it and renders it back as the id. Mockups hang real behaviour off ids (getElementById handlers, in-page anchor links, #id CSS), so a dropped id breaks things silently. On core blocks (heading, paragraph, list, quote, table) write the id on the saved element too: <h2 class="wp-block-heading" id="hero-video">.

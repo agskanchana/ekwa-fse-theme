@@ -82,6 +82,13 @@ function ekwa_mc_detect_dynamic( $node, $depth ) {
 		}
 	}
 
+	// Library carousels (Owl/Slick/Swiper) on any element — they need jQuery or
+	// a runtime the theme doesn't ship, so the slides move into ekwa/carousel.
+	$result = ekwa_mc_detect_carousel( $node, $depth );
+	if ( $result !== null ) {
+		return $result;
+	}
+
 	// Anchor-based detections.
 	if ( $tag === 'a' ) {
 		$href = $node->getAttribute( 'href' );
@@ -355,6 +362,16 @@ function ekwa_mc_detect_token( $node, $depth, $token ) {
 
 		case 'scroll-top':
 			return $leaf( 'ekwa/scroll-top' );
+
+		case 'carousel':
+			// Forces the mapping on a carousel with no library class of its own.
+			// Falls back to Owl's vocabulary for finding the slides.
+			$forced = ekwa_mc_detect_carousel( $node, $depth, ekwa_mc_carousel_libraries()[0] );
+			if ( null !== $forced ) {
+				return $forced;
+			}
+			ekwa_mc_warn( 'data-ekwa="carousel" needs at least two slide elements inside — converted normally.', 'dynamic' );
+			return null;
 	}
 
 	ekwa_mc_warn( "Unknown data-ekwa token \"$token\" — element converted normally." );
@@ -857,6 +874,271 @@ function ekwa_mc_detect_map_iframe( $node, $depth ) {
 	ekwa_mc_warn( 'Auto-detected Google Maps iframe → ekwa/map' );
 
 	return $indent . '<!-- wp:ekwa/map' . $attrs_json . ' /-->' . "\n";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAROUSEL → ekwa/carousel
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The carousel libraries mockups arrive with, and the classes that identify
+ * each one's container, slide track, individual slide, and runtime chrome.
+ *
+ * @return array<int,array{name:string,root:string[],track:string[],slide:string[],chrome:string[]}>
+ */
+function ekwa_mc_carousel_libraries() {
+	return array(
+		array(
+			'name'   => 'Owl Carousel',
+			'prefix' => 'owl-*',
+			'root'   => array( 'owl-carousel' ),
+			'track'  => array( 'owl-stage' ),
+			'slide'  => array( 'owl-item' ),
+			'chrome' => array( 'owl-nav', 'owl-dots', 'owl-stage-outer', 'owl-prev', 'owl-next', 'owl-dot' ),
+		),
+		array(
+			'name'   => 'Slick',
+			'prefix' => 'slick-*',
+			'root'   => array( 'slick-slider', 'slick-carousel' ),
+			'track'  => array( 'slick-track' ),
+			'slide'  => array( 'slick-slide' ),
+			'chrome' => array( 'slick-arrow', 'slick-prev', 'slick-next', 'slick-dots', 'slick-list' ),
+		),
+		array(
+			'name'   => 'Swiper',
+			'prefix' => 'swiper-*',
+			'root'   => array( 'swiper', 'swiper-container' ),
+			'track'  => array( 'swiper-wrapper' ),
+			'slide'  => array( 'swiper-slide' ),
+			'chrome' => array( 'swiper-button-next', 'swiper-button-prev', 'swiper-pagination', 'swiper-scrollbar' ),
+		),
+	);
+}
+
+/**
+ * Which carousel library (if any) this element belongs to.
+ *
+ * @param DOMElement $node
+ * @return array|null Entry from ekwa_mc_carousel_libraries().
+ */
+function ekwa_mc_carousel_library( $node ) {
+	foreach ( ekwa_mc_carousel_libraries() as $lib ) {
+		foreach ( $lib['root'] as $class ) {
+			if ( ekwa_mc_node_has_class( $node, $class ) ) {
+				return $lib;
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * Detect a jQuery/JS carousel and convert it to ekwa/carousel.
+ *
+ * Mockups build these with Owl Carousel, Slick or Swiper — all of which need a
+ * runtime library (Owl and Slick need jQuery too) that the theme deliberately
+ * does not load. Converting the markup verbatim would leave a stack of cards
+ * that never becomes a carousel, so the slides are lifted into ekwa/carousel:
+ * vanilla JS, no jQuery, and its CSS/JS inline only on pages that use it.
+ *
+ * The library's own class names are NOT carried over — the block renders its
+ * own markup and is styled through its options (items per view, arrow
+ * position, dots, gap), so the mockup's `.owl-nav`/`.owl-stage` rules simply
+ * stop applying. That's reported, because it's a deliberate loss.
+ *
+ * Handles both shapes a mockup can be in: authored (slides are the container's
+ * direct children, which is how you write Owl markup) and post-init (the
+ * library has wrapped them in a track).
+ *
+ * @param DOMElement $node
+ * @param int        $depth
+ * @return string|null Block markup, or null to continue normal conversion.
+ */
+function ekwa_mc_detect_carousel( $node, $depth, $lib = null ) {
+	if ( null === $lib ) {
+		$lib = ekwa_mc_carousel_library( $node );
+	}
+	if ( ! $lib ) {
+		return null;
+	}
+
+	$indent = str_repeat( '  ', $depth );
+
+	// Slides: the track's children when the library already wrapped them,
+	// otherwise the container's own element children.
+	$slide_parent = $node;
+	foreach ( $lib['track'] as $track_class ) {
+		foreach ( $node->getElementsByTagName( '*' ) as $el ) {
+			if ( ekwa_mc_node_has_class( $el, $track_class ) ) {
+				$slide_parent = $el;
+				break 2;
+			}
+		}
+	}
+
+	$slides = array();
+	foreach ( $slide_parent->childNodes as $child ) {
+		if ( XML_ELEMENT_NODE !== $child->nodeType ) {
+			continue;
+		}
+		// Never treat the library's own arrows/dots as a slide.
+		$is_chrome = false;
+		foreach ( $lib['chrome'] as $chrome_class ) {
+			if ( ekwa_mc_node_has_class( $child, $chrome_class ) ) {
+				$is_chrome = true;
+				break;
+			}
+		}
+		if ( ! $is_chrome ) {
+			$slides[] = $child;
+		}
+	}
+
+	if ( count( $slides ) < 2 ) {
+		return null; // Not really a carousel — let it convert as a container.
+	}
+
+	$attrs = ekwa_mc_carousel_attrs( $node, $lib, count( $slides ) );
+
+	$inner = '';
+	foreach ( $slides as $slide ) {
+		$inner .= ekwa_mc_convert_node( ekwa_mc_carousel_unwrap_slide( $slide, $lib ), $depth + 1 );
+	}
+
+	ekwa_mc_warn(
+		sprintf(
+			/* translators: 1: library name, 2: slide count, 3: class prefix e.g. "owl-*". */
+			__( '%1$s carousel → ekwa/carousel (%2$d slides) — no jQuery required. Its %3$s classes are deliberately not carried over, so any CSS targeting them no longer applies: set items per view, arrow position and dots on the block instead.', 'ekwa' ),
+			$lib['name'],
+			count( $slides ),
+			$lib['prefix']
+		),
+		'dynamic'
+	);
+
+	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
+
+	return $indent . '<!-- wp:ekwa/carousel' . $attrs_json . ' -->' . "\n"
+		. $inner
+		. $indent . '<!-- /wp:ekwa/carousel -->' . "\n";
+}
+
+/**
+ * Strip the library's own slide wrapper.
+ *
+ * Post-init markup wraps every slide in `.owl-item` / `.swiper-slide` /
+ * `.slick-slide`. That element is the library's, not the design's — keeping it
+ * would leave a redundant div carrying a class whose CSS is gone anyway, since
+ * ekwa/carousel wraps each slide in its own `.ekwa-carousel__item`.
+ *
+ * The class is removed; if that leaves an otherwise-bare wrapper around a
+ * single element, the child is used directly.
+ *
+ * @param DOMElement $slide
+ * @param array      $lib
+ * @return DOMElement The element to convert as this slide.
+ */
+function ekwa_mc_carousel_unwrap_slide( $slide, $lib ) {
+	$classes = preg_split( '/\s+/', (string) $slide->getAttribute( 'class' ), -1, PREG_SPLIT_NO_EMPTY );
+	$kept    = array_values( array_diff( $classes, $lib['slide'] ) );
+	if ( count( $kept ) === count( $classes ) ) {
+		return $slide; // Not a library wrapper — it's the design's own element.
+	}
+
+	if ( $kept ) {
+		$slide->setAttribute( 'class', implode( ' ', $kept ) );
+		return $slide;
+	}
+	$slide->removeAttribute( 'class' );
+
+	// Bare wrapper around a single element → use the element itself.
+	if ( ! $slide->hasAttributes() ) {
+		$children = array();
+		foreach ( $slide->childNodes as $child ) {
+			if ( XML_ELEMENT_NODE === $child->nodeType ) {
+				$children[] = $child;
+			} elseif ( XML_TEXT_NODE === $child->nodeType && '' !== trim( $child->textContent ) ) {
+				return $slide; // Loose text — keep the wrapper so nothing is lost.
+			}
+		}
+		if ( 1 === count( $children ) ) {
+			return $children[0];
+		}
+	}
+
+	return $slide;
+}
+
+/**
+ * Infer ekwa/carousel settings from a library carousel's markup.
+ *
+ * Mockups are pre-init HTML, so most options aren't knowable — the ones that
+ * are come from the data-* attributes each library reads. Anything unknown is
+ * left to the block's own default rather than guessed.
+ *
+ * @param DOMElement $node
+ * @param array      $lib   Library entry.
+ * @param int        $count Slide count.
+ * @return array Block attributes.
+ */
+function ekwa_mc_carousel_attrs( $node, $lib, $count ) {
+	$attrs = array();
+
+	// Items per view. Owl/Slick/Swiper each spell it differently, and a
+	// Slick config arrives as a JSON blob in data-slick.
+	$items = 0;
+	foreach ( array( 'data-items', 'data-slides-per-view', 'data-slides-to-show' ) as $attr ) {
+		if ( $node->hasAttribute( $attr ) ) {
+			$items = (int) $node->getAttribute( $attr );
+			break;
+		}
+	}
+	if ( ! $items && $node->hasAttribute( 'data-slick' ) ) {
+		$cfg = json_decode( $node->getAttribute( 'data-slick' ), true );
+		if ( is_array( $cfg ) && ! empty( $cfg['slidesToShow'] ) ) {
+			$items = (int) $cfg['slidesToShow'];
+		}
+	}
+
+	// Never show more slots than there are slides — a 2-card gallery on the
+	// block's 3-up default would render a permanent empty column.
+	$desktop = $items > 0 ? $items : min( 3, $count );
+	$desktop = max( 1, min( 6, $desktop ) );
+	if ( 3 !== $desktop ) {
+		$attrs['desktopItems'] = $desktop;
+	}
+	$tablet = min( $desktop, 2 );
+	if ( 2 !== $tablet ) {
+		$attrs['tabletItems'] = $tablet;
+	}
+
+	// Arrows/dots: present in the markup only when the mockup pasted post-init
+	// HTML. Otherwise assume the usual mockup carousel — arrows, no dots.
+	$has = function ( $classes ) use ( $node ) {
+		foreach ( (array) $classes as $class ) {
+			foreach ( $node->getElementsByTagName( '*' ) as $el ) {
+				if ( ekwa_mc_node_has_class( $el, $class ) ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	$dot_classes = array_values( array_filter( $lib['chrome'], function ( $c ) {
+		return false !== strpos( $c, 'dot' ) || false !== strpos( $c, 'pagination' );
+	} ) );
+	$attrs['showDots'] = $has( $dot_classes );
+
+	foreach ( array( 'data-loop' => 'loop', 'data-autoplay' => 'autoplay' ) as $attr => $key ) {
+		if ( $node->hasAttribute( $attr ) ) {
+			$val = strtolower( trim( $node->getAttribute( $attr ) ) );
+			if ( in_array( $val, array( 'true', '1', 'yes' ), true ) ) {
+				$attrs[ $key ] = true;
+			}
+		}
+	}
+
+	return $attrs;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

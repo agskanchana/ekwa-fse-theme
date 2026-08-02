@@ -87,14 +87,17 @@ function ekwa_ai_block_spec_registry() {
 			'block'    => 'ekwa/carousel',
 			'type'     => 'container',
 			'contexts' => array(),
-			'desc'     => 'Responsive carousel. Each top-level inner block becomes one slide.',
+			'desc'     => 'Responsive content carousel, vanilla JS (no jQuery). Each top-level inner block becomes one slide. This is what a mockup\'s Owl Carousel / Slick / Swiper markup must become — the theme loads none of those libraries.',
 			'attrs'    => array(
 				'desktopItems (default 3), tabletItems (default 2), mobileItems (default 1)',
 				'showArrows (bool), showDots (bool), autoplay (bool), loop (bool), gap (px)',
+				'arrowPosition — inside|outside|top-left|top-center|top-right|bottom-left|bottom-center|bottom-right (default "inside"). "inside" overlays the slide edges; every other value reserves its own space so the arrows never cover a slide.',
+				'arrowOffset (px from the slides), arrowGap (px between the paired arrows)',
 				'className',
 			),
 			'examples' => array(
 				"<!-- wp:ekwa/carousel {\"desktopItems\":3,\"showDots\":true} -->\n<!-- wp:ekwa/div {\"className\":\"slide\"} --> ... <!-- /wp:ekwa/div -->\n<!-- /wp:ekwa/carousel -->",
+				"<!-- wp:ekwa/carousel {\"desktopItems\":2,\"showArrows\":true,\"showDots\":false,\"arrowPosition\":\"outside\"} -->\n<!-- wp:ekwa/div {\"className\":\"ba-card\"} --> ... <!-- /wp:ekwa/div -->\n<!-- /wp:ekwa/carousel -->",
 			),
 		),
 
