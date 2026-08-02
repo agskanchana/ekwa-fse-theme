@@ -37,6 +37,7 @@
 	"attributes": {
 		"tagName":          { "type": "string", "default": "span" },
 		"text":             { "type": "string", "default": "" },
+		"inlineStyle":      { "type": "string", "default": "" },
 		"customAttributes": { "type": "object", "default": {} }
 	},
 	"editorScript": "ekwa-text-editor"

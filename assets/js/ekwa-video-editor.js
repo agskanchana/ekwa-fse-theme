@@ -20,6 +20,7 @@
 	var TextareaControl    = wp.components.TextareaControl;
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	registerBlockType( 'ekwa/video', {
 		edit: function ( props ) {
@@ -120,7 +121,12 @@
 							label: __( 'Show Controls' ),
 							checked: attributes.controls,
 							onChange: function ( val ) { setAttributes( { controls: val } ); },
-						} )
+						} ),
+						InlineStyle ? el( InlineStyle.Control, {
+							attributes:    attributes,
+							setAttributes: setAttributes,
+							help:          __( 'Extra raw CSS on the <video>, e.g. object-fit: cover.' ),
+						} ) : null
 					),
 					el( PanelBody, { title: __( 'Performance' ), initialOpen: false },
 						el( ToggleControl, {

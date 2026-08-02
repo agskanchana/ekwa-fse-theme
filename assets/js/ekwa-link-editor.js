@@ -18,6 +18,7 @@
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	registerBlockType( 'ekwa/link', {
 		edit: function ( props ) {
@@ -28,12 +29,15 @@
 			var newTab = !! attributes.newTab;
 			var rel    = attributes.rel    || '';
 
-			var blockProps = useBlockProps( {
-				style: {
-					display: 'inline-block',
-					cursor: 'pointer',
-				},
-			} );
+			// Preview the mockup's own inline style so the editor matches the
+			// front end (the converter carries it into `inlineStyle`).
+			var previewStyle = InlineStyle ? InlineStyle.parse( attributes.inlineStyle ) : {};
+			previewStyle = Object.assign(
+				{ display: 'inline-block', cursor: 'pointer' },
+				previewStyle
+			);
+
+			var blockProps = useBlockProps( { style: previewStyle } );
 
 			return el( Fragment, null,
 				el( InspectorControls, null,
@@ -57,6 +61,10 @@
 							value: rel,
 							onChange: function ( val ) { setAttributes( { rel: val } ); },
 							help: __( 'e.g. nofollow, sponsored' ),
+						} ),
+						InlineStyle && el( InlineStyle.Control, {
+							attributes:    attributes,
+							setAttributes: setAttributes,
 						} )
 					),
 					CustomAttrsControl && el( CustomAttrsControl, {

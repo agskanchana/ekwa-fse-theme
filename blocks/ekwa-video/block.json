@@ -25,6 +25,7 @@
 		"playsinline":         { "type": "boolean", "default": false },
 		"controls":            { "type": "boolean", "default": false },
 		"lazyLoad":            { "type": "boolean", "default": false },
+		"inlineStyle":         { "type": "string",  "default": "" },
 		"transcript":          { "type": "string",  "default": "" },
 		"transcriptShowLabel": { "type": "string",  "default": "Video Transcript" },
 		"transcriptHideLabel": { "type": "string",  "default": "Hide Transcript" },

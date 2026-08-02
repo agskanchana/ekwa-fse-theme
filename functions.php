@@ -134,6 +134,13 @@ require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**
+ * Carry the mockup's inline styles onto the static core blocks the converter
+ * emits (heading, paragraph, list, quote, table), which can't hold a style
+ * attribute in their saved markup without failing block validation.
+ */
+require_once get_template_directory() . '/inc/ekwa-core-inline-style.php';
+
+/**
  * Inline each block's front-end CSS/JS on render (replaces the monolithic
  * ekwa-blocks.css / ekwa-block-styles.css / ekwa-blocks.js / ekwa-faq.js).
  */

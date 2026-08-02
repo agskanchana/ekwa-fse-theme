@@ -15,6 +15,7 @@
 		"className": true
 	},
 	"attributes": {
+		"inlineStyle":      { "type": "string", "default": "" },
 		"customAttributes": { "type": "object", "default": {} }
 	},
 	"editorScript": "ekwa-figure-editor"

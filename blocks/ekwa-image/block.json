@@ -23,6 +23,7 @@
 		"loading":   { "type": "string",  "default": "lazy" },
 		"hero":      { "type": "boolean", "default": false },
 		"objectFit":   { "type": "string",  "default": "" },
+		"inlineStyle": { "type": "string",  "default": "" },
 		"linkUrl":     { "type": "string",  "default": "" },
 		"linkNewTab":  { "type": "boolean", "default": false },
 		"disableWebp": { "type": "boolean", "default": false }

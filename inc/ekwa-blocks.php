@@ -90,7 +90,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-icon-editor',
 		get_theme_file_uri( 'assets/js/ekwa-icon-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-icon-editor.js' ) ),
 		true
 	);
@@ -402,6 +402,17 @@ function ekwa_register_blocks() {
 		filemtime( get_theme_file_path( 'assets/js/ekwa-custom-attributes-control.js' ) ),
 		true
 	);
+
+	// Shared Inline Style Inspector helper (ekwa-link, ekwa-text, ekwa-icon,
+	// ekwa-image, ekwa-figure). Holds the mockup's own style attribute, which
+	// the converter carries over instead of discarding.
+	wp_register_script(
+		'ekwa-inline-style-control',
+		get_theme_file_uri( 'assets/js/ekwa-inline-style-control.js' ),
+		array( 'wp-element', 'wp-components', 'wp-i18n' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-inline-style-control.js' ) ),
+		true
+	);
 	wp_localize_script(
 		'ekwa-link-source-control',
 		'ekwaBlockData',
@@ -546,7 +557,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-text-editor',
 		get_theme_file_uri( 'assets/js/ekwa-text-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-text-editor.js' ) ),
 		true
 	);
@@ -562,7 +573,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-image-editor',
 		get_theme_file_uri( 'assets/js/ekwa-image-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-image-editor.js' ) ),
 		true
 	);
@@ -594,7 +605,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-figure-editor',
 		get_theme_file_uri( 'assets/js/ekwa-figure-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-figure-editor.js' ) ),
 		true
 	);
@@ -610,7 +621,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-video-editor',
 		get_theme_file_uri( 'assets/js/ekwa-video-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-video-editor.js' ) ),
 		true
 	);
@@ -626,7 +637,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-link-editor',
 		get_theme_file_uri( 'assets/js/ekwa-link-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-link-editor.js' ) ),
 		true
 	);
@@ -1110,7 +1121,7 @@ function ekwa_render_icon_block( $attrs ) {
 	$outer_taken = false;
 
 	$icon_attrs  = ' class="' . esc_attr( $icon_class ) . '" aria-hidden="true"';
-	if ( $icon_style ) { $icon_attrs .= ' style="' . esc_attr( $icon_style ) . '"'; }
+	$icon_attrs .= ekwa_render_inline_style_attr( $attrs, $icon_style );
 	if ( $anchor_attr && '' === $wrapper_class && ! $url ) {
 		$icon_attrs .= $anchor_attr;
 		$outer_taken = true;
@@ -3820,6 +3831,7 @@ function ekwa_render_text_block( $attrs ) {
 	$html = '<' . $tag;
 	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= ekwa_render_inline_style_attr( $attrs );
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . esc_html( $text ) . '</' . $tag . '>';
 
@@ -3863,6 +3875,42 @@ function ekwa_render_custom_attributes( $attrs ) {
 	}
 
 	return $out;
+}
+
+/**
+ * Render the `inlineStyle` block attribute as a ready-to-print ` style="…"`.
+ *
+ * The converter fills this from the mockup's own `style` attribute (see
+ * ekwa_mc_style_attr()) and the block sidebar exposes it as "Inline Style", so
+ * a `border-radius` the designer put on a CTA survives into the live page
+ * instead of being dropped on the floor.
+ *
+ * @param array  $attrs  Block attributes.
+ * @param string $prefix Declarations the block computed itself (object-fit,
+ *                       icon size/color…). They come first, so a conflicting
+ *                       property in inlineStyle wins — last declaration
+ *                       standing, which is what an author editing the field
+ *                       expects.
+ * @return string Leading-space-prefixed attribute markup, or empty string.
+ */
+function ekwa_render_inline_style_attr( $attrs, $prefix = '' ) {
+	$style = isset( $attrs['inlineStyle'] ) ? (string) $attrs['inlineStyle'] : '';
+
+	// kses-escapes the string on save for users without `unfiltered_html`, which
+	// turns an `&` inside a url() into `&amp;` — same fix as scopedCss.
+	if ( '' !== $style && function_exists( 'ekwa_css_decode_entities' ) ) {
+		$style = ekwa_css_decode_entities( $style );
+	}
+
+	$parts = array();
+	foreach ( array( $prefix, $style ) as $chunk ) {
+		$chunk = trim( (string) $chunk, " \t\n\r;" );
+		if ( '' !== $chunk ) {
+			$parts[] = $chunk;
+		}
+	}
+
+	return $parts ? ' style="' . esc_attr( implode( ';', $parts ) ) . '"' : '';
 }
 
 
@@ -3967,7 +4015,7 @@ function ekwa_render_image_block( $attrs ) {
 
 	if ( $decoding_async ) { $html .= ' decoding="async"'; }
 	if ( $hero )           { $html .= ' fetchpriority="high"'; }
-	if ( $style )          { $html .= ' style="' . esc_attr( $style ) . '"'; }
+	$html .= ekwa_render_inline_style_attr( $attrs, $style );
 	if ( $anchor )         { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $no_webp )        { $html .= ' data-ekwa-no-webp="1"'; }
 	$html .= '>';
@@ -4136,6 +4184,7 @@ function ekwa_render_figure_block( $attrs, $content ) {
 	$html = '<figure';
 	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$html .= ekwa_render_inline_style_attr( $attrs );
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . $content . '</figure>';
 
@@ -4182,6 +4231,7 @@ function ekwa_render_video_block( $attrs ) {
 	$video = '<video';
 	if ( $classes )     { $video .= ' class="' . esc_attr( $classes ) . '"'; }
 	if ( $anchor )      { $video .= ' id="' . esc_attr( $anchor ) . '"'; }
+	$video .= ekwa_render_inline_style_attr( $attrs );
 	if ( $autoplay )    { $video .= ' autoplay'; }
 	if ( $loop )        { $video .= ' loop'; }
 	if ( $muted )       { $video .= ' muted'; }
@@ -4324,6 +4374,7 @@ function ekwa_render_link_block( $attrs, $content = '' ) {
 	} elseif ( $rel_val ) {
 		$html .= ' rel="' . esc_attr( $rel_val ) . '"';
 	}
+	$html .= ekwa_render_inline_style_attr( $attrs );
 	$html .= ekwa_render_custom_attributes( $attrs );
 	$html .= '>' . ( $content ? $content : esc_html( $text ) ) . '</a>';
 

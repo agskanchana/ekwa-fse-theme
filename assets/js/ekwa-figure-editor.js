@@ -17,15 +17,20 @@
 	var PanelBody          = wp.components.PanelBody;
 	var __                 = wp.i18n.__;
 	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	registerBlockType( 'ekwa/figure', {
 		edit: function ( props ) {
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 
+			var previewProps = {
+				className: attributes.className || '',
+				style:     InlineStyle ? InlineStyle.parse( attributes.inlineStyle ) : {},
+			};
 			var blockProps = useBlockProps.save
-				? useBlockProps( { className: attributes.className || '' } )
-				: { className: attributes.className || '' };
+				? useBlockProps( previewProps )
+				: previewProps;
 
 			// Render as an actual <figure> in the editor so figure-targeted CSS works.
 			var inner = el(
@@ -47,6 +52,10 @@
 						el( 'p', { style: { fontSize: 12, color: '#646970' } },
 							__( 'Add an Ekwa Image block and (optionally) an Ekwa Text block with tag = figcaption for the caption.', 'ekwa' )
 						),
+						InlineStyle ? el( InlineStyle.Control, {
+							attributes:    attributes,
+							setAttributes: setAttributes,
+						} ) : null,
 						CustomAttrsControl ? el( CustomAttrsControl, {
 							value:    attributes.customAttributes || {},
 							onChange: function ( v ) { setAttributes( { customAttributes: v } ); },

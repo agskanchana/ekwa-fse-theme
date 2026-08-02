@@ -22,6 +22,7 @@
 	var ToggleControl      = wp.components.ToggleControl;
 	var __                 = wp.i18n.__;  // double underscore — the i18n translation function
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	/* ------------------------------------------------------------------ */
 	/* Icon list                                                            */
@@ -204,6 +205,11 @@
 		var iconStyle = {};
 		if ( size )  { iconStyle.fontSize = size + 'px'; }
 		if ( color ) { iconStyle.color    = color; }
+		// inlineStyle last so it wins on conflict — same order the PHP renderer
+		// prints them in.
+		if ( InlineStyle ) {
+			iconStyle = Object.assign( iconStyle, InlineStyle.parse( attributes.inlineStyle ) );
+		}
 
 		return el( Fragment, null,
 
@@ -272,7 +278,13 @@
 					onChange:               function ( v ) { setAttributes( { wrapperClass: v.trim() } ); },
 					__next40pxDefaultSize:  true,
 					__nextHasNoMarginBottom: true,
-					} )
+					} ),
+
+					InlineStyle ? el( InlineStyle.Control, {
+						attributes:    attributes,
+						setAttributes: setAttributes,
+						help:          __( 'Extra raw CSS on the <i> element — beyond size and color above.', 'ekwa' ),
+					} ) : null
 				),
 
 				el( PanelBody, { title: __( 'Link Settings', 'ekwa' ), initialOpen: false },

@@ -543,6 +543,12 @@ function ekwa_mc_convert_heading( $node, $depth, $level ) {
 	if ( $class ) { $attrs['className'] = $class; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	// Core blocks save static markup, so the style CANNOT go on the tag — an
+	// attribute the block's save() doesn't regenerate fails block validation and
+	// greets the editor with "unexpected or invalid content". It rides in the
+	// block comment instead and ekwa_core_inline_style_render() puts it back on
+	// the element at render time.
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -566,6 +572,7 @@ function ekwa_mc_convert_paragraph( $node, $depth ) {
 	if ( $class ) { $attrs['className'] = $class; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -634,6 +641,7 @@ function ekwa_mc_convert_quote( $node, $depth ) {
 		$class_attr        .= ' ' . $class;
 	}
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -706,6 +714,7 @@ function ekwa_mc_convert_image( $node, $depth ) {
 	if ( isset( $style['object-fit'] ) ) { $attrs['objectFit'] = $style['object-fit']; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node, array( 'object-fit' ) );
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -726,6 +735,7 @@ function ekwa_mc_convert_figure_block( $node, $depth ) {
 		$attrs['className'] = $class;
 	}
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$custom = ekwa_mc_extract_custom_attributes( $node );
 	if ( ! empty( $custom ) ) {
@@ -760,6 +770,7 @@ function ekwa_mc_convert_link( $node, $depth ) {
 	if ( $rel )   { $attrs['rel'] = $rel; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -791,6 +802,9 @@ function ekwa_mc_convert_icon( $node, $depth ) {
 	$attrs = array( 'iconClass' => $class, 'wrapperClass' => '' );
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	// font-size/color already have dedicated controls (size/color); anything the
+	// mockup set beyond them rides along as inline style.
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -809,6 +823,7 @@ function ekwa_mc_convert_text( $node, $depth, $tag ) {
 	if ( $class ) { $attrs['className'] = $class; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$custom = ekwa_mc_extract_custom_attributes( $node );
 	if ( ! empty( $custom ) ) {
@@ -850,6 +865,43 @@ function ekwa_mc_anchor_attr( $node ) {
 function ekwa_mc_anchor_html_attr( $node ) {
 	$id = trim( $node->getAttribute( 'id' ) );
 	return ( '' === $id ) ? '' : ' id="' . esc_attr( $id ) . '"';
+}
+
+/**
+ * The element's inline `style` as a block `inlineStyle` attribute (empty array
+ * when it has none).
+ *
+ * Mockups hang real design on inline styles — `border-radius` on a CTA, a
+ * per-card `background`, `max-width` on a column — and every converter except
+ * ekwa/div used to drop them silently, so the converted block came out looking
+ * nothing like the mockup with nothing in the loss report to explain why.
+ *
+ * Every block this is used on renders `inlineStyle` back as a `style`
+ * attribute and exposes it in the sidebar as "Inline Style", so the
+ * declarations survive the round trip and stay editable. `url()` references
+ * resolve through the media manifest, the same as an ekwa/div background.
+ *
+ * @param DOMElement $node
+ * @param string[]   $skip Properties already captured by a dedicated attribute
+ *                         (object-fit on ekwa/image) — stripped here so the
+ *                         declaration isn't emitted twice.
+ * @return array{inlineStyle?:string}
+ */
+function ekwa_mc_style_attr( $node, $skip = array() ) {
+	$style = trim( (string) $node->getAttribute( 'style' ) );
+	if ( '' === $style ) {
+		return array();
+	}
+
+	$style = ekwa_mc_resolve_style_urls( $style );
+
+	foreach ( $skip as $prop ) {
+		$style = preg_replace( '/(?:^|;)\s*' . preg_quote( $prop, '/' ) . '\s*:[^;]*/i', ';', $style );
+	}
+
+	$style = trim( preg_replace( '/;\s*;+/', ';', $style ), " \t\n\r;" );
+
+	return ( '' === $style ) ? array() : array( 'inlineStyle' => $style );
 }
 
 /**
@@ -896,6 +948,7 @@ function ekwa_mc_convert_list( $node, $depth ) {
 	if ( $class )   { $attrs['className'] = $class; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -1019,6 +1072,7 @@ function ekwa_mc_convert_table( $node, $depth ) {
 		$attrs['className'] = $class;
 	}
 	$attrs += ekwa_mc_anchor_attr( $node );
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$figure_class = 'wp-block-table' . ( $class ? ' ' . $class : '' );
 	$caption_html = $caption ? '<figcaption class="wp-element-caption">' . $caption . '</figcaption>' : '';
@@ -1274,6 +1328,9 @@ function ekwa_mc_convert_video( $node, $depth ) {
 	if ( $class )                               { $attrs['className']   = $class; }
 
 	$attrs += ekwa_mc_anchor_attr( $node );
+	// Hero videos carry their fit in the style attribute (object-fit:cover;
+	// width:100%) far more often than in a class.
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$attrs_json = empty( $attrs ) ? '' : ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
@@ -1303,6 +1360,10 @@ function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 
 	$id = trim( $node->getAttribute( 'id' ) );
 	if ( '' !== $id )               { $attrs['anchor']    = $id; }
+
+	// ekwa/div renders inlineStyle back as a style attribute, so a styled CTA
+	// (`<a class="btn" style="border-radius:6px">`) keeps its look here too.
+	$attrs += ekwa_mc_style_attr( $node );
 
 	$custom = ekwa_mc_extract_custom_attributes( $node );
 	if ( ! empty( $custom ) ) {

@@ -24,7 +24,8 @@
 		"linkRel":      { "type": "string", "default": "" },
 		"linkType":     { "type": "string", "default": "external" },
 		"pageType":     { "type": "string", "default": "page" },
-		"pageId":       { "type": "number", "default": 0 }
+		"pageId":       { "type": "number", "default": 0 },
+		"inlineStyle":  { "type": "string", "default": "" }
 	},
 	"editorScript": "ekwa-icon-editor"
 }

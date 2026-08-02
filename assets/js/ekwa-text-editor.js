@@ -17,6 +17,7 @@
 	var SelectControl      = wp.components.SelectControl;
 	var __                 = wp.i18n.__;
 	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	var TAG_OPTIONS = [
 		{ label: 'span',   value: 'span' },
@@ -62,7 +63,11 @@
 						onChange: function ( v ) { setAttributes( { text: v } ); },
 						__next40pxDefaultSize:  true,
 						__nextHasNoMarginBottom: true,
-					} )
+					} ),
+					InlineStyle ? el( InlineStyle.Control, {
+						attributes:    attributes,
+						setAttributes: setAttributes,
+					} ) : null
 				),
 				CustomAttrsControl ? el( CustomAttrsControl, {
 					attributes:    attributes,
@@ -71,7 +76,11 @@
 			),
 
 			el( 'div', blockProps,
-				el( tagName, null, text || __( 'Text…', 'ekwa' ) )
+				el(
+					tagName,
+					InlineStyle ? { style: InlineStyle.parse( attributes.inlineStyle ) } : null,
+					text || __( 'Text…', 'ekwa' )
+				)
 			)
 		);
 	}

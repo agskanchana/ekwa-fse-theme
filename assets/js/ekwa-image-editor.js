@@ -26,6 +26,7 @@
 	var Placeholder        = wp.components.Placeholder;
 	var apiFetch           = wp.apiFetch;
 	var __                 = wp.i18n.__;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	registerBlockType( 'ekwa/image', {
 		edit: function ( props ) {
@@ -246,7 +247,12 @@
 							{ label: 'Fill',    value: 'fill' },
 						],
 						onChange: function ( val ) { setAttributes( { objectFit: val } ); },
-					} )
+					} ),
+					InlineStyle ? el( InlineStyle.Control, {
+						attributes:    attributes,
+						setAttributes: setAttributes,
+						help:          __( 'Extra raw CSS on the <img>, e.g. border-radius: 8px.' ),
+					} ) : null
 				),
 				el( PanelBody, { title: __( 'Link Settings' ), initialOpen: false },
 					el( TextControl, {
@@ -349,6 +355,10 @@
 			var imgStyle = {};
 			if ( objectFit ) { imgStyle.objectFit = objectFit; }
 			if ( width )     { imgStyle.maxWidth = '100%'; }
+			// inlineStyle last so it wins on conflict, matching the PHP renderer.
+			if ( InlineStyle ) {
+				imgStyle = Object.assign( imgStyle, InlineStyle.parse( attributes.inlineStyle ) );
+			}
 
 			return el( Fragment, null,
 				inspector,
