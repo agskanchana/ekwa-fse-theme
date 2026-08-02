@@ -536,6 +536,12 @@ function ekwa_ai_repair_block_markup( $markup ) {
  *    class="wp-block-list">` therefore drops the mockup's class on the floor
  *    and the dropdown loses its CSS. The class is copied onto the element.
  *
+ * 3. AN INVENTED `style` ATTRIBUTE. Told to preserve a mockup's inline style,
+ *    models reach for the shape they know from core and emit
+ *    `{"style":{"marginBottom":"4rem"}}`. No Ekwa block declares `style`, so
+ *    the whole thing is dropped and the spacing silently disappears. The flat
+ *    CSS map is rewritten into the real `inlineStyle` string attribute.
+ *
  * @param string $markup  Block-comment markup.
  * @param array  $options {
  *     @type bool $bare_icons Emit ekwa/icon with no wrapper <div> unless the
@@ -553,7 +559,7 @@ function ekwa_ai_repair_block_structure( $markup, $options = array() ) {
 		return array( 'markup' => (string) $markup, 'notes' => $notes, 'fixed' => 0 );
 	}
 
-	$stats  = array( 'unwrapped' => 0, 'classed' => 0, 'icons' => 0 );
+	$stats  = array( 'unwrapped' => 0, 'classed' => 0, 'icons' => 0, 'styled' => 0 );
 	$stats['bare_icons'] = ! empty( $options['bare_icons'] );
 	$blocks = parse_blocks( $markup );
 	$blocks = ekwa_ai_repair_blocks_walk( $blocks, $stats );
@@ -592,14 +598,26 @@ function ekwa_ai_repair_block_structure( $markup, $options = array() ) {
 		);
 	}
 
-	if ( ! $stats['unwrapped'] && ! $stats['classed'] && ! $stats['icons'] ) {
+	if ( $stats['styled'] > 0 ) {
+		$notes[] = sprintf(
+			_n(
+				'Moved %d invented "style" attribute into the block\'s Inline Style field, so the mockup\'s inline CSS survives.',
+				'Moved %d invented "style" attributes into the blocks\' Inline Style fields, so the mockup\'s inline CSS survives.',
+				$stats['styled'],
+				'ekwa'
+			),
+			$stats['styled']
+		);
+	}
+
+	if ( ! $stats['unwrapped'] && ! $stats['classed'] && ! $stats['icons'] && ! $stats['styled'] ) {
 		return array( 'markup' => $markup, 'notes' => $notes, 'fixed' => 0 );
 	}
 
 	return array(
 		'markup' => serialize_blocks( $blocks ),
 		'notes'  => $notes,
-		'fixed'  => $stats['unwrapped'] + $stats['classed'] + $stats['icons'],
+		'fixed'  => $stats['unwrapped'] + $stats['classed'] + $stats['icons'] + $stats['styled'],
 	);
 }
 
@@ -621,6 +639,7 @@ function ekwa_ai_repair_blocks_walk( $blocks, &$stats ) {
 		$block = ekwa_ai_repair_text_attribute_html( $block, $stats );
 		$block = ekwa_ai_repair_static_class( $block, $stats );
 		$block = ekwa_ai_repair_bare_icon( $block, $stats );
+		$block = ekwa_ai_repair_style_attribute( $block, $stats );
 
 		$out[] = $block;
 	}
@@ -783,6 +802,108 @@ function ekwa_ai_repair_bare_icon( $block, &$stats ) {
 	$block['attrs']                 = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
 	$block['attrs']['wrapperClass'] = '';
 	$stats['icons']++;
+
+	return $block;
+}
+
+/**
+ * Top-level keys of core's structured `style` attribute.
+ *
+ * A `style` object built from these is a genuine core block-supports value
+ * (`{"style":{"spacing":{"margin":{"bottom":"4rem"}}}}`) that WordPress
+ * serializes itself — it must be left completely alone. Anything else is the
+ * model inventing a flat CSS map.
+ *
+ * @return string[]
+ */
+function ekwa_ai_core_style_groups() {
+	return array(
+		'color', 'spacing', 'typography', 'border', 'elements',
+		'shadow', 'dimensions', 'filter', 'outline', 'position', 'background',
+	);
+}
+
+/**
+ * Flatten a model-invented `style` object into a CSS declaration string.
+ *
+ * `{"marginBottom":"4rem","borderRadius":"6px"}` → "margin-bottom:4rem;border-radius:6px".
+ * Returns '' when the value is a real core style object, is nested, or holds
+ * anything that isn't a plain scalar — in those cases the caller leaves it be.
+ *
+ * @param mixed $style The block's `style` attribute value.
+ * @return string
+ */
+function ekwa_ai_style_object_to_css( $style ) {
+	if ( is_string( $style ) ) {
+		// Already a CSS string ({"style":"margin-bottom:4rem"}) — just needs
+		// moving to the attribute that actually renders.
+		return trim( $style, " \t\n\r;" );
+	}
+	if ( ! is_array( $style ) || empty( $style ) ) {
+		return '';
+	}
+
+	$groups = ekwa_ai_core_style_groups();
+	$parts  = array();
+
+	foreach ( $style as $prop => $value ) {
+		// A support group, a nested map, or a non-scalar: this is core's shape.
+		if ( in_array( (string) $prop, $groups, true ) || ! is_scalar( $value ) ) {
+			return '';
+		}
+		$prop  = trim( (string) $prop );
+		$value = trim( (string) $value );
+		if ( '' === $prop || '' === $value ) {
+			continue;
+		}
+		// camelCase → kebab-case, leaving custom properties (--brand) alone.
+		if ( 0 !== strpos( $prop, '--' ) ) {
+			$prop = strtolower( preg_replace( '/([a-z0-9])([A-Z])/', '$1-$2', $prop ) );
+		}
+		if ( ! preg_match( '/^(?:--)?[a-z][a-z0-9-]*$/', $prop ) ) {
+			return ''; // Not a CSS property name — don't guess.
+		}
+		$parts[] = $prop . ':' . $value;
+	}
+
+	return implode( ';', $parts );
+}
+
+/**
+ * Rescue an invented `style` attribute into the real `inlineStyle` one.
+ *
+ * The convert prompt asks for the mockup's inline CSS to be preserved, and
+ * models reliably reach for core's attribute name instead of the theme's. No
+ * Ekwa block declares `style`, so the parser drops it and the declaration is
+ * gone — this is exactly the failure the inlineStyle passthrough exists to
+ * prevent, so it is repaired deterministically rather than left to the prompt.
+ *
+ * @param array $block Parsed block.
+ * @param array $stats Counters, by reference.
+ * @return array
+ */
+function ekwa_ai_repair_style_attribute( $block, &$stats ) {
+	$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+	if ( '' === $name || ! isset( $block['attrs']['style'] ) ) {
+		return $block;
+	}
+	$supported = function_exists( 'ekwa_inline_style_blocks' ) ? ekwa_inline_style_blocks() : array();
+	if ( ! in_array( $name, $supported, true ) ) {
+		return $block;
+	}
+
+	$css = ekwa_ai_style_object_to_css( $block['attrs']['style'] );
+	if ( '' === $css ) {
+		return $block; // Genuine core style object (or unparseable) — untouched.
+	}
+
+	// An explicit inlineStyle the model got right comes first; the rescued
+	// declarations follow, matching the "last one wins" order the renderers use.
+	$existing = isset( $block['attrs']['inlineStyle'] ) ? trim( (string) $block['attrs']['inlineStyle'], " \t\n\r;" ) : '';
+
+	unset( $block['attrs']['style'] );
+	$block['attrs']['inlineStyle'] = $existing ? $existing . ';' . $css : $css;
+	$stats['styled']++;
 
 	return $block;
 }

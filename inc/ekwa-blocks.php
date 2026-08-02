@@ -525,7 +525,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-button-editor',
 		get_theme_file_uri( 'assets/js/ekwa-button-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-custom-attributes-control', 'ekwa-inline-style-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-button-editor.js' ) ),
 		true
 	);
@@ -3743,7 +3743,19 @@ function ekwa_render_button_block( $attrs ) {
 		$classes .= ' ekwa-btn--' . $size;
 	}
 
-	$extra         = array( 'class' => $classes );
+	$extra = array( 'class' => $classes );
+
+	// Handed to get_block_wrapper_attributes() rather than printed separately —
+	// this block's supports (border radius, colors, spacing) already produce a
+	// style attribute, and a second one would be invalid HTML. Core joins the
+	// two with a space, so the trailing semicolon is required; it also puts the
+	// supports LAST, which means a radius the author set in the Border panel
+	// deliberately overrides the one carried over from the mockup.
+	$inline_style = ekwa_inline_style_value( $attrs );
+	if ( '' !== $inline_style ) {
+		$extra['style'] = $inline_style . ';';
+	}
+
 	$wrapper_attrs = get_block_wrapper_attributes( $extra );
 
 	// Icon element.
@@ -3894,14 +3906,7 @@ function ekwa_render_custom_attributes( $attrs ) {
  * @return string Leading-space-prefixed attribute markup, or empty string.
  */
 function ekwa_render_inline_style_attr( $attrs, $prefix = '' ) {
-	$style = isset( $attrs['inlineStyle'] ) ? (string) $attrs['inlineStyle'] : '';
-
-	// kses-escapes the string on save for users without `unfiltered_html`, which
-	// turns an `&` inside a url() into `&amp;` — same fix as scopedCss.
-	if ( '' !== $style && function_exists( 'ekwa_css_decode_entities' ) ) {
-		$style = ekwa_css_decode_entities( $style );
-	}
-
+	$style = ekwa_inline_style_value( $attrs );
 	$parts = array();
 	foreach ( array( $prefix, $style ) as $chunk ) {
 		$chunk = trim( (string) $chunk, " \t\n\r;" );
@@ -3911,6 +3916,63 @@ function ekwa_render_inline_style_attr( $attrs, $prefix = '' ) {
 	}
 
 	return $parts ? ' style="' . esc_attr( implode( ';', $parts ) ) . '"' : '';
+}
+
+/**
+ * The block's `inlineStyle` as a clean CSS declaration string ('' when unset).
+ *
+ * Split out from ekwa_render_inline_style_attr() for blocks that can't print
+ * their own style attribute — ekwa/button hands its value to
+ * get_block_wrapper_attributes() so it merges with the block-supports style
+ * instead of emitting a second, invalid `style=""`.
+ *
+ * @param array $attrs Block attributes.
+ * @return string CSS declarations without a trailing semicolon.
+ */
+function ekwa_inline_style_value( $attrs ) {
+	$style = isset( $attrs['inlineStyle'] ) ? (string) $attrs['inlineStyle'] : '';
+	if ( '' === $style ) {
+		return '';
+	}
+
+	// kses-escapes the string on save for users without `unfiltered_html`, which
+	// turns an `&` inside a url() into `&amp;` — same fix as scopedCss.
+	if ( function_exists( 'ekwa_css_decode_entities' ) ) {
+		$style = ekwa_css_decode_entities( $style );
+	}
+	$style = trim( $style, " \t\n\r;" );
+
+	// The converter never writes a url(javascript:…) and kses has already been
+	// over anything a non-admin saved, but this string lands verbatim in a style
+	// attribute, so refuse the one payload that matters.
+	if ( preg_match( '/(?:javascript|vbscript)\s*:|expression\s*\(/i', $style ) ) {
+		return '';
+	}
+
+	return $style;
+}
+
+/**
+ * Every block that carries an `inlineStyle` attribute.
+ *
+ * The converter and the AI repair pass both need to know which blocks can hold
+ * a carried-over `style`, so the list lives in one place.
+ *
+ * @return string[]
+ */
+function ekwa_inline_style_blocks() {
+	$ekwa = array(
+		'ekwa/div', 'ekwa/link', 'ekwa/button', 'ekwa/text',
+		'ekwa/icon', 'ekwa/image', 'ekwa/figure', 'ekwa/video',
+	);
+	$core = function_exists( 'ekwa_core_inline_style_blocks' ) ? ekwa_core_inline_style_blocks() : array();
+
+	/**
+	 * Filter the blocks that support the Ekwa inline-style passthrough.
+	 *
+	 * @param string[] $blocks Block names.
+	 */
+	return (array) apply_filters( 'ekwa_inline_style_blocks', array_merge( $ekwa, $core ) );
 }
 
 

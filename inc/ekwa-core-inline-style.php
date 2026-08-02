@@ -108,19 +108,10 @@ function ekwa_core_inline_style_render( $block_content, $block ) {
 		return $block_content;
 	}
 
-	$style = (string) $block['attrs']['inlineStyle'];
-	if ( function_exists( 'ekwa_css_decode_entities' ) ) {
-		$style = ekwa_css_decode_entities( $style );
-	}
-	$style = trim( $style, " \t\n\r;" );
+	// Shared with the Ekwa blocks: decodes kses escaping and refuses a hostile
+	// declaration.
+	$style = ekwa_inline_style_value( $block['attrs'] );
 	if ( '' === $style ) {
-		return $block_content;
-	}
-
-	// Belt and braces: the converter never writes a url(javascript:…) and kses
-	// has already been over anything a non-admin saved, but this string lands
-	// verbatim in a style attribute, so refuse the one payload that matters.
-	if ( preg_match( '/(?:javascript|vbscript)\s*:|expression\s*\(/i', $style ) ) {
 		return $block_content;
 	}
 

@@ -19,6 +19,7 @@
 	var __                 = wp.i18n.__;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
+	var InlineStyle        = window.EkwaInlineStyle || null;
 
 	var VARIANT_OPTIONS = [
 		{ label: 'Filled',  value: 'filled' },
@@ -123,7 +124,11 @@
 						onChange: function ( v ) { setAttributes( { size: v } ); },
 						__next40pxDefaultSize:  true,
 						__nextHasNoMarginBottom: true,
-					} )
+					} ),
+					InlineStyle ? el( InlineStyle.Control, {
+						attributes:    attributes,
+						setAttributes: setAttributes,
+					} ) : null
 				),
 
 				el( PanelBody, { title: __( 'Icon', 'ekwa' ), initialOpen: false },

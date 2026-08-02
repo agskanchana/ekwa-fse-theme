@@ -199,6 +199,7 @@ CONTENT CAROUSELS — a row of cards the mockup scrolls with a library: Owl Caro
 
 EVERYTHING ELSE — structure:
 - Containers (<div>, <section>, <header>, <footer>, <nav>, <main>, <aside>) → ekwa/div with {"tagName":"…"} and {"className":"…"} copied VERBATIM from the source (so the mockup CSS still targets them). Keep the nesting exactly.
+- KEEP EVERY INLINE STYLE. An element with style="margin-bottom: 4rem" becomes {"inlineStyle":"margin-bottom: 4rem"} on its block — a RAW CSS STRING, copied verbatim. NEVER emit a "style" attribute, and never an object like {"style":{"marginBottom":"4rem"}}: no Ekwa block has a "style" attribute, so the declaration is thrown away and the spacing silently disappears. Supported on ekwa/div, ekwa/link, ekwa/button, ekwa/text, ekwa/icon, ekwa/image, ekwa/figure, ekwa/video, and on core/heading, core/paragraph, core/list, core/quote and core/table. Examples: <div class="text-center" style="margin-top: 4rem"> → <!-- wp:ekwa/div {"className":"text-center","inlineStyle":"margin-top: 4rem"} -->, and <a href="#" class="btn-primary" style="border-radius: 6px;"> → <!-- wp:ekwa/button {"text":"…","url":"#","className":"btn-primary","inlineStyle":"border-radius: 6px"} /-->. On the CORE blocks put it ONLY in the attributes — never write style="…" on the saved <h2>/<p>/<ul>, which would make the block invalid.
 - KEEP EVERY id. An element with id="hero-video" becomes {"anchor":"hero-video"} on its block — every block supports it and renders it back as the id. Mockups hang real behaviour off ids (getElementById handlers, in-page anchor links, #id CSS), so a dropped id breaks things silently. On core blocks (heading, paragraph, list, quote, table) write the id on the saved element too: <h2 class="wp-block-heading" id="hero-video">.
 - Headings <h1>–<h6> → core/heading with the matching level. Paragraphs → core/paragraph. Lists <ul>/<ol> → core/list. Copy the inner text/HTML exactly.
 - <img> → ekwa/image with src, alt, width, height.
@@ -220,7 +221,7 @@ OUTPUT: return ONLY the block-comment markup — no <style> block, no <script>, 
 Attribute JSON must be STRICT valid JSON (double-quoted keys/strings, no trailing commas). Prefer ekwa/* and the core blocks named above; do not invent block names.
 PROMPT;
 
-	$prompt .= ekwa_ai_build_block_spec_section( 'section' );
+	$prompt .= ekwa_ai_build_block_spec_section( 'section', true );
 
 	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
 		$prompt .= ekwa_tokens_ai_context();

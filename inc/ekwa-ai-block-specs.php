@@ -537,7 +537,7 @@ function ekwa_ai_block_spec_registry() {
  *                        falls back to 'section'.
  * @return string Empty string when no specs apply.
  */
-function ekwa_ai_build_block_spec_section( $context ) {
+function ekwa_ai_build_block_spec_section( $context, $allow_inline_style = false ) {
 	$context = in_array( $context, array( 'header', 'footer', 'section' ), true ) ? $context : 'section';
 	$all     = ekwa_ai_block_spec_registry();
 
@@ -555,6 +555,14 @@ function ekwa_ai_build_block_spec_section( $context ) {
 	$out .= "Only the blocks below are allowed. Use the EXACT block name and serialization shown. "
 		. "Container blocks wrap inner blocks between paired comments; leaf blocks are self-closing ( /--> ). "
 		. "Attribute JSON must be strict, valid JSON. Prefer ekwa/* blocks; they are server-rendered so they never fail block validation.\n\n";
+
+	// Only the conversion path preserves a source element's inline CSS. The
+	// generator writes all its styling into one <style> block and forbids the
+	// attribute outright, so it must not be advertised there.
+	if ( $allow_inline_style ) {
+		$out .= "Every block below also accepts \"inlineStyle\" — a RAW CSS STRING holding the source element's style attribute, e.g. {\"inlineStyle\":\"margin-bottom: 4rem\"}. "
+			. "There is no \"style\" attribute on any of these blocks; an object like {\"style\":{\"marginBottom\":\"4rem\"}} is discarded on parse.\n\n";
+	}
 
 	foreach ( $applicable as $spec ) {
 		$out .= '### ' . $spec['block'] . ' (' . $spec['type'] . ") — " . $spec['desc'] . "\n";
