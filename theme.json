@@ -10,6 +10,11 @@
 			"allowEditing": true,
 			"allowCustomContentAndWideSize": true
 		},
+		"styles": {
+			"spacing": {
+				"blockGap": "0"
+			}
+		},
 		"color": {
 			"custom": true,
 			"defaultPalette": false,
