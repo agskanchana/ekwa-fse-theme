@@ -363,6 +363,15 @@ function ekwa_enqueue_styles() {
 	wp_enqueue_style( 'ekwa-style' );
 	wp_add_inline_style(
 		'ekwa-style',
+		// Zero WordPress' default block gap. Core's global stylesheet prints
+		// `:root :where(.is-layout-flow) > *{margin-block-start:…}` (and the
+		// same for `.wp-site-blocks` children), which drops a margin above every
+		// flow child and every top-level block — spacing nothing in the site's
+		// own stylesheet asks for, and which reads as an unexplained gap above
+		// converted sections. Repeating core's selector only ties on specificity
+		// and core's copy can print later in <head>, so !important is what makes
+		// this stick. Section spacing comes from the site stylesheet instead.
+		':root :where(.is-layout-flow) > *,:where(.wp-site-blocks) > *{margin-top:0 !important}' .
 		'@media (max-width:1199px){.ekwa-desktop-header{display:none !important}}' .
 		'@media (min-width:1200px){.ekwa-mobile-header{display:none !important}}'
 	);

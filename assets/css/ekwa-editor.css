@@ -1,6 +1,19 @@
 /* ==========================================================================\n   Ekwa Block Editor Styles\n   Loaded in the block editor outer shell via enqueue_block_editor_assets\n   AND inside the FSE iframe canvas via add_editor_style() in functions.php.\n   Font Awesome is loaded separately via assets/fontawesome/css/all.min.css\n   (self-hosted) so webfont paths always resolve correctly in both contexts.\n   ========================================================================== */
 
 /* --------------------------------------------------------------------------
+   Block gap reset — canvas parity with the front end
+   The same rule ekwa_enqueue_styles() inlines on the front end (functions.php).
+   Without it the canvas shows a margin above every flow child that the
+   rendered page doesn't have, so sections look further apart while editing
+   than they ever do live.
+   -------------------------------------------------------------------------- */
+
+:root :where(.is-layout-flow) > *,
+:where(.wp-site-blocks) > * {
+	margin-top: 0 !important;
+}
+
+/* --------------------------------------------------------------------------
    Solution 1 — Ekwa Icon Block: sidebar icon picker
    -------------------------------------------------------------------------- */
 
