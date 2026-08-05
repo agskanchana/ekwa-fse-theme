@@ -572,7 +572,13 @@ function ekwa_bulk_pages_replace_phones( $text, $phone_map ) {
 	// Matches common US phone formats: optional country code, optional parens
 	// around area code, separators of space / dot / hyphen, e.g.
 	//   (813) 734-7102   813-734-7102   +1 813.734.7102   8137347102
-	$pattern = '/(?:\+?\d{1,3}[\s.\-]*)?\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}/';
+	//
+	// The lookarounds stop the match starting or ending part-way through a
+	// longer run of digits. Nothing depends on them today — a partial match
+	// normalises to the wrong length and misses the map lookup below — but
+	// they keep that safety in the pattern itself rather than resting it
+	// entirely on the lookup.
+	$pattern = '/(?<!\d)(?:\+?\d{1,3}[\s.\-]*)?\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}(?!\d)/';
 
 	return preg_replace_callback(
 		$pattern,
@@ -588,9 +594,106 @@ function ekwa_bulk_pages_replace_phones( $text, $phone_map ) {
 }
 
 /**
+ * Download a remote image into the media library and return its attachment ID.
+ *
+ * Images pulled in by a previous run are reused rather than downloaded again —
+ * the source URL is recorded on the attachment as _ekwa_bulk_source_url, so a
+ * banner shared by twenty pages is stored once instead of twenty times.
+ *
+ * @param string $url Remote image URL.
+ * @param string $alt Alt text to store on the attachment.
+ * @return int|WP_Error Attachment ID, or WP_Error when the download fails.
+ */
+function ekwa_bulk_pages_sideload_image( $url, $alt = '' ) {
+	$url = trim( (string) $url );
+	if ( '' === $url || ! preg_match( '#^https?://#i', $url ) ) {
+		return new WP_Error( 'ekwa_bulk_image_url', __( 'not a valid image URL', 'ekwa' ) );
+	}
+
+	// Reuse a copy imported by an earlier row or an earlier run.
+	$existing = get_posts( array(
+		'post_type'        => 'attachment',
+		'post_status'      => 'inherit',
+		'posts_per_page'   => 1,
+		'fields'           => 'ids',
+		'meta_key'         => '_ekwa_bulk_source_url',
+		'meta_value'       => $url,
+		'suppress_filters' => false,
+	) );
+
+	if ( ! empty( $existing ) ) {
+		$attachment_id = (int) $existing[0];
+		if ( '' !== $alt && '' === trim( (string) get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) ) ) {
+			update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
+		}
+		return $attachment_id;
+	}
+
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	require_once ABSPATH . 'wp-admin/includes/media.php';
+	require_once ABSPATH . 'wp-admin/includes/image.php';
+
+	$tmp = download_url( $url, 30 );
+	if ( is_wp_error( $tmp ) ) {
+		return $tmp;
+	}
+
+	// Strip any query string before deriving the filename.
+	$name = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
+	if ( '' === $name ) {
+		$name = 'featured-image';
+	}
+
+	$file_array = array(
+		'name'     => sanitize_file_name( $name ),
+		'tmp_name' => $tmp,
+	);
+
+	// post_parent 0: the image may end up featured on several pages.
+	$attachment_id = media_handle_sideload( $file_array, 0 );
+
+	if ( is_wp_error( $attachment_id ) ) {
+		// media_handle_sideload only cleans up the temp file on success.
+		if ( file_exists( $tmp ) ) {
+			wp_delete_file( $tmp );
+		}
+		return $attachment_id;
+	}
+
+	update_post_meta( $attachment_id, '_ekwa_bulk_source_url', $url );
+	if ( '' !== $alt ) {
+		update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
+	}
+
+	return (int) $attachment_id;
+}
+
+/**
+ * Import a row's image and set it as the page's featured image.
+ * Errors are collected rather than thrown so one bad image URL doesn't
+ * abort the rest of the import.
+ */
+function ekwa_bulk_pages_apply_featured_image( $post_id, $image_url, $image_alt, $label, &$errors ) {
+	$attachment_id = ekwa_bulk_pages_sideload_image( $image_url, $image_alt );
+
+	if ( is_wp_error( $attachment_id ) ) {
+		$errors[] = sprintf(
+			/* translators: 1: page label, 2: error message */
+			__( '%1$s — image import failed: %2$s', 'ekwa' ),
+			$label,
+			$attachment_id->get_error_message()
+		);
+		return;
+	}
+
+	set_post_thumbnail( $post_id, $attachment_id );
+}
+
+/**
  * Parse the uploaded CSV file into a list of associative rows keyed by
- * the canonical column names: url, slug, title, description, h1, breadcrumb.
- * Headers are matched case-insensitively; missing columns just yield ''.
+ * the canonical column names: url, slug, title, description, h1, breadcrumb,
+ * image, image_alt. Headers are matched case-insensitively; missing columns
+ * just yield '' so older CSVs without the image columns still import.
  *
  * Returns array of rows, or WP_Error on failure.
  */
@@ -611,7 +714,7 @@ function ekwa_bulk_pages_parse_csv( $tmp_path ) {
 		$header[0] = preg_replace( '/^\xEF\xBB\xBF/', '', (string) $header[0] );
 	}
 
-	$expected = array( 'url', 'slug', 'title', 'description', 'h1', 'breadcrumb' );
+	$expected = array( 'url', 'slug', 'title', 'description', 'h1', 'breadcrumb', 'image', 'image_alt' );
 	$index    = array_fill_keys( $expected, -1 );
 	foreach ( $header as $i => $name ) {
 		$key = strtolower( trim( (string) $name ) );
@@ -782,6 +885,8 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
 		$title       = ekwa_bulk_pages_replace_phones( $row['title'], $phone_map );
 		$description = ekwa_bulk_pages_replace_phones( $row['description'], $phone_map );
 		$breadcrumb  = sanitize_text_field( $row['breadcrumb'] );
+		$image_url   = esc_url_raw( trim( (string) $row['image'] ) );
+		$image_alt   = sanitize_text_field( $row['image_alt'] );
 
 		$label_for_log = $h1 ?: ( $title ?: ( $slug ?: __( '(unnamed row)', 'ekwa' ) ) );
 
@@ -827,6 +932,12 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
 				}
 			}
 
+			// Same "fill only what's empty" rule: never replace a featured
+			// image the page already has.
+			if ( '' !== $image_url && ! has_post_thumbnail( $existing_id ) ) {
+				ekwa_bulk_pages_apply_featured_image( $existing_id, $image_url, $image_alt, $label_for_log, $errors );
+			}
+
 			$updated[] = array(
 				'id'    => $existing_id,
 				'title' => $existing->post_title ?: $label_for_log,
@@ -869,6 +980,9 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
 		}
 		if ( '' !== $breadcrumb ) {
 			update_post_meta( $page_id, '_yoast_wpseo_bctitle', $breadcrumb );
+		}
+		if ( '' !== $image_url ) {
+			ekwa_bulk_pages_apply_featured_image( $page_id, $image_url, $image_alt, $label_for_log, $errors );
 		}
 
 		$created[] = array(
@@ -2089,7 +2203,7 @@ function ekwa_render_settings_page() {
 								<p class="description">
 									<?php
 									echo wp_kses(
-										__( 'Expected columns (header row required): <code>url</code>, <code>slug</code>, <code>title</code>, <code>description</code>, <code>h1</code>, <code>breadcrumb</code>. The <code>url</code> column is ignored. Pages are matched by <code>slug</code> — if a page already exists, only empty fields are filled in (the slug itself is never changed). Any phone number in <code>title</code> or <code>description</code> that matches a configured location is replaced with the <code>[ekwa_phone]</code> shortcode.', 'ekwa' ),
+										__( 'Expected columns (header row required): <code>url</code>, <code>slug</code>, <code>title</code>, <code>description</code>, <code>h1</code>, <code>breadcrumb</code>, <code>image</code>, <code>image_alt</code>. The <code>url</code> column is ignored. Pages are matched by <code>slug</code> — if a page already exists, only empty fields are filled in (the slug itself is never changed). Any phone number in <code>title</code> or <code>description</code> that matches a configured location is replaced with the <code>[ekwa_phone]</code> shortcode. <code>image</code> is downloaded into the Media Library and set as the featured image, with <code>image_alt</code> stored as its alt text; the same image URL is only downloaded once, and a page that already has a featured image keeps it.', 'ekwa' ),
 										array( 'code' => array() )
 									);
 									?>
