@@ -27,6 +27,8 @@
 	var apiFetch           = wp.apiFetch;
 	var __                 = wp.i18n.__;
 	var InlineStyle        = window.EkwaInlineStyle || null;
+	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
+	var useSelect          = wp.data.useSelect;
 
 	registerBlockType( 'ekwa/image', {
 		edit: function ( props ) {
@@ -40,9 +42,31 @@
 			var height      = attributes.height      || '';
 			var hero        = !! attributes.hero;
 			var objectFit   = attributes.objectFit   || '';
-			var linkUrl     = attributes.linkUrl     || '';
 			var linkNewTab  = !! attributes.linkNewTab;
 			var disableWebp = !! attributes.disableWebp;
+			var lightbox        = !! attributes.lightbox;
+			// lightboxSrc is legacy: it used to be a second URL field in the
+			// Lightbox panel. The renderer still honours it for already-saved
+			// content, but there is no UI for it — Link Settings is the one
+			// place a URL is entered.
+			var lightboxGroup   = attributes.lightboxGroup   || '';
+			var lightboxCaption = attributes.lightboxCaption || '';
+
+			// An <img> wrapped in a lightbox anchor that itself sits inside an
+			// ekwa/div rendered as <a> produces nested links — invalid HTML the
+			// browser silently un-nests, breaking both. Warn instead of guessing
+			// which one the author meant.
+			var insideAnchor = useSelect( function ( select ) {
+				var editor = select( 'core/block-editor' );
+				if ( ! editor || ! editor.getBlockParents ) { return false; }
+				return editor.getBlockParents( props.clientId ).some( function ( id ) {
+					var parent = editor.getBlock( id );
+					return parent
+						&& parent.name === 'ekwa/div'
+						&& parent.attributes
+						&& parent.attributes.tagName === 'a';
+				} );
+			}, [ props.clientId ] );
 
 			// Per-image WebP action state — kept local; not persisted on the block.
 			var wpState = useState( { busy: false, notice: null } );
@@ -174,11 +198,38 @@
 				}
 			}
 
-			function onLinkUrlChange( val ) {
-				setAttributes( {
-					linkUrl: val,
-					linkNewTab: isExternalUrl( val ),
-				} );
+			// Blocks saved before the Link Source control existed hold their URL
+			// in `linkUrl`. Show that value in the new control instead of an
+			// empty field, and drop the legacy attribute the moment the author
+			// edits — otherwise clearing the field would fall back to the stale
+			// one on the front end.
+			var linkAttrs = attributes;
+			if ( ! attributes.url && attributes.linkUrl && ( ! attributes.linkType || attributes.linkType === 'external' ) ) {
+				linkAttrs = Object.assign( {}, attributes, { url: attributes.linkUrl } );
+			}
+
+			// Is a link actually configured? Depends on which source is active —
+			// appointment resolves from settings, so it always counts.
+			var hasLink = ( function () {
+				switch ( linkAttrs.linkType || 'external' ) {
+					case 'internal':    return !! linkAttrs.pageId;
+					case 'media':       return !! linkAttrs.mediaUrl;
+					case 'appointment': return true;
+					default:            return !! linkAttrs.url;
+				}
+			} )();
+
+			function setLinkAttrs( next ) {
+				var patch = Object.assign( {}, next );
+				if ( attributes.linkUrl ) {
+					patch.linkUrl = '';
+				}
+				// Keep the "external links open in a new tab" convenience the
+				// plain URL field used to provide.
+				if ( Object.prototype.hasOwnProperty.call( next, 'url' ) ) {
+					patch.linkNewTab = isExternalUrl( next.url );
+				}
+				setAttributes( patch );
 			}
 
 			// Inspector controls.
@@ -254,18 +305,67 @@
 						help:          __( 'Extra raw CSS on the <img>, e.g. border-radius: 8px.' ),
 					} ) : null
 				),
+				el( PanelBody, { title: __( 'Lightbox' ), initialOpen: lightbox },
+					el( ToggleControl, {
+						label: __( 'Open in lightbox' ),
+						checked: lightbox,
+						onChange: function ( val ) { setAttributes( { lightbox: val } ); },
+						help: __( 'Open in an overlay instead of navigating. The lightbox code is only downloaded once the visitor interacts with the page, so pages that use it cost nothing to load.' ),
+					} ),
+					lightbox && insideAnchor ? el( Notice, {
+						status: 'warning',
+						isDismissible: false,
+					}, __( 'This image sits inside an Ekwa Div rendered as a link, so it would produce a link inside a link. Turn the lightbox on for the parent Div instead, or change the parent’s tag.' ) ) : null,
+					lightbox ? el( Fragment, null,
+						// What opens is whatever Link Settings points at — there is
+						// deliberately no second URL field here.
+						el( 'p', { style: { margin: '0 0 16px', fontSize: '12px', color: '#757575' } },
+							hasLink
+								? __( 'Opens the link set under Link Settings below.' )
+								: __( 'Opens this image at full size. To open something else — a larger original, a PDF or a video — set it under Link Settings below.' )
+						),
+						el( TextControl, {
+							label: __( 'Gallery group' ),
+							value: lightboxGroup,
+							onChange: function ( val ) { setAttributes( { lightboxGroup: val } ); },
+							help: __( 'Images sharing a group name open as one gallery with next/previous arrows and swipe. Leave empty to open this image on its own. Videos set to open in the lightbox can join a group too.' ),
+						} ),
+						el( TextControl, {
+							label: __( 'Caption' ),
+							value: lightboxCaption,
+							onChange: function ( val ) { setAttributes( { lightboxCaption: val } ); },
+							help: __( 'Optional text shown under the image in the overlay.' ),
+						} )
+					) : null
+				),
 				el( PanelBody, { title: __( 'Link Settings' ), initialOpen: false },
-					el( TextControl, {
+					// The link controls always live here, whatever the lightbox is
+					// doing — one home for "where does this image point". The
+					// precedence note stays in this panel too, and only appears
+					// when both are actually set, so it describes a real conflict
+					// instead of pointing at another panel.
+					LinkSourceControls ? el( LinkSourceControls, {
+						attributes:    linkAttrs,
+						setAttributes: setLinkAttrs,
+					} ) : el( TextControl, {
+						// Fallback for the (unexpected) case where the shared
+						// control script did not load — better a plain field
+						// than no link UI at all.
 						label: __( 'Link URL' ),
-						value: linkUrl,
-						onChange: onLinkUrlChange,
+						value: linkAttrs.url || '',
+						onChange: function ( val ) { setLinkAttrs( { url: val } ); },
 						help: __( 'External links automatically open in a new tab.' ),
 					} ),
-					linkUrl ? el( ToggleControl, {
+					// Irrelevant while the lightbox is on: the link opens in the
+					// overlay rather than navigating anywhere.
+					hasLink && ! lightbox ? el( ToggleControl, {
 						label: __( 'Open in new tab' ),
 						checked: linkNewTab,
 						onChange: function ( val ) { setAttributes( { linkNewTab: val } ); },
-					} ) : null
+					} ) : null,
+					lightbox ? el( 'p', { style: { margin: '8px 0 0', fontSize: '12px', color: '#757575' } },
+						__( 'The lightbox is on, so this opens in an overlay instead of navigating.' )
+					) : null
 				),
 				el( PanelBody, { title: __( 'WebP' ), initialOpen: false },
 					el( ToggleControl, {

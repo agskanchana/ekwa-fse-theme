@@ -3,7 +3,7 @@
  *
  * Exposes window.EkwaLinkSource.Controls for the link / button / card-link
  * editor scripts. Provides a single Source select (External / Internal /
- * Appointment) plus the input that matches the chosen mode.
+ * Media file / Appointment) plus the input that matches the chosen mode.
  *
  * Reads window.ekwaBlockData (localized in PHP) for the configured
  * appointment URL preview.
@@ -11,20 +11,24 @@
 ( function ( wp ) {
 	'use strict';
 
-	var el              = wp.element.createElement;
-	var Fragment        = wp.element.Fragment;
-	var useState        = wp.element.useState;
-	var SelectControl   = wp.components.SelectControl;
-	var TextControl     = wp.components.TextControl;
-	var ComboboxControl = wp.components.ComboboxControl;
-	var Notice          = wp.components.Notice;
-	var useSelect       = wp.data.useSelect;
-	var __              = wp.i18n.__;
-	var decodeEntities  = ( wp.htmlEntities && wp.htmlEntities.decodeEntities ) || function ( s ) { return s; };
+	var el               = wp.element.createElement;
+	var Fragment         = wp.element.Fragment;
+	var useState         = wp.element.useState;
+	var SelectControl    = wp.components.SelectControl;
+	var TextControl      = wp.components.TextControl;
+	var ComboboxControl  = wp.components.ComboboxControl;
+	var Button           = wp.components.Button;
+	var Notice           = wp.components.Notice;
+	var useSelect        = wp.data.useSelect;
+	var MediaUpload      = wp.blockEditor && wp.blockEditor.MediaUpload;
+	var MediaUploadCheck = wp.blockEditor && wp.blockEditor.MediaUploadCheck;
+	var __               = wp.i18n.__;
+	var decodeEntities   = ( wp.htmlEntities && wp.htmlEntities.decodeEntities ) || function ( s ) { return s; };
 
 	var SOURCE_OPTIONS = [
 		{ label: __( 'External URL', 'ekwa' ),               value: 'external' },
 		{ label: __( 'Existing Page or Post', 'ekwa' ),      value: 'internal' },
+		{ label: __( 'Media File (from library)', 'ekwa' ),  value: 'media' },
 		{ label: __( 'Appointment URL (from settings)', 'ekwa' ), value: 'appointment' }
 	];
 
@@ -106,6 +110,72 @@
 	}
 
 	/**
+	 * Pick any file from the media library — image, PDF, MP4, whatever.
+	 *
+	 * Stores the resolved URL alongside the attachment id: the id is what lets
+	 * the URL be re-resolved later, but keeping the URL means a link still works
+	 * if the attachment record is ever unavailable at render time.
+	 */
+	function MediaSourceControl( props ) {
+		var attributes    = props.attributes;
+		var setAttributes = props.setAttributes;
+		var mediaUrl      = attributes.mediaUrl    || '';
+		var mediaFileId   = attributes.mediaFileId || 0;
+
+		if ( ! MediaUpload || ! MediaUploadCheck ) {
+			return el( TextControl, {
+				label:    __( 'Media URL', 'ekwa' ),
+				value:    mediaUrl,
+				onChange: function ( v ) { setAttributes( { mediaUrl: v.trim(), mediaFileId: 0 } ); },
+				help:     __( 'The media picker is unavailable here — paste the file URL.', 'ekwa' )
+			} );
+		}
+
+		function onSelect( media ) {
+			if ( ! media || ! media.url ) { return; }
+			setAttributes( { mediaUrl: media.url, mediaFileId: media.id || 0 } );
+		}
+
+		return el( Fragment, null,
+			mediaUrl ? el( 'p', {
+				style: {
+					margin: '0 0 8px',
+					padding: '6px 8px',
+					background: '#f0f0f1',
+					borderRadius: '2px',
+					fontSize: '12px',
+					wordBreak: 'break-all'
+				}
+			}, mediaUrl ) : null,
+			el( MediaUploadCheck, null,
+				el( MediaUpload, {
+					onSelect: onSelect,
+					// Deliberately unrestricted: a lightbox may point at an image,
+					// an MP4 or a PDF, and the block should not decide which.
+					value: mediaFileId,
+					render: function ( open ) {
+						return el( Fragment, null,
+							el( Button, {
+								variant: 'secondary',
+								onClick: open.open
+							}, mediaUrl ? __( 'Replace file', 'ekwa' ) : __( 'Select file', 'ekwa' ) ),
+							mediaUrl ? el( Button, {
+								variant: 'link',
+								isDestructive: true,
+								style: { marginLeft: '8px' },
+								onClick: function () { setAttributes( { mediaUrl: '', mediaFileId: 0 } ); }
+							}, __( 'Clear', 'ekwa' ) ) : null
+						);
+					}
+				} )
+			),
+			el( 'p', { style: { margin: '8px 0 0', fontSize: '12px', color: '#757575' } },
+				__( 'Links straight to the file in the media library — the full-size image, PDF or video.', 'ekwa' )
+			)
+		);
+	}
+
+	/**
 	 * Main controls component — drop into a PanelBody.
 	 *
 	 * Props:
@@ -147,6 +217,12 @@
 		} else if ( 'internal' === linkType ) {
 			children.push( el( PageSourceControl, {
 				key:           'picker',
+				attributes:    attributes,
+				setAttributes: setAttributes
+			} ) );
+		} else if ( 'media' === linkType ) {
+			children.push( el( MediaSourceControl, {
+				key:           'media',
 				attributes:    attributes,
 				setAttributes: setAttributes
 			} ) );

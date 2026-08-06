@@ -26,7 +26,17 @@
 		"inlineStyle": { "type": "string",  "default": "" },
 		"linkUrl":     { "type": "string",  "default": "" },
 		"linkNewTab":  { "type": "boolean", "default": false },
-		"disableWebp": { "type": "boolean", "default": false }
+		"linkType":    { "type": "string",  "default": "external" },
+		"url":         { "type": "string",  "default": "" },
+		"pageType":    { "type": "string",  "default": "page" },
+		"pageId":      { "type": "number",  "default": 0 },
+		"mediaUrl":    { "type": "string",  "default": "" },
+		"mediaFileId": { "type": "number",  "default": 0 },
+		"disableWebp": { "type": "boolean", "default": false },
+		"lightbox":        { "type": "boolean", "default": false },
+		"lightboxSrc":     { "type": "string",  "default": "" },
+		"lightboxGroup":   { "type": "string",  "default": "" },
+		"lightboxCaption": { "type": "string",  "default": "" }
 	},
 	"editorScript": "ekwa-image-editor"
 }

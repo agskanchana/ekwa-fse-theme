@@ -73,6 +73,12 @@ function ekwa_admin_enqueue( $hook ) {
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
 		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
 		'aiTestKeyUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ai-test-key' ) ),
+		'askDocsUrl'       => esc_url_raw( rest_url( 'ekwa/v1/ask-docs' ) ),
+		'askDocsStrings'   => array(
+			'thinking'  => __( 'Thinking…', 'ekwa' ),
+			'error'     => __( 'Request failed. Check the connection and try again.', 'ekwa' ),
+			'truncated' => __( 'That answer was cut off at the length limit — ask something narrower for the full answer.', 'ekwa' ),
+		),
 		'locationGeocodeUrl' => esc_url_raw( rest_url( 'ekwa/v1/location-geocode' ) ),
 		'locationStrings'  => array(
 			'working'    => __( 'Looking up…', 'ekwa' ),
@@ -1000,7 +1006,7 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
  * @return array<string, string> slug => label
  */
 function ekwa_settings_tabs() {
-	return array(
+	$tabs = array(
 		'general'       => __( 'General', 'ekwa' ),
 		'branding'      => __( 'Branding', 'ekwa' ),
 		'locations'     => __( 'Locations', 'ekwa' ),
@@ -1011,6 +1017,14 @@ function ekwa_settings_tabs() {
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
 	);
+
+	// Only offer the tab when the docs module is actually loaded, so removing
+	// inc/ekwa-docs-assistant.php leaves no dead tab behind.
+	if ( function_exists( 'ekwa_render_help_tab' ) ) {
+		$tabs['help'] = __( 'Help & Ask AI', 'ekwa' );
+	}
+
+	return $tabs;
 }
 
 /**
@@ -1077,7 +1091,18 @@ function ekwa_render_settings_page() {
 	settings_errors( 'ekwa_settings' );
 	?>
 	<div class="wrap ekwa-settings-wrap">
-		<h1><?php esc_html_e( 'Ekwa Theme Settings', 'ekwa' ); ?></h1>
+		<h1 class="ekwa-settings-title">
+			<?php esc_html_e( 'Ekwa Theme Settings', 'ekwa' ); ?>
+			<?php if ( function_exists( 'ekwa_docs_link' ) ) : ?>
+				<a class="page-title-action ekwa-docs-link"
+					href="<?php echo esc_url( ekwa_docs_link() ); ?>"
+					target="_blank" rel="noopener noreferrer">
+					<span class="dashicons dashicons-book-alt" aria-hidden="true"></span>
+					<?php esc_html_e( 'Documentation', 'ekwa' ); ?>
+					<span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'ekwa' ); ?></span>
+				</a>
+			<?php endif; ?>
+		</h1>
 
 		<h2 class="nav-tab-wrapper ekwa-nav-tabs">
 			<?php foreach ( $tabs as $slug => $label ) : ?>
@@ -2232,6 +2257,13 @@ function ekwa_render_settings_page() {
 			</div><!-- /bulk-pages -->
 		</form>
 
+		<!-- ========== HELP TAB (no form — Enter must never save settings) ========== -->
+		<?php if ( function_exists( 'ekwa_render_help_tab' ) ) : ?>
+			<div class="ekwa-tab-pane <?php echo 'help' === $active_tab ? 'active' : ''; ?>" data-tab="help">
+				<?php ekwa_render_help_tab(); ?>
+			</div><!-- /help -->
+		<?php endif; ?>
+
 		<script>
 			(function () {
 				var tabs  = document.querySelectorAll( '.ekwa-nav-tabs .nav-tab' );
@@ -2251,12 +2283,15 @@ function ekwa_render_settings_page() {
 					panes.forEach( function ( p ) {
 						p.classList.toggle( 'active', p.getAttribute( 'data-tab' ) === slug );
 					} );
-					// Show only the form whose pane is active.
-					if ( mainForm && bulkForm ) {
-						var inBulk = ( slug === 'bulk-pages' );
-						mainForm.classList.toggle( 'ekwa-form-hidden', inBulk );
-						bulkForm.classList.toggle( 'ekwa-form-hidden', ! inBulk );
-					}
+					// Show only the form that actually contains the active pane.
+					// Deriving it from the DOM (rather than naming tabs) means a
+					// pane living outside both forms — like Help — correctly hides
+					// both Save buttons instead of showing the wrong one.
+					var activeForPane = document.querySelector( '.ekwa-tab-pane[data-tab="' + slug + '"]' );
+					[ mainForm, bulkForm ].forEach( function ( f ) {
+						if ( ! f ) { return; }
+						f.classList.toggle( 'ekwa-form-hidden', ! ( activeForPane && f.contains( activeForPane ) ) );
+					} );
 					// Let CodeMirror editors (Design Setup tab) re-measure once visible.
 					document.dispatchEvent( new CustomEvent( 'ekwa:tab-activated', { detail: { slug: slug } } ) );
 				}

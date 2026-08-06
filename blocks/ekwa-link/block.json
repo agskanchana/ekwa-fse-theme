@@ -22,6 +22,8 @@
 		"linkType":         { "type": "string",  "default": "external" },
 		"pageType":         { "type": "string",  "default": "page" },
 		"pageId":           { "type": "number",  "default": 0 },
+		"mediaUrl":         { "type": "string",  "default": "" },
+		"mediaFileId":      { "type": "number",  "default": 0 },
 		"inlineStyle":      { "type": "string",  "default": "" },
 		"customAttributes": { "type": "object",  "default": {} }
 	},

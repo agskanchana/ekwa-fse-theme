@@ -231,6 +231,41 @@
 						onChange: function ( val ) { setAttributes( { rel: val } ); },
 					} )
 				);
+
+				// Lightbox lives with the link controls because it only applies
+				// to <a> — it turns this wrapper into the trigger and the href
+				// becomes what opens. Typical use: a thumbnail (or a whole card)
+				// linking to the full-size photo.
+				settingsChildren.push(
+					el( ToggleControl, {
+						key: 'lightbox',
+						label: __( 'Open in lightbox' ),
+						checked: !! attributes.lightbox,
+						onChange: function ( val ) { setAttributes( { lightbox: val } ); },
+						help: __( 'Opens the URL above in an overlay instead of navigating. Works with images, YouTube/Vimeo links and MP4 files. The lightbox code loads only after the visitor interacts with the page.' ),
+					} )
+				);
+
+				if ( attributes.lightbox ) {
+					settingsChildren.push(
+						el( TextControl, {
+							key: 'lightbox-group',
+							label: __( 'Gallery group' ),
+							value: attributes.lightboxGroup || '',
+							onChange: function ( val ) { setAttributes( { lightboxGroup: val } ); },
+							help: __( 'Items sharing a group name open as one gallery with next/previous arrows and swipe. Leave empty to open on its own.' ),
+						} )
+					);
+					settingsChildren.push(
+						el( TextControl, {
+							key: 'lightbox-caption',
+							label: __( 'Caption' ),
+							value: attributes.lightboxCaption || '',
+							onChange: function ( val ) { setAttributes( { lightboxCaption: val } ); },
+							help: __( 'Optional text shown under the media in the overlay.' ),
+						} )
+					);
+				}
 			}
 
 			settingsChildren.push(

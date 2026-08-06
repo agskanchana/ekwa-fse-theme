@@ -386,10 +386,11 @@ function ekwa_register_blocks() {
 	);
 
 	// Shared link-source Inspector helper (used by ekwa-link, ekwa-button, ekwa-card-link).
+	// wp-block-editor: the "Media File" source opens the media library picker.
 	wp_register_script(
 		'ekwa-link-source-control',
 		get_theme_file_uri( 'assets/js/ekwa-link-source-control.js' ),
-		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n', 'wp-html-entities' ),
+		array( 'wp-element', 'wp-components', 'wp-data', 'wp-core-data', 'wp-i18n', 'wp-html-entities', 'wp-block-editor' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-link-source-control.js' ) ),
 		true
 	);
@@ -573,7 +574,9 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-image-editor',
 		get_theme_file_uri( 'assets/js/ekwa-image-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch', 'ekwa-inline-style-control' ),
+		// wp-data: the Lightbox panel reads the block's parents to warn about a
+		// lightbox image nested inside an ekwa/div that renders as <a>.
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch', 'wp-data', 'ekwa-inline-style-control', 'ekwa-link-source-control' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-image-editor.js' ) ),
 		true
 	);
@@ -3711,6 +3714,19 @@ function ekwa_resolve_block_link_url( $attrs ) {
 		$link = get_permalink( $pid );
 		return $link ? $link : '';
 	}
+	if ( 'media' === $type ) {
+		// Prefer re-resolving from the attachment id so a moved or re-uploaded
+		// file still links correctly; fall back to the URL stored at pick time
+		// when the attachment is gone, rather than silently emitting nothing.
+		$mid = isset( $attrs['mediaFileId'] ) ? absint( $attrs['mediaFileId'] ) : 0;
+		if ( $mid ) {
+			$link = wp_get_attachment_url( $mid );
+			if ( $link ) {
+				return $link;
+			}
+		}
+		return isset( $attrs['mediaUrl'] ) ? (string) $attrs['mediaUrl'] : '';
+	}
 	return isset( $attrs['url'] ) ? (string) $attrs['url'] : '';
 }
 
@@ -3997,9 +4013,26 @@ function ekwa_render_image_block( $attrs ) {
 	$object_fit  = isset( $attrs['objectFit'] )  ? esc_attr( $attrs['objectFit'] ) : '';
 	$anchor      = isset( $attrs['anchor'] )     ? sanitize_html_class( $attrs['anchor'] ) : '';
 	$class_name  = isset( $attrs['className'] )  ? sanitize_text_field( $attrs['className'] ) : '';
-	$link_url    = isset( $attrs['linkUrl'] )    ? esc_url( $attrs['linkUrl'] ) : '';
+	// Link Source (external / internal page / media file / appointment). Content
+	// saved before the source control existed only has `linkUrl`, so fall back
+	// to it while the block is still in external mode and no URL has been set —
+	// the same backward-compat shim ekwa/div uses for its legacy `href`.
+	$resolve_attrs = $attrs;
+	if ( empty( $resolve_attrs['url'] ) && ! empty( $resolve_attrs['linkUrl'] )
+		&& ( ! isset( $resolve_attrs['linkType'] ) || 'external' === $resolve_attrs['linkType'] ) ) {
+		$resolve_attrs['url'] = $resolve_attrs['linkUrl'];
+	}
+	$resolved    = ekwa_resolve_block_link_url( $resolve_attrs );
+	$link_url    = $resolved ? esc_url( $resolved ) : '';
 	$link_blank  = ! empty( $attrs['linkNewTab'] );
 	$no_webp     = ! empty( $attrs['disableWebp'] );
+	$lightbox    = ! empty( $attrs['lightbox'] );
+	// Legacy: lightboxSrc was a second URL field in the Lightbox panel before
+	// Link Settings became the single place a URL is entered. No UI writes it
+	// any more; it is still read so content saved back then keeps working.
+	$lb_src      = isset( $attrs['lightboxSrc'] )     ? esc_url( $attrs['lightboxSrc'] ) : '';
+	$lb_group    = isset( $attrs['lightboxGroup'] )   ? (string) $attrs['lightboxGroup'] : '';
+	$lb_caption  = isset( $attrs['lightboxCaption'] ) ? (string) $attrs['lightboxCaption'] : '';
 
 	if ( ! $src ) {
 		return '';
@@ -4095,7 +4128,26 @@ function ekwa_render_image_block( $attrs ) {
 		$html .= $noscript;
 	}
 
-	if ( $link_url ) {
+	// One link, one field. Link Settings says WHERE the image points; the
+	// lightbox toggle says whether that opens in an overlay or navigates. With
+	// no link set, the lightbox opens the image itself, so switching it on is
+	// still a single click. `lightboxSrc` is only consulted for content saved
+	// while it was still a separate field.
+	if ( $lightbox ) {
+		$lb_href = $link_url ? $link_url : ( $lb_src ? $lb_src : $src );
+		if ( $lb_href ) {
+			$link_html = '<a href="' . $lb_href . '"'
+				. ekwa_lightbox_trigger_attrs( $lb_group, $lb_caption );
+			// The <img>'s alt normally names the link. When the image is marked
+			// decorative (empty alt) the link would have no accessible name at
+			// all, so give the control its own label.
+			if ( '' === $alt ) {
+				$link_html .= ' aria-label="' . esc_attr__( 'View larger image', 'ekwa' ) . '"';
+			}
+			$link_html .= '>' . $html . '</a>';
+			$html = $link_html;
+		}
+	} elseif ( $link_url ) {
 		$link_html = '<a href="' . $link_url . '"';
 		if ( $link_blank ) {
 			$link_html .= ' target="_blank" rel="noopener noreferrer"';
@@ -4194,8 +4246,21 @@ function ekwa_render_div_block( $attrs, $content ) {
 		$class_name = trim( $class_name . ' ekwa-lazy-bg' );
 	}
 
+	// Lightbox is only meaningful on an <a> — it needs an href to open. Any
+	// other tag ignores the flag rather than emitting a trigger class on an
+	// element GLightbox could never resolve a source for.
+	$lightbox = ! empty( $attrs['lightbox'] ) && 'a' === $tag;
+
 	$html = '<' . $tag;
-	if ( $class_name ) { $html .= ' class="' . esc_attr( $class_name ) . '"'; }
+	if ( $lightbox ) {
+		$html .= ekwa_lightbox_trigger_attrs(
+			isset( $attrs['lightboxGroup'] )   ? (string) $attrs['lightboxGroup']   : '',
+			isset( $attrs['lightboxCaption'] ) ? (string) $attrs['lightboxCaption'] : '',
+			$class_name
+		);
+	} elseif ( $class_name ) {
+		$html .= ' class="' . esc_attr( $class_name ) . '"';
+	}
 	if ( $anchor )     { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $style )      { $html .= ' style="' . esc_attr( $style ) . '"'; }
 	if ( $lazy_bg )    { $html .= ' data-bg="' . esc_attr( $bg_image ) . '"'; }

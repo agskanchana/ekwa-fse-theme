@@ -354,7 +354,10 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	// If it has real element children (img, div, etc.), use anchor wrapper.
 	// If text-only, use ekwa/link.
 	if ( $tag === 'a' ) {
-		if ( ekwa_mc_has_element_children( $node ) ) {
+		// A lightbox trigger always goes through the wrapper: ekwa/link has no
+		// lightbox attribute, so a text-only "View gallery" trigger routed there
+		// would quietly lose the behaviour the mockup was marking up.
+		if ( ekwa_mc_has_element_children( $node ) || ekwa_mc_lightbox_attrs( $node ) ) {
 			return ekwa_mc_convert_anchor_wrapper( $node, $depth );
 		}
 		return ekwa_mc_convert_link( $node, $depth );
@@ -705,6 +708,16 @@ function ekwa_mc_convert_image( $node, $depth ) {
 		}
 	}
 
+	// A bare <img data-lightbox="…"> (no wrapping link) becomes a lightbox on
+	// the image block itself. Skipped when an ancestor <a> already carries the
+	// trigger — that link is the trigger, and doubling up would nest anchors.
+	$lightbox = ekwa_mc_inside_lightbox_link( $node ) ? array() : ekwa_mc_lightbox_attrs( $node );
+
+	// Drop the JS-binding classes either way: when this image is the trigger the
+	// renderer re-adds the canonical one, and when the wrapping <a> is the
+	// trigger an inherited `.glightbox` here would become a duplicate entry.
+	$class = ekwa_mc_strip_lightbox_classes( $class );
+
 	if ( ! isset( $attrs['src'] ) && $src ) { $attrs['src'] = $src; }
 	if ( $alt )    { $attrs['alt']    = $alt; }
 	if ( $width )  { $attrs['width']  = $width; }
@@ -712,6 +725,7 @@ function ekwa_mc_convert_image( $node, $depth ) {
 	if ( $load )   { $attrs['loading'] = $load; }
 	if ( $class )  { $attrs['className'] = $class; }
 	if ( isset( $style['object-fit'] ) ) { $attrs['objectFit'] = $style['object-fit']; }
+	$attrs += $lightbox;
 
 	$attrs += ekwa_mc_anchor_attr( $node );
 	$attrs += ekwa_mc_style_attr( $node, array( 'object-fit' ) );
@@ -902,6 +916,123 @@ function ekwa_mc_style_attr( $node, $skip = array() ) {
 	$style = trim( preg_replace( '/;\s*;+/', ';', $style ), " \t\n\r;" );
 
 	return ( '' === $style ) ? array() : array( 'inlineStyle' => $style );
+}
+
+/**
+ * Detect a lightbox trigger in mockup markup and map it to block attributes.
+ *
+ * Mockups arrive marked up for whichever library the designer reached for, so
+ * rather than demanding one convention this recognises the handful that are
+ * actually in circulation and normalises them onto the theme's own lightbox:
+ *
+ *   class="glightbox|lightbox|fancybox|venobox|swipebox|magnific-popup|…"
+ *   data-lightbox="group"      (Lightbox2)
+ *   data-fancybox="group"      (Fancybox)
+ *   data-fslightbox="group"    (fsLightbox)
+ *   data-gallery="group"       (GLightbox's own)
+ *   rel="lightbox[group]"      (very old Lightbox2 markup)
+ *
+ * The group name is what makes several thumbnails open as one swipeable
+ * gallery, and every one of those conventions carries it in a different place —
+ * losing it would silently turn a designed gallery into a pile of unrelated
+ * single images, so each spelling is read back out here.
+ *
+ * @param DOMElement $node
+ * @return array Block attributes to merge (`lightbox`, maybe `lightboxGroup`),
+ *               or an empty array when the node is not a lightbox trigger.
+ */
+function ekwa_mc_lightbox_attrs( $node ) {
+	if ( ! $node || ! $node->hasAttributes() ) {
+		return array();
+	}
+
+	$class_attr = strtolower( $node->getAttribute( 'class' ) );
+	$classes    = preg_split( '/\s+/', trim( $class_attr ), -1, PREG_SPLIT_NO_EMPTY );
+	$known      = array(
+		'glightbox', 'ekwa-lightbox', 'lightbox', 'lightbox-trigger', 'fancybox',
+		'venobox', 'swipebox', 'magnific-popup', 'mfp-image', 'colorbox',
+		'lity', 'baguettebox', 'photoswipe', 'fslightbox',
+	);
+	$has_class  = ! empty( array_intersect( $classes, $known ) );
+
+	// Group-carrying attributes, in the order they should win: an explicit
+	// data-gallery beats a library-specific one.
+	$group = '';
+	foreach ( array( 'data-gallery', 'data-fancybox', 'data-lightbox', 'data-fslightbox', 'data-lightbox-gallery' ) as $attr ) {
+		if ( $node->hasAttribute( $attr ) ) {
+			$has_class = true; // Presence of the attribute IS the opt-in.
+			$value     = trim( $node->getAttribute( $attr ) );
+			if ( '' !== $value && '' === $group ) {
+				$group = $value;
+			}
+		}
+	}
+
+	// rel="lightbox[kitchen]" — the group sits inside the brackets.
+	$rel = trim( $node->getAttribute( 'rel' ) );
+	if ( '' !== $rel && preg_match( '/^lightbox(?:\[([^\]]*)\])?$/i', $rel, $m ) ) {
+		$has_class = true;
+		if ( '' === $group && ! empty( $m[1] ) ) {
+			$group = trim( $m[1] );
+		}
+	}
+
+	if ( ! $has_class ) {
+		return array();
+	}
+
+	$attrs = array( 'lightbox' => true );
+	if ( '' !== $group ) {
+		$attrs['lightboxGroup'] = $group;
+	}
+
+	return $attrs;
+}
+
+/**
+ * Remove the class names the theme's lightbox JS binds to.
+ *
+ * Once a trigger is expressed as the `lightbox` block attribute the renderer
+ * adds `ekwa-lightbox` itself, so leaving the mockup's copy in `className`
+ * risks a second, unwanted trigger: the JS selector also matches `.glightbox`,
+ * and an <img> that inherited that class inside an already-converted <a> would
+ * be picked up as its own gallery entry — the same photo twice in one gallery.
+ * Every other class the designer wrote is left untouched; their CSS still hangs
+ * off those.
+ *
+ * @param string $class Raw class attribute.
+ * @return string Class attribute without the binding classes.
+ */
+function ekwa_mc_strip_lightbox_classes( $class ) {
+	if ( '' === trim( (string) $class ) ) {
+		return '';
+	}
+	$keep = array();
+	foreach ( preg_split( '/\s+/', trim( $class ), -1, PREG_SPLIT_NO_EMPTY ) as $name ) {
+		if ( ! in_array( strtolower( $name ), array( 'glightbox', 'ekwa-lightbox' ), true ) ) {
+			$keep[] = $name;
+		}
+	}
+	return implode( ' ', $keep );
+}
+
+/**
+ * Is this node inside an <a> that is already a lightbox trigger?
+ *
+ * Guards against giving an inner <img> its own lightbox when its wrapping link
+ * has one — that would render a link inside a link, which browsers un-nest and
+ * neither trigger survives intact.
+ *
+ * @param DOMElement $node
+ * @return bool
+ */
+function ekwa_mc_inside_lightbox_link( $node ) {
+	for ( $p = $node->parentNode; $p && XML_ELEMENT_NODE === $p->nodeType; $p = $p->parentNode ) {
+		if ( 'a' === strtolower( $p->nodeName ) && ekwa_mc_lightbox_attrs( $p ) ) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /**
@@ -1353,6 +1484,12 @@ function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 	$rel    = $node->getAttribute( 'rel' );
 	$attrs  = array( 'tagName' => $tag );
 
+	// Detect before stripping — the class list is one of the signals.
+	$lightbox = ( 'a' === $tag ) ? ekwa_mc_lightbox_attrs( $node ) : array();
+	if ( ! empty( $lightbox ) ) {
+		$class = ekwa_mc_strip_lightbox_classes( $class );
+	}
+
 	if ( $url && 'a' === $tag )     { $attrs['href']      = $url; }
 	if ( $class )                   { $attrs['className'] = $class; }
 	if ( $target === '_blank' )     { $attrs['target']    = '_blank'; }
@@ -1365,7 +1502,25 @@ function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 	// (`<a class="btn" style="border-radius:6px">`) keeps its look here too.
 	$attrs += ekwa_mc_style_attr( $node );
 
+	// A mockup's lightbox thumbnail becomes a real lightbox trigger.
+	$attrs += $lightbox;
+
 	$custom = ekwa_mc_extract_custom_attributes( $node );
+	if ( ! empty( $lightbox ) ) {
+		// The block now emits data-gallery itself, so drop the source markup's
+		// own grouping attributes — forwarding them would print a second,
+		// conflicting data-gallery onto the same element.
+		unset(
+			$custom['data-gallery'], $custom['data-fancybox'], $custom['data-lightbox'],
+			$custom['data-fslightbox'], $custom['data-lightbox-gallery']
+		);
+		ekwa_mc_warn(
+			'Lightbox link converted to the theme lightbox'
+				. ( isset( $lightbox['lightboxGroup'] ) ? ' (gallery "' . $lightbox['lightboxGroup'] . '")' : '' )
+				. ' — the mockup\'s own lightbox library and its JS are not needed.',
+			'converted'
+		);
+	}
 	if ( ! empty( $custom ) ) {
 		$attrs['customAttributes'] = $custom;
 	}

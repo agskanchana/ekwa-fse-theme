@@ -26,6 +26,15 @@
  * For AJAX-injected markup (e.g. load-more), call window.ekwaLightboxRefresh()
  * after inserting new triggers.
  *
+ * ── One instance, on purpose ──────────────────────────────────────────────────
+ * ekwa/image, ekwa/div (tagName "a") and the video blocks' "Open in lightbox"
+ * option ALL emit the same `ekwa-lightbox` class and are driven by the single
+ * GLightbox instance built here. That is what keeps images and videos from
+ * fighting: there is only ever one library copy, one selector and one instance
+ * on the page, so a gallery can even mix the two. Anything adding a lightbox to
+ * this theme should reuse ekwa_lightbox_trigger_attrs() rather than enqueue a
+ * second library.
+ *
  * @package ekwa
  */
 
@@ -36,6 +45,52 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Bundled GLightbox version — used for cache-busting the vendored files. */
 if ( ! defined( 'EKWA_GLIGHTBOX_VER' ) ) {
 	define( 'EKWA_GLIGHTBOX_VER', '3.3.1' );
+}
+
+/** The class every lightbox trigger carries — also half of the JS selector. */
+if ( ! defined( 'EKWA_LIGHTBOX_CLASS' ) ) {
+	define( 'EKWA_LIGHTBOX_CLASS', 'ekwa-lightbox' );
+}
+
+/**
+ * Build the ` class="…" data-gallery="…"` attribute string for a lightbox
+ * trigger anchor.
+ *
+ * Every block that offers a lightbox routes through here so the markup — and
+ * therefore the selector the single GLightbox instance binds to — can only ever
+ * be defined in one place.
+ *
+ * The group is what turns separate triggers into one swipeable gallery: items
+ * sharing a group open together, and an empty group is left without the
+ * attribute so the loader's assignGalleries() can hand it a unique id and it
+ * opens on its own.
+ *
+ * @param string $group   Gallery group name. Empty for a standalone item.
+ * @param string $caption Optional caption shown under the media.
+ * @param string $classes Extra classes to place alongside the trigger class.
+ * @return string Attribute string starting with a space, ready to concatenate.
+ */
+function ekwa_lightbox_trigger_attrs( $group = '', $caption = '', $classes = '' ) {
+	$class_list = trim( $classes . ' ' . EKWA_LIGHTBOX_CLASS );
+	$out        = ' class="' . esc_attr( $class_list ) . '"';
+
+	// Group names are a plain lookup key, not a CSS class — spaces and mixed
+	// case are fine, so only strip tags/control characters rather than forcing
+	// them through sanitize_html_class() and silently mangling the author's
+	// name into something that no longer matches its siblings.
+	$group = trim( sanitize_text_field( $group ) );
+	if ( '' !== $group ) {
+		$out .= ' data-gallery="' . esc_attr( $group ) . '"';
+	}
+
+	// GLightbox reads `data-title` off the element's dataset (see its
+	// parseConfig) and falls back to the anchor's own title/alt when absent.
+	$caption = trim( sanitize_text_field( $caption ) );
+	if ( '' !== $caption ) {
+		$out .= ' data-title="' . esc_attr( $caption ) . '"';
+	}
+
+	return $out;
 }
 
 /**
@@ -73,9 +128,14 @@ function ekwa_lightbox_emit_loader() {
 
 	// Give every ungrouped trigger a unique data-gallery so it opens on its own;
 	// authored data-gallery="name" values are left intact and stay grouped.
+	// The counter lives outside the function on purpose: already-assigned nodes
+	// are skipped on a re-scan, so a counter that restarted at 0 each call would
+	// hand an AJAX-inserted trigger an id an existing one already owns — and two
+	// unrelated items (say a photo and a video) would silently become one
+	// two-slide gallery.
+	var solo = 0;
 	function assignGalleries(){
 		var nodes = document.querySelectorAll(SELECTOR);
-		var solo = 0;
 		for (var i = 0; i < nodes.length; i++){
 			if (!nodes[i].getAttribute('data-gallery')){
 				nodes[i].setAttribute('data-gallery', 'ekwa-lb-solo-' + (solo++));
@@ -124,16 +184,30 @@ function ekwa_lightbox_emit_loader() {
 	// instance exists, GLightbox's own handler takes over and we step aside.
 	document.addEventListener('click', function(e){
 		if (instance || state === 3) return;
-		var trigger = e.target.closest(SELECTOR);
+		// e.target is not guaranteed to be an Element with .closest — a
+		// synthetic/dispatched event can land on the document or a text node,
+		// and calling closest() on those throws, which would take down every
+		// other click handler on the page with it.
+		var t = e.target;
+		if (!t || typeof t.closest !== 'function') return;
+		var trigger = t.closest(SELECTOR);
 		if (!trigger) return;
 		e.preventDefault();
 		window.ekwaLoadLightbox(function(){
-			if (instance) instance.open(trigger);
+			// open() needs the trigger to be one of the elements the instance
+			// was built from; a trigger inserted after build (AJAX) is not, so
+			// re-scan first rather than opening an empty lightbox.
+			if (!instance) return;
+			if (instance.elements && instance.elements.length === 0) return;
+			try { instance.open(trigger); } catch (err) {}
 		});
 	}, true);
 
 	// Prewarm on the first interaction so the first real click is instant.
-	var events = ['mousemove','scroll','touchstart','keydown'];
+	// `click` is in the list too: a click anywhere (not just on a trigger)
+	// means the visitor is engaging, and the capture handler above already
+	// covers the case where that click IS the first trigger click.
+	var events = ['mousemove','scroll','touchstart','keydown','click'];
 	var warmed = false;
 	function warm(){
 		if (warmed) return;

@@ -45,7 +45,9 @@
 		"rel":      { "type": "string",  "default": "" },
 		"linkType": { "type": "string",  "default": "external" },
 		"pageType": { "type": "string",  "default": "page" },
-		"pageId":   { "type": "number",  "default": 0 }
+		"pageId":   { "type": "number",  "default": 0 },
+		"mediaUrl":    { "type": "string", "default": "" },
+		"mediaFileId": { "type": "number", "default": 0 }
 	},
 	"editorScript": "ekwa-card-link-editor"
 }

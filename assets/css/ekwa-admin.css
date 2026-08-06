@@ -532,3 +532,108 @@
 .ekwa-css-bg-warning li {
 	word-break: break-all;
 }
+
+/* ── Help & Ask AI tab ─────────────────────────────────────────────────── */
+
+/* Docs link beside the page title. Sits on the H1 baseline like core's own
+   "Add New" button, with room for the dashicon. */
+.ekwa-settings-title .ekwa-docs-link {
+	margin-left: 8px;
+	vertical-align: middle;
+}
+.ekwa-settings-title .ekwa-docs-link .dashicons {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	line-height: 1.4;
+	vertical-align: text-bottom;
+}
+
+.ekwa-docs-links {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 6px 20px;
+	margin: 12px 0 0;
+	list-style: none;
+}
+.ekwa-docs-links li {
+	margin: 0;
+}
+.ekwa-docs-links a {
+	text-decoration: none;
+}
+.ekwa-docs-links a::before {
+	content: "→";
+	margin-right: 6px;
+	opacity: .5;
+}
+
+.ekwa-ask__thread {
+	max-height: 460px;
+	overflow-y: auto;
+	padding: 12px;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.ekwa-ask__empty {
+	margin: 0;
+	color: #646970;
+	font-style: italic;
+}
+.ekwa-ask__msg {
+	padding: 10px 14px;
+	border-radius: 8px;
+	line-height: 1.6;
+	max-width: 46em;
+	overflow-wrap: anywhere;
+}
+.ekwa-ask__msg--user {
+	align-self: flex-end;
+	background: #2271b1;
+	color: #fff;
+}
+.ekwa-ask__msg--ai {
+	align-self: flex-start;
+	background: #fff;
+	border: 1px solid #dcdcde;
+}
+.ekwa-ask__msg--error {
+	align-self: flex-start;
+	background: #fcf0f1;
+	border-left: 4px solid #d63638;
+}
+.ekwa-ask__msg code {
+	background: rgba(0, 0, 0, .07);
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+.ekwa-ask__msg--user code {
+	background: rgba(255, 255, 255, .22);
+}
+.ekwa-ask__msg pre {
+	margin: 8px 0;
+	padding: 10px 12px;
+	background: #1d2327;
+	color: #f0f0f1;
+	border-radius: 4px;
+	overflow-x: auto;
+}
+.ekwa-ask__msg pre code {
+	background: none;
+	padding: 0;
+}
+.ekwa-ask__form {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+.ekwa-ask__form input[type="text"] {
+	flex: 1;
+}
+.ekwa-ask__foot {
+	margin-top: 8px;
+}

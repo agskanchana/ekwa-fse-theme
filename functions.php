@@ -277,6 +277,12 @@ require_once get_template_directory() . '/inc/ekwa-skip-link.php';
 require_once get_template_directory() . '/inc/ekwa-lightbox.php';
 
 /**
+ * Documentation links + the in-admin "Ask AI" docs assistant (Ekwa Settings →
+ * Help). Answers from the published docs using the theme's own Gemini key.
+ */
+require_once get_template_directory() . '/inc/ekwa-docs-assistant.php';
+
+/**
  * Load blog features (TOC, author link, load more, post cards).
  */
 require_once get_template_directory() . '/inc/ekwa-blog.php';

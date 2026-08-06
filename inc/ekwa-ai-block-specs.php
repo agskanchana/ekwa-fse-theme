@@ -46,6 +46,8 @@ function ekwa_ai_block_spec_registry() {
 				'tagName — div|section|header|footer|nav|main|aside|article|a|span|small|strong|em|figcaption (default "div")',
 				'className — your semantic CSS class(es)',
 				'anchor — optional id',
+				'tagName "a" only: target, rel, and linkType — external|internal|media|appointment (default "external"); pair with url, or pageId, or mediaUrl+mediaFileId',
+				'tagName "a" only: lightbox — bool, opens href in the site lightbox (image, YouTube/Vimeo or MP4) instead of navigating; lightboxGroup groups triggers into one gallery; lightboxCaption sets the overlay caption. Use this for a linked thumbnail or a whole clickable card.',
 			),
 			'examples' => array(
 				"<!-- wp:ekwa/div {\"tagName\":\"header\",\"className\":\"site-header\"} -->\n<!-- wp:ekwa/div {\"className\":\"site-header__inner\"} -->\n<!-- inner blocks here -->\n<!-- /wp:ekwa/div -->\n<!-- /wp:ekwa/div -->",
@@ -175,11 +177,16 @@ function ekwa_ai_block_spec_registry() {
 				'loading — lazy|eager (default "lazy")',
 				'hero — bool, set true for the above-the-fold LCP image',
 				'objectFit — cover|contain|… (optional)',
-				'linkUrl — optional wrapping link',
+				'linkType — external|internal|media|appointment (default "external"); pair with url, or pageId, or mediaUrl+mediaFileId. Ignored when lightbox is on',
+				'lightbox — bool, click to open the image full-size in the site lightbox',
+				'lightbox opens whatever linkType/url points at, or the image itself when no link is set — do NOT add a second URL for it',
+				'lightboxGroup — images sharing this name open as ONE swipeable gallery',
+				'lightboxCaption — optional caption shown in the overlay',
 				'className',
 			),
 			'examples' => array(
 				"<!-- wp:ekwa/image {\"src\":\"https://placehold.co/1200x600\",\"alt\":\"Office exterior\",\"width\":\"1200\",\"height\":\"600\"} /-->",
+				"<!-- wp:ekwa/image {\"src\":\"https://placehold.co/400x300\",\"alt\":\"Case 1 after\",\"lightbox\":true,\"lightboxGroup\":\"smile-gallery\"} /-->",
 			),
 		),
 
