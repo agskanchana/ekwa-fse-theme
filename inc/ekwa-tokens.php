@@ -10,11 +10,14 @@
  * still owns @font-face and font variables (self-hosting + conditional mobile
  * loading), which is why those are stripped from the printed sheet.
  *
- *   Mockup stylesheet   → <style id="ekwa-global-css"> in <head>
+ * <head> print order, which is deliberate — see ekwa_tokens_print_mockup_css():
+ *
  *   Background images   → :root{--bg-hero:url(…)} so section CSS (and the
  *                         ::before/::after pseudo-elements blocks can't own)
- *                         can reference them
- *   Fonts tab           → @font-face + font variables, printed after the
+ *                         can reference them. Printed BEFORE the stylesheet,
+ *                         which references these names without declaring them.
+ *   Mockup stylesheet   → <style id="ekwa-global-css">
+ *   Fonts tab           → @font-face + font variables, printed AFTER the
  *                         stylesheet so self-hosting wins
  *
  * LEGACY MODEL (pre-simplification, still fully supported): the stylesheet used
@@ -418,8 +421,20 @@ function ekwa_tokens_root_css() {
 }
 
 /**
- * Print the token CSS in <head> (before block CSS and section Scoped CSS so
- * the variables are defined when they're referenced).
+ * Print the token CSS in <head>, FIRST — before the site stylesheet (priority 4),
+ * block CSS and section Scoped CSS — so every `var()` reference downstream has
+ * its definition already in the document.
+ *
+ * Priority 3, not 5. The stylesheet these tokens feed prints at 4, so at 5 the
+ * `:root` block landed *after* the sheet that reads it. The mockup stylesheet is
+ * the whole reason the Background images tab exists: it references
+ * `var(--bg-hero-1)` and never declares it, so the token block is the definition,
+ * not an override, and it belongs above its consumer.
+ *
+ * Anything that genuinely needs to WIN over a name the stylesheet also declares
+ * still can — the fonts module prints at 5, after the sheet, which is what keeps
+ * self-hosting and conditional mobile loading working on a mockup that declares
+ * its own font tokens.
  */
 function ekwa_tokens_print_head() {
 	$css = ekwa_tokens_root_css();
@@ -428,7 +443,7 @@ function ekwa_tokens_print_head() {
 	}
 	echo '<style id="ekwa-design-tokens">' . $css . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
-add_action( 'wp_head', 'ekwa_tokens_print_head', 5 );
+add_action( 'wp_head', 'ekwa_tokens_print_head', 3 );
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GLOBAL CSS POOL (thinning <head> stylesheet)
@@ -631,8 +646,8 @@ function ekwa_tokens_css_size_label( $css ) {
 }
 
 /**
- * Print the global pool in <head>, after the token/font :root vars (priority 5)
- * so any var() it references is already defined.
+ * Print the global pool in <head>, after the token (priority 3) and font
+ * (priority 5) :root vars so any var() it references is already defined.
  */
 function ekwa_tokens_print_global_css() {
 	// Legacy sites only — the pool keeps printing exactly where it always did.
@@ -651,10 +666,14 @@ add_action( 'wp_head', 'ekwa_tokens_print_global_css', 6 );
 /**
  * Print the mockup stylesheet as the site's global CSS (current model).
  *
- * Priority 4 puts it BEFORE the token and font `:root` rules (priority 5), so
- * the Fonts tab's variables override any the stylesheet declares for the same
- * name — that's what keeps self-hosting and conditional mobile loading working
- * on a sheet that also defines its own font tokens.
+ * Priority 4 sits between the two `:root` blocks, and both sides of that are
+ * load-bearing:
+ *
+ *   3 — design tokens.  Background-image (and legacy colour) variables the sheet
+ *       REFERENCES but never declares. They have to be defined above it.
+ *   5 — font variables.  The Fonts tab OVERRIDES names the sheet declares for
+ *       itself, so it has to land below it — that's what keeps self-hosting and
+ *       conditional mobile loading working on a mockup with its own font tokens.
  */
 function ekwa_tokens_print_mockup_css() {
 	if ( ekwa_tokens_legacy_mode() ) {
