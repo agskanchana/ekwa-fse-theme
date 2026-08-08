@@ -3573,6 +3573,36 @@ function ekwa_carousel_unhook_inliner_for_prerender( $pre_render, $parsed_block 
 add_filter( 'pre_render_block', 'ekwa_carousel_unhook_inliner_for_prerender', 10, 2 );
 
 /**
+ * Build the inner markup of a carousel arrow button.
+ *
+ * With no custom markup this returns the original Font Awesome chevron, so
+ * every existing carousel renders exactly as before. Custom SVG is sanitized
+ * (ekwa_sanitize_svg_markup strips scripts and event handlers) and returns ''
+ * when the input isn't an SVG at all — either way we fall back to the chevron
+ * rather than emitting a button with nothing in it.
+ *
+ * The icon is wrapped in an aria-hidden span: the button already carries its
+ * own aria-label, so a <title> inside pasted markup must not be announced too.
+ *
+ * @param string $custom    Raw SVG markup from the prevIcon/nextIcon attribute.
+ * @param string $direction 'prev' or 'next' — selects the default chevron.
+ * @return string
+ */
+function ekwa_carousel_arrow_icon( $custom, $direction ) {
+	$svg = function_exists( 'ekwa_sanitize_svg_markup' )
+		? ekwa_sanitize_svg_markup( $custom )
+		: '';
+
+	if ( '' !== $svg ) {
+		return '<span class="ekwa-carousel__arrow-icon" aria-hidden="true">' . $svg . '</span>';
+	}
+
+	$chevron = ( 'prev' === $direction ) ? 'fa-chevron-left' : 'fa-chevron-right';
+
+	return '<i class="fa-solid ' . $chevron . '" aria-hidden="true"></i>';
+}
+
+/**
  * Server-side render callback for the ekwa/carousel block.
  *
  * Each top-level inner block becomes a slide. Frontend script + style are
@@ -3609,6 +3639,12 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 		: 'inside';
 	$arrow_gap    = isset( $attrs['arrowGap'] )    ? max( 0, absint( $attrs['arrowGap'] ) )    : 12;
 	$arrow_offset = isset( $attrs['arrowOffset'] ) ? max( 0, absint( $attrs['arrowOffset'] ) ) : 16;
+
+	// Optional author-supplied arrow icons. Empty (the default) keeps the
+	// built-in chevrons — see ekwa_carousel_arrow_icon().
+	$prev_icon    = isset( $attrs['prevIcon'] ) ? (string) $attrs['prevIcon'] : '';
+	$next_icon    = isset( $attrs['nextIcon'] ) ? (string) $attrs['nextIcon'] : '';
+
 	$autoplay     = ! empty( $attrs['autoplay'] );
 	$autoplay_int = isset( $attrs['autoplayInterval'] ) ? max( 500, absint( $attrs['autoplayInterval'] ) ) : 5000;
 	$loop         = ! empty( $attrs['loop'] );
@@ -3666,8 +3702,8 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 		// exactly as before. The wrapper is also what a converted Owl carousel
 		// maps its `.owl-nav` class onto.
 		$html .= '<div class="ekwa-carousel__nav">';
-		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>';
-		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next slide', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>';
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous slide', 'ekwa' ) . '">' . ekwa_carousel_arrow_icon( $prev_icon, 'prev' ) . '</button>';
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next slide', 'ekwa' ) . '">' . ekwa_carousel_arrow_icon( $next_icon, 'next' ) . '</button>';
 		$html .= '</div>';
 	}
 

@@ -95,6 +95,7 @@ function ekwa_ai_block_spec_registry() {
 				'showArrows (bool), showDots (bool), autoplay (bool), loop (bool), gap (px)',
 				'arrowPosition — inside|outside|top-left|top-center|top-right|bottom-left|bottom-center|bottom-right (default "inside"). "inside" overlays the slide edges; every other value reserves its own space so the arrows never cover a slide.',
 				'arrowOffset (px from the slides), arrowGap (px between the paired arrows)',
+				'prevIcon / nextIcon — optional raw SVG markup replacing the default chevron on that arrow. Omit both unless the mockup shows a distinctly non-chevron arrow; the SVG must be a bare <svg>…</svg> (no wrapper), and fill="currentColor" keeps it matching the button hover state.',
 				'className',
 			),
 			'examples' => array(
