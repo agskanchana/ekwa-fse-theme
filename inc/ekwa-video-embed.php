@@ -400,18 +400,25 @@ function ekwa_video_format_duration( $duration ) {
 }
 
 /**
- * Build the <img> (+ play icon + duration badge) shown before click-to-play,
- * honoring the theme's global lazy-load mode exactly like ekwa/image does.
+ * Build the <img> (+ play icon) shown before click-to-play, honoring the
+ * theme's global lazy-load mode exactly like ekwa/image does.
+ *
+ * The duration badge is deliberately NOT part of this markup: it is visible
+ * text, and this runs inside the play <a>/<button> whose accessible name is an
+ * aria-label ("Play video: Foo"). A visible label the accessible name does not
+ * contain fails WCAG 2.5.3 Label in Name, so a voice-control user saying the
+ * duration they can see hits nothing. ekwa_video_render() emits the badge as a
+ * sibling of the control instead — same visual position, no text inside the
+ * control.
  *
  * @param string $thumbnail_url
  * @param string $alt
  * @param array  $dims {width, height}
- * @param string $duration ISO 8601 duration, or ''.
  * @param bool   $disable_lazy
  * @param bool   $fetch_priority_high
  * @return string
  */
-function ekwa_video_render_thumbnail_inner( $thumbnail_url, $alt, $dims, $duration, $disable_lazy, $fetch_priority_high ) {
+function ekwa_video_render_thumbnail_inner( $thumbnail_url, $alt, $dims, $disable_lazy, $fetch_priority_high ) {
 	$lazy_mode     = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
 	$use_lazysizes = ! $disable_lazy && 'lazysizes' === $lazy_mode;
 	$loading_attr  = ( ! $disable_lazy && 'native' === $lazy_mode ) ? ' loading="lazy"' : '';
@@ -435,10 +442,6 @@ function ekwa_video_render_thumbnail_inner( $thumbnail_url, $alt, $dims, $durati
 	$html .= '<span class="ekwa-video-embed__play-icon" aria-hidden="true"><svg width="68" height="48" viewBox="0 0 68 48" focusable="false">'
 		. '<path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.63-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#f00"></path>'
 		. '<path d="M45 24L27 14v20" fill="#fff"></path></svg></span>';
-
-	if ( ! empty( $duration ) ) {
-		$html .= '<span class="ekwa-video-embed__duration">' . esc_html( ekwa_video_format_duration( $duration ) ) . '</span>';
-	}
 
 	return $html;
 }
@@ -544,7 +547,7 @@ function ekwa_video_render( $attrs, $provider ) {
 	}
 
 	$thumb_markup = $display_thumb
-		? ekwa_video_render_thumbnail_inner( $display_thumb, $display_thumb_alt, $dims, $video_duration, $disable_lazy, $fetch_priority_high )
+		? ekwa_video_render_thumbnail_inner( $display_thumb, $display_thumb_alt, $dims, $disable_lazy, $fetch_priority_high )
 		: '<span class="ekwa-video-embed__placeholder">' . esc_html__( 'Thumbnail not available', 'ekwa' ) . '</span>';
 
 	$html .= '<div class="ekwa-video-embed__frame" style="aspect-ratio:' . esc_attr( $ratio ) . '">';
@@ -558,6 +561,11 @@ function ekwa_video_render( $attrs, $provider ) {
 			. ' data-video-id="' . esc_attr( $video_id ) . '"'
 			. ' aria-label="' . esc_attr( $play_label ) . '">'
 			. $thumb_markup . '</button>';
+	}
+	// Sibling of the play control, not a child — see ekwa_video_render_thumbnail_inner().
+	// .__thumb is inset:0 on this same .__frame, so absolute positioning is unchanged.
+	if ( $display_thumb && $video_duration ) {
+		$html .= '<span class="ekwa-video-embed__duration">' . esc_html( ekwa_video_format_duration( $video_duration ) ) . '</span>';
 	}
 	$html .= '</div>';
 

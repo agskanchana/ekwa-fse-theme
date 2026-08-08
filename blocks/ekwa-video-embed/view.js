@@ -87,6 +87,12 @@
 		iframe.allowFullscreen = true;
 		iframe.src = src;
 
+		// The duration badge is a sibling of the button (kept out of it so the
+		// button has no visible text — WCAG 2.5.3), so it needs removing too or
+		// it would sit over the playing video.
+		var durationBadge = frame.querySelector( '.ekwa-video-embed__duration' );
+		if ( durationBadge ) { durationBadge.remove(); }
+
 		button.remove();
 		frame.appendChild( iframe );
 
