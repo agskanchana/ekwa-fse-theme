@@ -614,7 +614,7 @@ function ekwa_video_render_transcript_toggle( $transcript ) {
 		. ' aria-expanded="false" aria-controls="' . esc_attr( $panel_id ) . '"'
 		. ' data-show-label="' . esc_attr( $show_label ) . '" data-hide-label="' . esc_attr( $hide_label ) . '">'
 		. '<span class="ekwa-video-transcript-label">' . esc_html( $show_label ) . '</span>'
-		. '<i class="ekwa-video-transcript-icon fa-regular fa-file-lines" aria-hidden="true"></i>'
+		. ( function_exists( 'ekwa_video_transcript_chevron' ) ? ekwa_video_transcript_chevron() : '' )
 		. '</button>'
 		. '<div class="ekwa-video-transcript-panel" id="' . esc_attr( $panel_id ) . '" hidden>' . $panel_html . '</div>'
 		. '</div>';

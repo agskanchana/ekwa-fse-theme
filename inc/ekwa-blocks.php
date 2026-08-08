@@ -4412,9 +4412,11 @@ function ekwa_render_video_block( $attrs ) {
 		$panel_html .= '<p>' . nl2br( esc_html( $p ) ) . '</p>';
 	}
 
+	// Author-chosen icon still wins; the chevron is the default affordance rather
+	// than rendering the bar with nothing on the right.
 	$icon_html = $icon_class
 		? '<i class="ekwa-video-transcript-icon ' . esc_attr( $icon_class ) . '" aria-hidden="true"></i>'
-		: '';
+		: ekwa_video_transcript_chevron();
 
 	$wrap  = '<div class="ekwa-video-transcript-wrap">';
 	$wrap .= $video;
@@ -4435,6 +4437,24 @@ function ekwa_render_video_block( $attrs ) {
 }
 
 /**
+ * The transcript toggle's chevron, as inline SVG.
+ *
+ * Inline rather than a Font Awesome <i> so the affordance never depends on the
+ * icon font having loaded, and so it rotates predictably on expand. Hidden from
+ * assistive tech and removed from the tab order: the button's accessible name
+ * must stay exactly its visible label (WCAG 2.5.3), and decorative art must not
+ * add to it.
+ *
+ * @return string
+ */
+function ekwa_video_transcript_chevron() {
+	return '<svg class="ekwa-video-transcript-icon" width="18" height="18" viewBox="0 0 24 24"'
+		. ' fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"'
+		. ' stroke-linejoin="round" aria-hidden="true" focusable="false">'
+		. '<path d="m6 9 6 6 6-6"></path></svg>';
+}
+
+/**
  * Emit the shared toggle JS + minimal CSS for the video transcript feature
  * exactly once per page (the first time a transcript-enabled video renders).
  *
@@ -4447,10 +4467,33 @@ function ekwa_video_transcript_assets_once() {
 	}
 	$emitted = true;
 
-	$css = '.ekwa-video-transcript-toggle{display:inline-flex;align-items:center;gap:.5em;cursor:pointer;font:inherit;}'
-		. '.ekwa-video-transcript-icon{flex-shrink:0;}'
-		. '.ekwa-video-transcript-panel{max-height:280px;overflow-y:auto;}'
-		. '.ekwa-video-transcript-panel[hidden]{display:none;}';
+	// Full-width bar sitting flush under the video: uppercase accent-coloured label
+	// on the left, chevron on the right, rotating 180deg while the panel is open.
+	// Emitted verbatim with no build step, so preset custom properties carry
+	// literal fallbacks.
+	//
+	// The label is styled with text-transform, NOT rewritten in the DOM. WCAG 2.5.3
+	// (Label in Name) compares case-insensitively, so rendering "VIDEO TRANSCRIPT"
+	// while the text node stays "Video Transcript" is safe — and the accessible name
+	// keeps coming from the visible text, with no aria-label to drift out of sync
+	// when the JS swaps in the hide-label.
+	$css = '.ekwa-video-transcript-wrap{border-radius:10px;overflow:hidden;}'
+		. '.ekwa-video-transcript-toggle{display:flex;align-items:center;justify-content:space-between;gap:1em;'
+			. 'width:100%;box-sizing:border-box;margin:0;padding:16px 24px;border:0;text-align:left;cursor:pointer;'
+			. 'font-family:inherit;background:var(--wp--preset--color--white,#fff);}'
+		. '.ekwa-video-transcript-label{text-transform:uppercase;letter-spacing:.12em;font-size:.8125rem;'
+			. 'font-weight:600;line-height:1.4;color:var(--wp--preset--color--accent,#f5a623);}'
+		. '.ekwa-video-transcript-icon{flex-shrink:0;color:var(--wp--preset--color--gray-700,#374151);'
+			. 'transition:transform .25s ease;}'
+		. '.ekwa-video-transcript-toggle[aria-expanded="true"] .ekwa-video-transcript-icon{transform:rotate(180deg);}'
+		. '.ekwa-video-transcript-toggle:focus-visible'
+			. '{outline:2px solid var(--wp--preset--color--primary,#1a6ef5);outline-offset:-2px;}'
+		. '.ekwa-video-transcript-panel{max-height:280px;overflow-y:auto;padding:0 24px 20px;'
+			. 'background:var(--wp--preset--color--white,#fff);}'
+		. '.ekwa-video-transcript-panel[hidden]{display:none;}'
+		// ekwa/video nests the <video> inside .wrap, so the wrap is already the card;
+		// square the media off so it meets the bar cleanly.
+		. '.ekwa-video-transcript-wrap>video{display:block;width:100%;border-radius:0;}';
 
 	$js = '(function(){'
 		. 'document.addEventListener("click",function(e){'
