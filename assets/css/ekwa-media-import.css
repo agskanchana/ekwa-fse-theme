@@ -1,0 +1,254 @@
+/**
+ * "Import from URL" panel — Media Library / Add New Media screens.
+ *
+ * Markup: ekwa_media_import_render_panel() in inc/ekwa-media-import.php.
+ * Behaviour: assets/js/ekwa-media-import.js.
+ */
+
+.ekwa-mi {
+	position: relative;
+	margin: 15px 0;
+	padding: 16px 20px 20px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #2271b1;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
+	max-width: 900px;
+}
+
+.ekwa-mi[hidden] {
+	display: none;
+}
+
+.ekwa-mi__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.ekwa-mi__title {
+	margin: 0;
+	font-size: 15px;
+	line-height: 1.4;
+}
+
+.ekwa-mi__close {
+	background: none;
+	border: 0;
+	padding: 0 4px;
+	font-size: 20px;
+	line-height: 1;
+	color: #787c82;
+	cursor: pointer;
+}
+
+.ekwa-mi__close:hover,
+.ekwa-mi__close:focus {
+	color: #d63638;
+}
+
+.ekwa-mi .description {
+	margin: 4px 0 10px;
+}
+
+.ekwa-mi textarea {
+	font-size: 12px;
+	line-height: 1.6;
+	resize: vertical;
+}
+
+.ekwa-mi__options {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 20px;
+	margin: 10px 0 4px;
+}
+
+.ekwa-mi__options label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+}
+
+.ekwa-mi__count {
+	margin-left: auto;
+	color: #646970;
+	font-style: italic;
+}
+
+/* Flagged by the JS when an import failed on a certificate error, so the fix
+   the message names is easy to spot. */
+.ekwa-mi__options label.ekwa-mi__hint {
+	padding: 2px 8px;
+	border-radius: 3px;
+	background: #fcf9e8;
+	box-shadow: 0 0 0 1px #dba617;
+	font-weight: 600;
+}
+
+.ekwa-mi__actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 12px 0 0;
+}
+
+.ekwa-mi__status {
+	color: #50575e;
+}
+
+.ekwa-mi__status a {
+	white-space: nowrap;
+}
+
+/* Progress bar */
+.ekwa-mi__bar {
+	height: 4px;
+	margin-top: 12px;
+	background: #dcdcde;
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.ekwa-mi__bar[hidden] {
+	display: none;
+}
+
+.ekwa-mi__bar span {
+	display: block;
+	width: 0;
+	height: 100%;
+	background: #2271b1;
+	transition: width .2s ease;
+}
+
+/* Results */
+.ekwa-mi__results {
+	margin: 14px 0 0;
+	max-height: 420px;
+	overflow-y: auto;
+}
+
+.ekwa-mi__results:empty {
+	margin: 0;
+}
+
+.ekwa-mi__item {
+	display: flex;
+	gap: 12px;
+	margin: 0;
+	padding: 10px 0;
+	border-top: 1px solid #f0f0f1;
+}
+
+.ekwa-mi__item:first-child {
+	border-top: 0;
+}
+
+.ekwa-mi__thumb {
+	flex: 0 0 48px;
+	width: 48px;
+	height: 48px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	overflow: hidden;
+}
+
+.ekwa-mi__thumb img {
+	max-width: 100%;
+	max-height: 100%;
+	display: block;
+}
+
+.ekwa-mi__body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ekwa-mi__name {
+	font-weight: 600;
+	word-break: break-all;
+}
+
+.ekwa-mi__source {
+	margin-top: 4px;
+	color: #8c8f94;
+	font-size: 11px;
+	word-break: break-all;
+}
+
+.ekwa-mi__meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+	color: #d63638;
+}
+
+.ekwa-mi__alt-input {
+	flex: 1 1 260px;
+	min-width: 0;
+}
+
+.ekwa-mi__note {
+	color: #2271b1;
+	font-size: 12px;
+}
+
+.ekwa-mi__note.is-error {
+	color: #d63638;
+}
+
+/* Status badges */
+.ekwa-mi__badge {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 8px;
+	border-radius: 9px;
+	font-size: 11px;
+	font-weight: 400;
+	vertical-align: middle;
+}
+
+.ekwa-mi__item.is-ok .ekwa-mi__badge {
+	background: #edfaef;
+	color: #007017;
+}
+
+.ekwa-mi__item.is-duplicate .ekwa-mi__badge {
+	background: #fcf9e8;
+	color: #8a6d00;
+}
+
+.ekwa-mi__item.is-error .ekwa-mi__badge {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+/* Pending row: the thumb slot pulses until the server answers. */
+.ekwa-mi__item.is-pending .ekwa-mi__thumb {
+	animation: ekwa-mi-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ekwa-mi-pulse {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: .45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ekwa-mi__item.is-pending .ekwa-mi__thumb {
+		animation: none;
+	}
+
+	.ekwa-mi__bar span {
+		transition: none;
+	}
+}

@@ -159,6 +159,12 @@ require_once get_template_directory() . '/inc/ekwa-inline-child.php';
 require_once get_template_directory() . '/inc/ekwa-webp.php';
 
 /**
+ * "Import from URL" panel on the Media Library — paste one or more image links
+ * and sideload them as normal attachments.
+ */
+require_once get_template_directory() . '/inc/ekwa-media-import.php';
+
+/**
  * Load image performance helpers (lazy loading, hero preload, srcset).
  */
 require_once get_template_directory() . '/inc/ekwa-perf.php';
