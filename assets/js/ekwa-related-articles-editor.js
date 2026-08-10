@@ -1,3 +1,11 @@
+/**
+ * Ekwa Related Articles Block — Editor UI.
+ *
+ * In carousel mode the block renders the same .ekwa-carousel markup as
+ * ekwa/carousel, so it exposes the same option set — items per view,
+ * breakpoints, arrow position / offset / icons, autoplay and speed — via the
+ * shared window.EkwaCarouselControls helper.
+ */
 ( function ( wp ) {
 	'use strict';
 	var el = wp.element.createElement;
@@ -14,21 +22,42 @@
 	var ServerSideRender = wp.serverSideRender;
 	var __ = wp.i18n.__;
 
+	var arrowControls = window.EkwaCarouselControls.arrowControls;
+
+	/**
+	 * Arrow placement, honouring the pre-arrowPosition attributes.
+	 *
+	 * arrowPosition has no default, so blocks saved before it existed resolve
+	 * from the old arrowsOutside toggle and keep the layout they had. Mirrors
+	 * the same fallback in ekwa_render_related_articles_block().
+	 *
+	 * @param {Object} a Block attributes.
+	 * @return {string} One of the eight arrow positions.
+	 */
+	function resolveArrowPosition( a ) {
+		if ( a.arrowPosition ) {
+			return a.arrowPosition;
+		}
+		return false === a.arrowsOutside ? 'inside' : 'outside';
+	}
+
+	/**
+	 * Arrow offset, falling back to the legacy arrowSpacing attribute.
+	 *
+	 * @param {Object} a Block attributes.
+	 * @return {number} Distance in px between the arrows and the items.
+	 */
+	function resolveArrowOffset( a ) {
+		if ( a.arrowOffset !== undefined ) {
+			return a.arrowOffset;
+		}
+		return a.arrowSpacing === undefined ? 12 : a.arrowSpacing;
+	}
+
 	registerBlockType( 'ekwa/related-articles', {
 		edit: function ( props ) {
 			var a = props.attributes;
 			var set = props.setAttributes;
-
-			var carouselSettings = a.useCarousel ? [
-				el( RangeControl, { key: 'd', label: __( 'Desktop items' ), value: a.desktopItems, min: 1, max: 4, onChange: function ( v ) { set( { desktopItems: v } ); } } ),
-				el( RangeControl, { key: 't', label: __( 'Tablet items' ), value: a.tabletItems, min: 1, max: 3, onChange: function ( v ) { set( { tabletItems: v } ); } } ),
-				el( RangeControl, { key: 'm', label: __( 'Mobile items' ), value: a.mobileItems, min: 1, max: 2, onChange: function ( v ) { set( { mobileItems: v } ); } } ),
-				el( ToggleControl, { key: 'l', label: __( 'Loop carousel' ), help: __( 'Wrap from the last slide back to the first.' ), checked: a.loop, onChange: function ( v ) { set( { loop: v } ); } } ),
-				el( ToggleControl, { key: 'a', label: __( 'Show arrows' ), checked: a.showArrows, onChange: function ( v ) { set( { showArrows: v } ); } } ),
-				a.showArrows && el( ToggleControl, { key: 'ao', label: __( 'Arrows outside items' ), help: __( 'Keeps the arrows clear of the card content. Hidden on mobile (swipe and dots remain).' ), checked: a.arrowsOutside, onChange: function ( v ) { set( { arrowsOutside: v } ); } } ),
-				a.showArrows && a.arrowsOutside && el( RangeControl, { key: 'as', label: __( 'Arrow spacing (px)' ), help: __( 'Gap between the arrows and the items.' ), value: a.arrowSpacing, min: 0, max: 48, onChange: function ( v ) { set( { arrowSpacing: v } ); } } ),
-				el( ToggleControl, { key: 'o', label: __( 'Show dots' ),   checked: a.showDots,   onChange: function ( v ) { set( { showDots: v } ); } } )
-			] : [];
 
 			return el( Fragment, null,
 				el( InspectorControls, null,
@@ -41,7 +70,73 @@
 						} ),
 						el( RangeControl, { label: __( 'Posts to show' ), value: a.count, min: 1, max: 12, onChange: function ( v ) { set( { count: v } ); } } )
 					),
-					a.useCarousel && el( PanelBody, { title: __( 'Carousel options' ), initialOpen: true }, carouselSettings ),
+
+					a.useCarousel && el( PanelBody, { title: __( 'Items per view' ), initialOpen: true },
+						el( RangeControl, { label: __( 'Desktop' ), value: a.desktopItems, min: 1, max: 8, onChange: function ( v ) { set( { desktopItems: v } ); } } ),
+						el( RangeControl, { label: __( 'Tablet' ),  value: a.tabletItems,  min: 1, max: 8, onChange: function ( v ) { set( { tabletItems: v } ); } } ),
+						el( RangeControl, { label: __( 'Mobile' ),  value: a.mobileItems,  min: 1, max: 4, onChange: function ( v ) { set( { mobileItems: v } ); } } )
+					),
+
+					a.useCarousel && el( PanelBody, { title: __( 'Breakpoints (px)' ), initialOpen: false },
+						el( RangeControl, {
+							label: __( 'Desktop ≥' ),
+							help: __( 'Width at and above which "Desktop" items per view applies.' ),
+							value: a.tabletBreakpoint, min: 600, max: 1600, step: 1,
+							onChange: function ( v ) { set( { tabletBreakpoint: v } ); }
+						} ),
+						el( RangeControl, {
+							label: __( 'Tablet ≥' ),
+							help: __( 'Width at and above which "Tablet" applies; below this is "Mobile".' ),
+							value: a.mobileBreakpoint, min: 320, max: 1000, step: 1,
+							onChange: function ( v ) { set( { mobileBreakpoint: v } ); }
+						} )
+					),
+
+					a.useCarousel && el( PanelBody, { title: __( 'Navigation' ), initialOpen: false },
+						el( ToggleControl, { label: __( 'Show arrows' ), checked: a.showArrows, onChange: function ( v ) { set( { showArrows: v } ); } } ),
+						a.showArrows && arrowControls( a, set, {
+							position: resolveArrowPosition( a ),
+							offset:   resolveArrowOffset( a ),
+							gap:      a.arrowGap === undefined ? 12 : a.arrowGap
+						} ),
+						el( ToggleControl, { label: __( 'Show dots' ), checked: a.showDots, onChange: function ( v ) { set( { showDots: v } ); } } )
+					),
+
+					a.useCarousel && el( PanelBody, { title: __( 'Behavior' ), initialOpen: false },
+						el( ToggleControl, {
+							label: __( 'Loop (infinite)' ),
+							help: __( 'Wrap from the last slide back to the first.' ),
+							checked: a.loop,
+							onChange: function ( v ) { set( { loop: v } ); }
+						} ),
+						el( ToggleControl, {
+							label: __( 'Autoplay' ),
+							help: __( 'Pauses on hover, focus, and when the tab is hidden. Disabled when the user prefers reduced motion.' ),
+							checked: a.autoplay,
+							onChange: function ( v ) { set( { autoplay: v } ); }
+						} ),
+						a.autoplay && el( RangeControl, {
+							label: __( 'Autoplay interval (ms)' ),
+							value: a.autoplayInterval, min: 1000, max: 15000, step: 500,
+							onChange: function ( v ) { set( { autoplayInterval: v } ); }
+						} ),
+						el( RangeControl, { label: __( 'Slide gap (px)' ), value: a.gap, min: 0, max: 60, onChange: function ( v ) { set( { gap: v } ); } } ),
+						el( RangeControl, {
+							label: __( 'Transition speed (ms)' ),
+							value: a.speed, min: 100, max: 1500, step: 50,
+							onChange: function ( v ) { set( { speed: v } ); }
+						} )
+					),
+
+					a.useCarousel && el( PanelBody, { title: __( 'Accessibility' ), initialOpen: false },
+						el( TextControl, {
+							label: __( 'ARIA label' ),
+							help: __( 'Describes the carousel to assistive tech (e.g. "Related articles"). Defaults to "Carousel".' ),
+							value: a.ariaLabel || '',
+							onChange: function ( v ) { set( { ariaLabel: v } ); }
+						} )
+					),
+
 					el( PanelBody, { title: __( 'Heading' ), initialOpen: false },
 						el( SelectControl, {
 							label: __( 'Heading level' ),

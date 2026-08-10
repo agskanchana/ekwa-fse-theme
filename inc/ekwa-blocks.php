@@ -404,6 +404,17 @@ function ekwa_register_blocks() {
 		true
 	);
 
+	// Shared carousel Inspector helper: arrow position, offset, pair gap and
+	// custom SVG icons, used by ekwa-carousel and ekwa-related-articles so both
+	// blocks expose the same options over the same .ekwa-carousel markup.
+	wp_register_script(
+		'ekwa-carousel-controls',
+		get_theme_file_uri( 'assets/js/ekwa-carousel-controls.js' ),
+		array( 'wp-element', 'wp-components', 'wp-i18n' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-carousel-controls.js' ) ),
+		true
+	);
+
 	// Shared Inline Style Inspector helper (ekwa-link, ekwa-text, ekwa-icon,
 	// ekwa-image, ekwa-figure). Holds the mockup's own style attribute, which
 	// the converter carries over instead of discarding.
@@ -510,7 +521,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-carousel-editor',
 		get_theme_file_uri( 'assets/js/ekwa-carousel-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-carousel-controls' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-carousel-editor.js' ) ),
 		true
 	);
@@ -756,7 +767,7 @@ function ekwa_register_blocks() {
 		'read-time'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'share-button'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
 		'toc'              => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
-		'related-articles' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
+		'related-articles' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'ekwa-carousel-controls' ) ),
 		'load-more'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
 		'recent-posts'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
 		'categories'       => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
@@ -3677,7 +3688,8 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	$data .= ' data-gap="'           . esc_attr( $gap ) . '"';
 	$data .= ' data-speed="'         . esc_attr( $speed ) . '"';
 
-	$root_class = 'ekwa-carousel ekwa-carousel--arrows-' . $arrow_pos;
+	// Only claim the space a position reserves when the arrows are drawn at all.
+	$root_class = 'ekwa-carousel' . ( $show_arrows ? ' ekwa-carousel--arrows-' . $arrow_pos : '' );
 	$root_style = sprintf(
 		'--ekwa-arrow-gap:%dpx;--ekwa-arrow-offset:%dpx;',
 		$arrow_gap,
@@ -4884,7 +4896,9 @@ function ekwa_render_categories_block( $attrs ) {
  * when the matched category equals the configured featured slug.
  *
  * Layout is either a sliding carousel or a simple responsive grid based on the
- * useCarousel toggle.
+ * useCarousel toggle. In carousel mode the block emits the same .ekwa-carousel
+ * markup as ekwa/carousel and shares its stylesheet and view script, so it
+ * offers the same navigation, autoplay and arrow-position options.
  */
 function ekwa_render_related_articles_block( $attrs ) {
 	$use_carousel  = ! isset( $attrs['useCarousel'] ) ? true : (bool) $attrs['useCarousel'];
@@ -4892,11 +4906,15 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$desktop       = absint( $attrs['desktopItems'] ?? 3 );
 	$tablet        = absint( $attrs['tabletItems'] ?? 2 );
 	$mobile        = absint( $attrs['mobileItems'] ?? 1 );
+	$tablet_bp     = max( 1, absint( $attrs['tabletBreakpoint'] ?? 992 ) );
+	$mobile_bp     = max( 1, absint( $attrs['mobileBreakpoint'] ?? 600 ) );
 	$show_arrows   = ! empty( $attrs['showArrows'] );
-	$arrows_out    = ! isset( $attrs['arrowsOutside'] ) ? true : (bool) $attrs['arrowsOutside'];
-	$arrow_spacing = absint( $attrs['arrowSpacing'] ?? 12 );
 	$loop          = ! empty( $attrs['loop'] );
+	$autoplay      = ! empty( $attrs['autoplay'] );
+	$autoplay_int  = max( 500, absint( $attrs['autoplayInterval'] ?? 5000 ) );
+	$speed         = max( 50, absint( $attrs['speed'] ?? 350 ) );
 	$show_dots     = ! empty( $attrs['showDots'] );
+	$aria_label    = sanitize_text_field( $attrs['ariaLabel'] ?? '' );
 	$heading_level = preg_match( '/^h[1-6]$/', $attrs['headingLevel'] ?? 'h2' ) ? $attrs['headingLevel'] : 'h2';
 	$singular      = $attrs['singularLabel']         ?? __( 'Related article',  'ekwa' );
 	$plural        = $attrs['pluralLabel']           ?? __( 'Related articles', 'ekwa' );
@@ -4971,31 +4989,59 @@ function ekwa_render_related_articles_block( $attrs ) {
 
 	// ── Carousel mode ─────────────────────────────────────────────────
 
-	// Default gap between items so cards don't visually touch. Filter to override.
-	$item_gap = absint( apply_filters( 'ekwa_related_articles_gap', 20 ) );
+	// Gap between items so cards don't visually touch. The attribute supplies
+	// the value; the long-standing filter still gets the last word.
+	$item_gap = absint( apply_filters( 'ekwa_related_articles_gap', absint( $attrs['gap'] ?? 20 ) ) );
+
+	// Where the prev/next buttons sit — the same eight placements ekwa/carousel
+	// offers, rendered by the same stylesheet. arrowPosition supersedes the
+	// original arrowsOutside toggle but deliberately has no block.json default,
+	// so posts saved before it existed keep the arrangement they had: outside
+	// unless the author had switched the toggle off. arrowOffset likewise falls
+	// back to the legacy arrowSpacing.
+	$arrow_positions = array(
+		'inside', 'outside',
+		'top-left', 'top-center', 'top-right',
+		'bottom-left', 'bottom-center', 'bottom-right',
+	);
+	$arrow_pos = isset( $attrs['arrowPosition'] ) && in_array( $attrs['arrowPosition'], $arrow_positions, true )
+		? $attrs['arrowPosition']
+		: ( ( isset( $attrs['arrowsOutside'] ) && ! $attrs['arrowsOutside'] ) ? 'inside' : 'outside' );
+	$arrow_offset = isset( $attrs['arrowOffset'] ) ? absint( $attrs['arrowOffset'] ) : absint( $attrs['arrowSpacing'] ?? 12 );
+	$arrow_gap    = absint( $attrs['arrowGap'] ?? 12 );
+
+	// Optional author-supplied arrow icons; empty keeps the built-in chevrons.
+	$prev_icon = (string) ( $attrs['prevIcon'] ?? '' );
+	$next_icon = (string) ( $attrs['nextIcon'] ?? '' );
 
 	$data_attrs = ' data-desktop-items="' . $desktop . '"'
 	            . ' data-tablet-items="' . $tablet . '"'
 	            . ' data-mobile-items="' . $mobile . '"'
+	            . ' data-tablet-bp="' . $tablet_bp . '"'
+	            . ' data-mobile-bp="' . $mobile_bp . '"'
 	            . ' data-show-arrows="' . ( $show_arrows ? 'true' : 'false' ) . '"'
 	            . ' data-show-dots="' . ( $show_dots ? 'true' : 'false' ) . '"'
+	            . ' data-autoplay="' . ( $autoplay ? 'true' : 'false' ) . '"'
+	            . ' data-autoplay-interval="' . $autoplay_int . '"'
 	            . ' data-loop="' . ( $loop ? 'true' : 'false' ) . '"'
 	            . ' data-gap="' . $item_gap . '"'
+	            . ' data-speed="' . $speed . '"'
 	            . ' data-page-mode="true"';
 
-	// Arrows-outside mode reserves a side gutter (arrow width + spacing) so the
-	// arrows never overlap card content. The viewport wrapper keeps off-screen
-	// items clipped while the gutter stays clear.
+	// The non-default positions reserve their own space with padding, so the
+	// arrows never overlap card content. Only claim that space when the arrows
+	// are actually rendered.
 	$carousel_class = 'ekwa-carousel';
 	$carousel_style = '';
-	if ( $show_arrows && $arrows_out ) {
-		$carousel_class .= ' ekwa-carousel--arrows-outside';
-		$carousel_style  = ' style="--ekwa-arrow-gutter:' . ( 40 + $arrow_spacing ) . 'px"';
+	if ( $show_arrows ) {
+		$carousel_class .= ' ekwa-carousel--arrows-' . $arrow_pos;
+		$carousel_style  = ' style="--ekwa-arrow-gap:' . $arrow_gap . 'px;--ekwa-arrow-offset:' . $arrow_offset . 'px;"';
 	}
 
 	$html  = $wrap_open;
 	$html .= $heading_html;
-	$html .= '<div class="' . $carousel_class . '"' . $carousel_style . $data_attrs . '>';
+	$html .= '<div class="' . $carousel_class . '"' . $carousel_style . $data_attrs
+	       . ' aria-label="' . esc_attr( $aria_label ? $aria_label : __( 'Carousel', 'ekwa' ) ) . '">';
 	$html .= '<div class="ekwa-carousel__viewport">';
 	$html .= '<div class="ekwa-carousel__track">';
 	foreach ( $posts as $p ) {
@@ -5006,12 +5052,17 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$html .= '</div>'; // track
 	$html .= '</div>'; // viewport
 	if ( $show_arrows ) {
-		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous', 'ekwa' ) . '"><i class="fa-solid fa-chevron-left"></i></button>';
-		$html .= '<button class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next', 'ekwa' ) . '"><i class="fa-solid fa-chevron-right"></i></button>';
+		// The __nav wrapper is what the corner positions lay out as a pair; it
+		// stays inert for the inside/outside positions.
+		$html .= '<div class="ekwa-carousel__nav">';
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--prev" aria-label="' . esc_attr__( 'Previous slide', 'ekwa' ) . '">' . ekwa_carousel_arrow_icon( $prev_icon, 'prev' ) . '</button>';
+		$html .= '<button type="button" class="ekwa-carousel__arrow ekwa-carousel__arrow--next" aria-label="' . esc_attr__( 'Next slide', 'ekwa' ) . '">' . ekwa_carousel_arrow_icon( $next_icon, 'next' ) . '</button>';
+		$html .= '</div>';
 	}
 	if ( $show_dots ) {
-		$html .= '<div class="ekwa-carousel__dots"></div>';
+		$html .= '<div class="ekwa-carousel__dots" role="group" aria-label="' . esc_attr__( 'Slide pagination', 'ekwa' ) . '"></div>';
 	}
+	$html .= '<div class="ekwa-carousel__sr-status" aria-live="polite" aria-atomic="true"></div>';
 	$html .= '</div>'; // carousel
 	$html .= $wrap_close;
 
