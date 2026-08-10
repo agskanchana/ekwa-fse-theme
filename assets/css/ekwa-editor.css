@@ -345,6 +345,45 @@
 	opacity: 1 !important;
 }
 
+/* Ekwa Div — Scoped CSS indicator.
+   Always visible (not hover-gated like the tag label): the point is to make
+   the blocks that carry their own CSS findable at a glance, since nothing else
+   in the canvas reveals that the CSS lives in a block attribute. */
+.ekwa-div-css-badge {
+	position: absolute;
+	top: -10px;
+	right: 8px;
+	z-index: 2;
+	padding: 0 5px;
+	border-radius: 2px;
+	background: #3858e9;
+	color: #fff;
+	font-family: Menlo, Consolas, monaco, monospace;
+	font-size: 10px;
+	line-height: 1.6;
+	letter-spacing: 0.04em;
+	pointer-events: none;
+	user-select: none;
+	/* Legible at rest so it can be scanned for, full strength once the block is
+	   under the cursor or selected — a page of AI-built sections can carry a lot
+	   of these, and they shouldn't compete with the design being edited. */
+	opacity: 0.75;
+	transition: opacity 0.15s;
+}
+.wp-block[data-type="ekwa/div"]:hover > .ekwa-div-css-badge,
+.wp-block[data-type="ekwa/div"].is-selected > .ekwa-div-css-badge {
+	opacity: 1;
+}
+.ekwa-div-css-badge.is-off {
+	background: #757575;
+}
+/* Dashed hairline so the extent of a CSS-carrying wrapper is readable too —
+   outline (not border) so it never shifts the block's own layout. */
+.wp-block[data-type="ekwa/div"].ekwa-div--has-scoped-css:hover {
+	outline: 1px dashed rgba( 56, 88, 233, 0.5 );
+	outline-offset: 2px;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOCKUP CONVERTER MODAL
    ═══════════════════════════════════════════════════════════════════════════ */

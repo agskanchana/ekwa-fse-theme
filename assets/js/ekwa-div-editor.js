@@ -24,6 +24,8 @@
 	var ToggleControl      = wp.components.ToggleControl;
 	var Button             = wp.components.Button;
 	var __                 = wp.i18n.__;
+	var _n                 = wp.i18n._n;
+	var sprintf            = wp.i18n.sprintf;
 	var LinkSourceControls = window.EkwaLinkSource && window.EkwaLinkSource.Controls;
 	var CustomAttrsControl = window.EkwaCustomAttributes && window.EkwaCustomAttributes.Control;
 
@@ -158,13 +160,65 @@
 			.replace( /&amp;/g, '&' ); // last, or "&amp;gt;" would collapse to ">"
 	}
 
+	/**
+	 * Whether a set of attributes carries non-empty scoped CSS.
+	 *
+	 * @param {Object} attributes Block attributes (may be null for a stale clientId).
+	 * @return {boolean} True when the wrapper owns CSS.
+	 */
+	function hasScopedCssAttr( attributes ) {
+		return '' !== decodeCss( ( attributes && attributes.scopedCss ) || '' ).trim();
+	}
+
 	registerBlockType( 'ekwa/div', {
+		/**
+		 * List View row label.
+		 *
+		 * The canvas badge only helps once you're looking at the block; List View
+		 * is where you scan a whole page, so the marker has to reach it too. Core
+		 * runs this label through __unstableStripHTML, so it is plain text only —
+		 * a styled pill isn't available here, unlike the canvas badge.
+		 *
+		 * Restricted to the 'list-view' context on purpose: returning a label for
+		 * the default 'visual' context would also rewrite the inspector block card
+		 * and the editor breadcrumb, which is more than this is meant to change.
+		 * Returning undefined falls back to the block's own title.
+		 *
+		 * @param {Object} attributes      Block attributes.
+		 * @param {Object} options         Label options.
+		 * @param {string} options.context Where the label will be shown.
+		 * @return {string|undefined} Label, or undefined to keep the default title.
+		 */
+		__experimentalLabel: function ( attributes, options ) {
+			if ( ! options || 'list-view' !== options.context || ! hasScopedCssAttr( attributes ) ) {
+				return undefined;
+			}
+
+			// Read the title off the registry rather than repeating the string
+			// from block.json, so a child theme retitling the block still works.
+			var blockType = wp.blocks.getBlockType && wp.blocks.getBlockType( 'ekwa/div' );
+			var title     = ( blockType && blockType.title ) || __( 'Ekwa Div' );
+
+			return title + ' — ' + ( attributes.scopedCssOffInEditor ? __( 'CSS off' ) : __( 'CSS' ) );
+		},
+
 		edit: function ( props ) {
 			var attributes    = props.attributes;
 			var setAttributes = props.setAttributes;
 			var tagName       = attributes.tagName || 'div';
 			var bgImage       = attributes.backgroundImage || '';
 			var isSelected    = props.isSelected;
+
+			// Scoped CSS carried by this wrapper. Because it lives in an
+			// attribute — not in any stylesheet — nothing on screen says the
+			// block owns styles, which makes a section's CSS easy to lose track
+			// of. The badge + panel counter below are that signal. The rule
+			// count is the number of `{` in the CSS: close enough for a hint,
+			// and it costs no parser.
+			var scopedCss      = decodeCss( attributes.scopedCss || '' );
+			var hasScopedCss   = hasScopedCssAttr( attributes );
+			var cssOffInEditor = !! attributes.scopedCssOffInEditor;
+			var cssRuleCount   = hasScopedCss ? ( scopedCss.match( /\{/g ) || [] ).length : 0;
 
 			// Build editor wrapper style from inlineStyle + backgroundImage.
 			var editorStyle = parseStyleString( decodeCss( attributes.inlineStyle ) );
@@ -176,7 +230,14 @@
 
 			// The editor renders <div> for all tags (WP requirement for useBlockProps),
 			// but passes through all the user's CSS classes via className support.
-			var blockProps = useBlockProps( { style: editorStyle } );
+			var blockProps = useBlockProps( {
+				style: editorStyle,
+				// Editor-only marker (save() emits InnerBlocks.Content, so this
+				// never reaches the saved markup or the front end).
+				className: hasScopedCss
+					? 'ekwa-div--has-scoped-css' + ( cssOffInEditor ? ' ekwa-div--scoped-css-off' : '' )
+					: undefined,
+			} );
 
 			var panels = [];
 
@@ -397,7 +458,12 @@
 				panels.push(
 					el( PanelBody, {
 						key: 'scoped-css',
-						title: __( 'Section CSS (advanced)' ),
+						// Carry the rule count in the collapsed title so the panel
+						// advertises that this block has CSS without being opened.
+						title: hasScopedCss
+							? __( 'Section CSS (advanced)' ) + ' — ' +
+								sprintf( _n( '%d rule', '%d rules', cssRuleCount ), cssRuleCount )
+							: __( 'Section CSS (advanced)' ),
 						initialOpen: false,
 					},
 						el( ScopedCssEditor, {
@@ -451,13 +517,30 @@
 				}, '<' + tagName + '>' + ( tagName === 'a' && ( attributes.url || attributes.href ) ? ' ' + ( attributes.url || attributes.href ) : '' ) )
 				: null;
 
+			// Scoped-CSS indicator. Unlike the tag label (hover/selected only)
+			// this stays visible, because its job is to let an author spot the
+			// blocks carrying their own CSS while scanning the page.
+			var cssBadge = hasScopedCss
+				? el( 'span', {
+					className: 'ekwa-div-css-badge' + ( cssOffInEditor ? ' is-off' : '' ),
+					title: cssOffInEditor
+						? __( 'Scoped CSS — turned off in the editor canvas only; the front end still gets it. See “Section CSS (advanced)” in the sidebar.' )
+						: sprintf(
+							/* translators: %s: rule count, e.g. "4 rules". */
+							__( 'Scoped CSS — %s. Edit it under “Section CSS (advanced)” in the sidebar.' ),
+							sprintf( _n( '%d rule', '%d rules', cssRuleCount ), cssRuleCount )
+						),
+				}, cssOffInEditor ? __( 'CSS off' ) : __( 'CSS' ) )
+				: null;
+
 			return el( Fragment, null,
 				el( InspectorControls, null, panels ),
 				el( 'div', blockProps,
-					attributes.scopedCss && ! attributes.scopedCssOffInEditor
-						? el( 'style', null, decodeCss( attributes.scopedCss ) )
+					hasScopedCss && ! cssOffInEditor
+						? el( 'style', null, scopedCss )
 						: null,
 					tagLabel,
+					cssBadge,
 					el( InnerBlocks, null )
 				)
 			);
