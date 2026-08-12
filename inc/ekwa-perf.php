@@ -193,30 +193,48 @@ function ekwa_perf_emit_hero_preloads() {
 		echo " fetchpriority=\"high\">\n";
 	}
 
-	// Inner-banner background (the post's featured image) is painted via CSS
-	// background-image and is usually the inner-page LCP — preload it so the
-	// browser fetches it eagerly instead of after stylesheet parse.
+	// Inner-banner background (the post's featured image) is the inner-page LCP.
+	// ekwa/inner-banner renders it as an art-directed <picture>, so the preload
+	// must be art-directed the same way: one media-scoped <link> per rung of the
+	// ladder, ranges mutually exclusive so exactly one of them ever fetches.
+	//
+	// This replaced a single `imagesrcset` + `imagesizes="100vw"` preload. That
+	// form resolves by viewport × device pixel ratio while <picture> resolves by
+	// media query alone, so the two disagreed on any DPR ≥ 2 phone: the preload
+	// pulled the 1536w file while the <picture> painted the 768w one. The result
+	// was a wasted download eating mobile bandwidth *and* an LCP image the
+	// preload scanner never fetched — it waited on the parser reaching the
+	// <picture>, which is what PageSpeed reports as LCP "resource load delay".
+	//
+	// ekwa_inner_banner_bg_sources() is the shared ladder, so these can't drift
+	// apart again if the breakpoints or registered sizes change.
 	if ( $banner_on && has_post_thumbnail( $post ) ) {
 		$media_id = (int) get_post_thumbnail_id( $post );
-		if ( $media_id && ! isset( $emitted[ $media_id ] ) ) {
+		$sources  = ( $media_id && ! isset( $emitted[ $media_id ] ) && function_exists( 'ekwa_inner_banner_bg_sources' ) )
+			? ekwa_inner_banner_bg_sources( $media_id )
+			: null;
+
+		if ( $sources ) {
 			$emitted[ $media_id ] = true;
-			$src = wp_get_attachment_image_url( $media_id, 'full' );
-			if ( $src ) {
-				$srcset = $srcset_on ? wp_get_attachment_image_srcset( $media_id, 'full' ) : '';
-				if ( $webp_supports && function_exists( 'ekwa_webp_url_for' ) ) {
-					$src = ekwa_webp_url_for( $src );
-					if ( $srcset && function_exists( 'ekwa_webp_rewrite_srcset' ) ) {
-						$srcset = ekwa_webp_rewrite_srcset( $srcset );
-					}
-				}
-				echo '<link rel="preload" as="image"';
-				if ( $srcset ) {
-					echo ' imagesrcset="' . esc_attr( $srcset ) . '" imagesizes="100vw"';
-				} else {
-					echo ' href="' . esc_url( $src ) . '"';
-				}
-				echo " fetchpriority=\"high\">\n";
+
+			// Lower bound of the current range = previous rung's breakpoint. The
+			// +0.02px step mirrors the <picture> handoff without leaving a gap a
+			// fractional viewport width could fall into.
+			$prev_max = 0;
+			foreach ( $sources['rungs'] as $rung ) {
+				$media = 0 === $prev_max
+					? '(max-width: ' . $rung['max'] . 'px)'
+					: '(min-width: ' . ( $prev_max + 0.02 ) . 'px) and (max-width: ' . $rung['max'] . 'px)';
+				echo '<link rel="preload" as="image" href="' . esc_url( $rung['url'] ) . '"'
+					. ' media="' . esc_attr( $media ) . '" fetchpriority="high">' . "\n";
+				$prev_max = $rung['max'];
 			}
+
+			// Widest viewports fall through to the full image, exactly as the
+			// <picture>'s fallback <img> does.
+			$full_media = $prev_max > 0 ? ' media="(min-width: ' . ( $prev_max + 0.02 ) . 'px)"' : '';
+			echo '<link rel="preload" as="image" href="' . esc_url( $sources['full']['url'] ) . '"'
+				. $full_media . ' fetchpriority="high">' . "\n";
 		}
 	}
 
@@ -247,6 +265,147 @@ function ekwa_perf_emit_hero_preloads() {
 	}
 }
 add_action( 'wp_head', 'ekwa_perf_emit_hero_preloads', 1 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Child stylesheet — early discovery.
+//
+// When the child CSS is served as a file (the inline toggle off), its <link> is
+// printed with the rest of the style queue, which lands it *after* every inline
+// <style> WordPress, the theme and plugins put in <head>. Measured on a live
+// site: the <link> sat 10,687 gzip bytes into an 11,878 gzip <head> — 90% of the
+// way through. The preload scanner can't see it until nearly the whole head has
+// arrived, so a render-blocking stylesheet gets fetched serially *after* the
+// document instead of alongside it. PageSpeed reports that as "render-blocking
+// requests"; it gates FCP, and FCP gates LCP.
+//
+// A preload hint next to the hero image preload moves discovery into the first
+// few hundred bytes. Discovery only — the stylesheet still applies through its
+// own <link>, so unlike a preload→swap defer there's no FOUC and no layout
+// shift. If the href doesn't match the <link> byte for byte the browser
+// downloads the file twice, so both are built from the same resolver below.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Handle the child theme's stylesheet is registered under.
+ *
+ * ekwa-child-generator.php enqueues 'ekwa-child-style'; the filter is there for
+ * hand-built children that chose a different handle.
+ *
+ * @return string
+ */
+function ekwa_perf_child_style_handle() {
+	return (string) apply_filters( 'ekwa_perf_child_style_handle', 'ekwa-child-style' );
+}
+
+/**
+ * Version the child stylesheet by file mtime.
+ *
+ * ekwa-child-generator.php:249 ships `filemtime()`, but children in the wild
+ * hardcode a constant and drift from it — a live site is serving `?ver=1.5.2`
+ * against a style.css edited well after that — so an edited stylesheet can stay
+ * cached indefinitely. Overriding parent-side fixes every child at once.
+ *
+ * Runs before the preload href is built so the two URLs stay identical.
+ */
+function ekwa_perf_version_child_style() {
+	$handle = ekwa_perf_child_style_handle();
+	$styles = wp_styles();
+	if ( ! isset( $styles->registered[ $handle ] ) ) {
+		return;
+	}
+
+	// Only touch a handle that really points at the active stylesheet, so a
+	// child that repurposed the handle for something else keeps its own version.
+	$src = $styles->registered[ $handle ]->src;
+	if ( ! $src || ! is_string( $src ) || 'style.css' !== basename( (string) wp_parse_url( $src, PHP_URL_PATH ) ) ) {
+		return;
+	}
+
+	$path  = get_stylesheet_directory() . '/style.css';
+	$mtime = is_readable( $path ) ? filemtime( $path ) : false;
+	if ( $mtime ) {
+		$styles->registered[ $handle ]->ver = (string) $mtime;
+	}
+}
+add_action( 'wp_enqueue_scripts', 'ekwa_perf_version_child_style', 20 );
+
+/**
+ * The exact href WordPress will print for a registered style handle.
+ *
+ * Mirrors WP_Styles::do_item() — base_url prefixing, the ver query arg and the
+ * style_loader_src filter — because a preload only warms the cache if its URL
+ * matches the stylesheet <link> exactly. Anything else downloads the file twice.
+ *
+ * @param string $handle Registered style handle.
+ * @return string Resolved URL, or '' when the handle has no real file.
+ */
+function ekwa_perf_style_href( $handle ) {
+	$styles = wp_styles();
+	if ( ! isset( $styles->registered[ $handle ] ) ) {
+		return '';
+	}
+
+	$obj = $styles->registered[ $handle ];
+	$src = $obj->src;
+	if ( ! $src || ! is_string( $src ) ) {
+		return '';
+	}
+
+	if ( null === $obj->ver ) {
+		$ver = '';
+	} else {
+		$ver = $obj->ver ? $obj->ver : $styles->default_version;
+	}
+	if ( isset( $styles->args[ $handle ] ) ) {
+		$ver = $ver ? $ver . '&amp;' . $styles->args[ $handle ] : $styles->args[ $handle ];
+	}
+
+	if ( ! preg_match( '|^(https?:)?//|', $src )
+		&& ! ( $styles->content_url && 0 === strpos( $src, $styles->content_url ) ) ) {
+		$src = $styles->base_url . $src;
+	}
+	if ( ! empty( $ver ) ) {
+		$src = add_query_arg( 'ver', $ver, $src );
+	}
+
+	/** This filter is documented in wp-includes/class-wp-styles.php */
+	$src = apply_filters( 'style_loader_src', $src, $handle );
+
+	return is_string( $src ) ? $src : '';
+}
+
+/**
+ * Emit the child stylesheet preload in the first few hundred bytes of <head>.
+ *
+ * Priority 1, registered after ekwa_perf_emit_hero_preloads() so the LCP image
+ * hint still comes first. No is_singular() guard — every template needs the
+ * stylesheet, not just single posts.
+ */
+function ekwa_perf_preload_child_style() {
+	if ( is_admin() || ! apply_filters( 'ekwa_perf_preload_child_style', true ) ) {
+		return;
+	}
+
+	// Inline mode dequeues the handle, and a handle with no src has nothing to
+	// preload — either way this no-ops, so the delivery toggle stays the single
+	// source of truth and this never needs a setting of its own.
+	$handle = ekwa_perf_child_style_handle();
+	if ( ! wp_style_is( $handle, 'enqueued' ) ) {
+		return;
+	}
+
+	$href = ekwa_perf_style_href( $handle );
+	if ( '' === $href ) {
+		return;
+	}
+
+	// Deliberately no fetchpriority: as="style" is already Highest in Chrome,
+	// and the LCP image can't paint before layout exists — promoting the image
+	// above the CSS it depends on would delay the very paint it's meant to
+	// speed up.
+	echo '<link rel="preload" as="style" href="' . esc_url( $href ) . "\">\n";
+}
+add_action( 'wp_head', 'ekwa_perf_preload_child_style', 1 );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Site logo — never lazy.

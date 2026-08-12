@@ -172,6 +172,12 @@ require_once get_template_directory() . '/inc/ekwa-webp.php';
 require_once get_template_directory() . '/inc/ekwa-media-import.php';
 
 /**
+ * Disable attachment (media) pages — redirect them to the attached post or the
+ * file itself instead of serving a thin one-image page.
+ */
+require_once get_template_directory() . '/inc/ekwa-attachment-pages.php';
+
+/**
  * Load image performance helpers (lazy loading, hero preload, srcset).
  */
 require_once get_template_directory() . '/inc/ekwa-perf.php';

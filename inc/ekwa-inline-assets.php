@@ -117,21 +117,57 @@ function ekwa_inline_minify_enabled() {
 }
 
 /**
- * Conservative CSS minifier — safe for hand-written CSS.
+ * Conservative CSS minifier.
  *
  * Strips comments, collapses whitespace, and tightens spacing around braces,
  * semicolons and commas only. Spacing around `:` `+` `-` `>` `~` is left intact
  * so calc() expressions and combinators are never broken.
  *
+ * String literals and url() payloads are parked before any of that runs, then
+ * restored verbatim. Without it, `content:"a,  b"` would be rewritten to
+ * `content:"a,b"` and render differently — which didn't matter while this only
+ * saw hand-written theme CSS, but does now that it's also pointed at core and
+ * plugin blobs (@see ekwa_perf_minify_registered_inline_styles).
+ *
+ * Comments and strings are matched in ONE pass, comment alternative first, so
+ * an apostrophe inside a comment can't open a phantom string and a `/*` inside
+ * a string can't be mistaken for a comment.
+ *
  * @param string $css
  * @return string
  */
 function ekwa_inline_minify_css( $css ) {
-	$css = preg_replace( '#/\*.*?\*/#s', '', $css );
+	$parked = array();
+
+	$css = preg_replace_callback(
+		'#/\*.*?\*/|"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|url\(\s*[^)\'"]*\)#s',
+		static function ( $m ) use ( &$parked ) {
+			if ( 0 === strncmp( $m[0], '/*', 2 ) ) {
+				return ''; // Comment — drop it.
+			}
+			$parked[] = $m[0];
+			// NUL can't occur in CSS, so the placeholder is unambiguous.
+			return "\0" . ( count( $parked ) - 1 ) . "\0";
+		},
+		$css
+	);
+
 	$css = preg_replace( '#\s+#', ' ', $css );
 	$css = preg_replace( '#\s*([{};,])\s*#', '$1', $css );
 	$css = str_replace( ';}', '}', $css );
-	return trim( $css );
+	$css = trim( $css );
+
+	if ( $parked ) {
+		$css = preg_replace_callback(
+			'#\x00(\d+)\x00#',
+			static function ( $m ) use ( $parked ) {
+				return $parked[ (int) $m[1] ];
+			},
+			$css
+		);
+	}
+
+	return $css;
 }
 
 /**

@@ -2873,6 +2873,77 @@ function ekwa_inner_banner_heading_data() {
 
 
 /**
+ * Resolve the inner-banner background's art-direction ladder.
+ *
+ * Single source of truth for which file each viewport gets. Both the rendered
+ * <picture> (ekwa_inner_banner_bg_picture()) and the <head> preload
+ * (ekwa_perf_emit_hero_preloads()) build from this, so the preloaded file is
+ * always byte-for-byte the file the browser ends up painting.
+ *
+ * That mattered: the preload used to be a plain srcset + `imagesizes="100vw"`,
+ * which the browser resolves by multiplying the viewport by the device pixel
+ * ratio, while <picture> resolves by media query alone. On a DPR-3 phone the
+ * preload picked the 1536w file and the <picture> painted the 768w one — a
+ * wasted download competing for bandwidth, and the real LCP image discovered
+ * late by the parser instead of by the preload scanner.
+ *
+ * @param int $thumb_id Featured image attachment id.
+ * @return array{rungs:array<int,array{max:int,url:string}>,full:array{url:string,width:int,height:int}}|null
+ *               Rungs ordered smallest-first; null when the attachment is unresolved.
+ */
+function ekwa_inner_banner_bg_sources( $thumb_id ) {
+	$full = wp_get_attachment_image_src( $thumb_id, 'full' );
+	if ( ! $full || empty( $full[0] ) ) {
+		return null;
+	}
+
+	// Serve WebP companions when the browser advertises support; the render_block
+	// filter that swaps <img> URLs doesn't touch <source>, so we resolve here.
+	$use_webp = function_exists( 'ekwa_webp_is_enabled' ) && ekwa_webp_is_enabled()
+		&& function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports()
+		&& function_exists( 'ekwa_webp_url_for' );
+	$swap = static function ( $url ) use ( $use_webp ) {
+		return $use_webp ? ekwa_webp_url_for( $url ) : $url;
+	};
+
+	// Viewport breakpoint → registered size (smallest first). ekwa-banner-mobile
+	// is our ~480w crop (registered in ekwa_setup()) that fills the gap between
+	// WordPress' default 300w and 768w. Until it's been generated for a given
+	// image, the is_intermediate guard below skips it and the ≤480 viewport
+	// falls through to the next rung (768w) — the same as before this size
+	// existed — so a page is always valid; regeneration just improves phones.
+	$ladder = array(
+		480  => 'ekwa-banner-mobile', // ~480w — phones
+		1024 => 'medium_large',       // ~768w — tablets
+		1600 => 'large',              // ~1024w — laptops
+	);
+
+	$rungs = array();
+	foreach ( $ladder as $max => $size ) {
+		$img = wp_get_attachment_image_src( $thumb_id, $size );
+		// [3] = is_intermediate: false means WP returned the full image (size
+		// disabled or original smaller) — skip so we never ship full to a phone.
+		if ( ! $img || empty( $img[3] ) ) {
+			continue;
+		}
+		$rungs[] = array(
+			'max' => (int) $max,
+			'url' => (string) $swap( $img[0] ),
+		);
+	}
+
+	return array(
+		'rungs' => $rungs,
+		'full'  => array(
+			'url'    => (string) $swap( $full[0] ),
+			'width'  => isset( $full[1] ) ? (int) $full[1] : 0,
+			'height' => isset( $full[2] ) ? (int) $full[2] : 0,
+		),
+	);
+}
+
+
+/**
  * Responsive <picture> background for the inner banner.
  *
  * Art-directs the featured image by viewport so phones and tablets download a
@@ -2892,52 +2963,32 @@ function ekwa_inner_banner_heading_data() {
  * @return string <picture> markup, or '' when the attachment is unresolved.
  */
 function ekwa_inner_banner_bg_picture( $thumb_id ) {
-	$full = wp_get_attachment_image_src( $thumb_id, 'full' );
-	if ( ! $full || empty( $full[0] ) ) {
+	$sources = ekwa_inner_banner_bg_sources( $thumb_id );
+	if ( ! $sources ) {
 		return '';
 	}
 
-	// Serve WebP companions when the browser advertises support; the render_block
-	// filter that swaps <img> URLs doesn't touch <source>, so we resolve here.
-	$use_webp = function_exists( 'ekwa_webp_is_enabled' ) && ekwa_webp_is_enabled()
-		&& function_exists( 'ekwa_webp_browser_supports' ) && ekwa_webp_browser_supports()
-		&& function_exists( 'ekwa_webp_url_for' );
-	$swap = static function ( $url ) use ( $use_webp ) {
-		return $use_webp ? ekwa_webp_url_for( $url ) : $url;
-	};
-
-	// Viewport breakpoint → registered size (smallest first). ekwa-banner-mobile
-	// is our ~480w crop (registered in ekwa_setup()) that fills the gap between
-	// WordPress' default 300w and 768w. Until it's been generated for a given
-	// image, the is_intermediate guard below skips it and the ≤480 viewport
-	// falls through to the next source (768w) — the same as before this size
-	// existed — so a page is always valid; regeneration just improves phones.
-	$ladder = array(
-		'(max-width: 480px)'  => 'ekwa-banner-mobile', // ~480w — phones
-		'(max-width: 1024px)' => 'medium_large',       // ~768w — tablets
-		'(max-width: 1600px)' => 'large',              // ~1024w — laptops
-	);
-
 	$out = '<picture>';
-	foreach ( $ladder as $media => $size ) {
-		$img = wp_get_attachment_image_src( $thumb_id, $size );
-		// [3] = is_intermediate: false means WP returned the full image (size
-		// disabled or original smaller) — skip so we never ship full to a phone.
-		if ( ! $img || empty( $img[3] ) ) {
-			continue;
-		}
-		$out .= '<source media="' . esc_attr( $media ) . '" srcset="' . esc_url( $swap( $img[0] ) ) . '">';
+	foreach ( $sources['rungs'] as $rung ) {
+		$out .= '<source media="(max-width: ' . (int) $rung['max'] . 'px)"'
+			. ' srcset="' . esc_url( $rung['url'] ) . '">';
 	}
 
 	// Default fallback <img> = full original, carrying the decorative alt + LCP
 	// hints. data-ekwa-no-webp stops the render_block filter re-swapping a URL
 	// we've already resolved above.
-	$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
-	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $swap( $full[0] ) ) . '" alt=""';
-	if ( ! empty( $full[1] ) ) { $out .= ' width="' . (int) $full[1] . '"'; }
-	if ( ! empty( $full[2] ) ) { $out .= ' height="' . (int) $full[2] . '"'; }
-	$out .= ' loading="eager" fetchpriority="high"';
-	if ( $decoding_async ) { $out .= ' decoding="async"'; }
+	//
+	// decoding is deliberately "sync", never "async", regardless of the global
+	// Performance setting: this image is the inner page's LCP element, and
+	// decoding=async lets the browser paint a frame *without* it, pushing the
+	// LCP paint into a later frame (PageSpeed's "element render delay" subpart).
+	// The async default stays right for the ordinary in-content images it was
+	// written for — it's only wrong for the one image the page is measured on.
+	$full = $sources['full'];
+	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $full['url'] ) . '" alt=""';
+	if ( $full['width'] )  { $out .= ' width="' . $full['width'] . '"'; }
+	if ( $full['height'] ) { $out .= ' height="' . $full['height'] . '"'; }
+	$out .= ' loading="eager" fetchpriority="high" decoding="sync"';
 	$out .= ' data-ekwa-no-webp="1">';
 	$out .= '</picture>';
 

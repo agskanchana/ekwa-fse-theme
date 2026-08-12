@@ -460,6 +460,20 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lazysizes_footer', isset( $_POST['ekwa_perf_lazysizes_footer'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_minify_inline', isset( $_POST['ekwa_perf_minify_inline'] ) ? 1 : 0 );
+	// Comma-separated style handles; only the handle charset WP itself allows.
+	$footer_handles = isset( $_POST['ekwa_perf_footer_style_handles'] )
+		? sanitize_text_field( wp_unslash( $_POST['ekwa_perf_footer_style_handles'] ) )
+		: '';
+	$footer_handles = implode(
+		', ',
+		array_filter( array_map(
+			static function ( $h ) {
+				return preg_replace( '/[^A-Za-z0-9_.\-]/', '', trim( $h ) );
+			},
+			explode( ',', $footer_handles )
+		) )
+	);
+	update_option( 'ekwa_perf_footer_style_handles', $footer_handles );
 	update_option( 'ekwa_perf_inline_child_css', isset( $_POST['ekwa_perf_inline_child_css'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_inline_child_js', isset( $_POST['ekwa_perf_inline_child_js'] ) ? 1 : 0 );
 	update_option( 'ekwa_editor_disable_child_css', isset( $_POST['ekwa_editor_disable_child_css'] ) ? 1 : 0 );
@@ -1696,6 +1710,7 @@ function ekwa_render_settings_page() {
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
 					$lazysizes_footer_val = get_option( 'ekwa_perf_lazysizes_footer', 0 );
 					$minify_inline_val = get_option( 'ekwa_perf_minify_inline', 0 );
+					$footer_styles_val = (string) get_option( 'ekwa_perf_footer_style_handles', '' );
 					$inline_child_css_val = get_option( 'ekwa_perf_inline_child_css', 0 );
 					$inline_child_js_val  = get_option( 'ekwa_perf_inline_child_js', 0 );
 					$disable_child_editor_css_val = get_option( 'ekwa_editor_disable_child_css', 0 );
@@ -1807,9 +1822,23 @@ function ekwa_render_settings_page() {
 							<td>
 								<label>
 									<input type="checkbox" name="ekwa_perf_minify_inline" value="1" <?php checked( $minify_inline_val, 1 ); ?> />
-									<?php esc_html_e( 'Minify all theme CSS/JS that is inlined into the page', 'ekwa' ); ?>
+									<?php esc_html_e( 'Minify all CSS/JS that is inlined into the page', 'ekwa' ); ?>
 								</label>
-								<p class="description"><?php esc_html_e( 'Strips comments and whitespace from inlined block styles/scripts, the blog and carousel assets, and the critical CSS. Already-minified vendor files (*.min.js) are left untouched.', 'ekwa' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Strips comments and whitespace from inlined block styles/scripts, the blog and carousel assets, and the critical CSS. Also minifies the inline stylesheets WordPress and plugins put in the <head> (global styles, core block CSS, form styles) — typically the largest unminified CSS on the page. Quoted strings and url() values are preserved. Already-minified vendor files (*.min.js) are left untouched.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Move inline styles to footer', 'ekwa' ); ?></th>
+							<td>
+								<input type="text" class="regular-text code" name="ekwa_perf_footer_style_handles"
+									value="<?php echo esc_attr( $footer_styles_val ); ?>"
+									placeholder="<?php esc_attr_e( 'e.g. some-plugin-inline, another-handle', 'ekwa' ); ?>" />
+								<p class="description">
+									<?php esc_html_e( 'Comma-separated style handles. Their inline CSS is printed just before </body> instead of in the <head>, taking it out of the critical path so the page can start painting sooner.', 'ekwa' ); ?>
+									<br />
+									<strong><?php esc_html_e( 'Only safe for CSS that styles things near the bottom of the page.', 'ekwa' ); ?></strong>
+									<?php esc_html_e( 'Footer CSS arrives last, so anything it styles that appears higher up will render unstyled first and then jump. Check where the element actually sits before adding a handle, and re-test the page afterwards. Leave empty if unsure.', 'ekwa' ); ?>
+								</p>
 							</td>
 						</tr>
 						<tr>

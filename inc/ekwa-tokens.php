@@ -436,12 +436,34 @@ function ekwa_tokens_root_css() {
  * self-hosting and conditional mobile loading working on a mockup that declares
  * its own font tokens.
  */
+/**
+ * Minify a token/global CSS blob when the inline-minify toggle is on.
+ *
+ * These blocks are echoed straight into <head> rather than carried on a style
+ * handle, so ekwa_perf_minify_registered_inline_styles() can't reach them —
+ * and #ekwa-global-css is routinely the largest single blob on the page
+ * (measured at 29,677 raw / 6,228 gzip on a mockup-driven site).
+ *
+ * @param string $css
+ * @return string
+ */
+function ekwa_tokens_maybe_minify( $css ) {
+	if ( function_exists( 'ekwa_inline_minify_enabled' ) && ekwa_inline_minify_enabled()
+		&& function_exists( 'ekwa_inline_minify_css' ) ) {
+		$min = ekwa_inline_minify_css( $css );
+		if ( is_string( $min ) && '' !== trim( $min ) ) {
+			return $min;
+		}
+	}
+	return $css;
+}
+
 function ekwa_tokens_print_head() {
 	$css = ekwa_tokens_root_css();
 	if ( '' === $css ) {
 		return;
 	}
-	echo '<style id="ekwa-design-tokens">' . $css . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	echo '<style id="ekwa-design-tokens">' . ekwa_tokens_maybe_minify( $css ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
 add_action( 'wp_head', 'ekwa_tokens_print_head', 3 );
 
@@ -659,7 +681,7 @@ function ekwa_tokens_print_global_css() {
 	if ( '' === $css ) {
 		return;
 	}
-	echo '<style id="ekwa-global-css">' . ekwa_tokens_sanitize_css_blob( $css ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	echo '<style id="ekwa-global-css">' . ekwa_tokens_maybe_minify( ekwa_tokens_sanitize_css_blob( $css ) ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
 add_action( 'wp_head', 'ekwa_tokens_print_global_css', 6 );
 
@@ -683,7 +705,7 @@ function ekwa_tokens_print_mockup_css() {
 	if ( '' === $css ) {
 		return;
 	}
-	echo '<style id="ekwa-global-css">' . ekwa_tokens_sanitize_css_blob( $css ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	echo '<style id="ekwa-global-css">' . ekwa_tokens_maybe_minify( ekwa_tokens_sanitize_css_blob( $css ) ) . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
 add_action( 'wp_head', 'ekwa_tokens_print_mockup_css', 4 );
 
@@ -693,11 +715,18 @@ add_action( 'wp_head', 'ekwa_tokens_print_mockup_css', 4 );
  * the front end.
  */
 function ekwa_tokens_editor_assets() {
+	// enqueue_block_assets fires on the FRONT END as well as in the editor, and
+	// ekwa_tokens_print_head() (wp_head, priority 3) already prints this exact
+	// :root block there as #ekwa-design-tokens — so it shipped twice in every
+	// response. Both hooks stay registered: enqueue_block_assets is the only one
+	// that reaches inside the FSE editor iframe, and is_admin() is true there.
+	if ( ! is_admin() ) {
+		return;
+	}
 	$css = ekwa_tokens_root_css();
 	// The site CSS is printed in <head> on the front end; here it's added ONLY
-	// in the editor (this hook also fires front-side via enqueue_block_assets)
-	// so the canvas previews with the same base styles without double-printing.
-	$global = is_admin() ? trim( ekwa_tokens_site_css() ) : '';
+	// in the editor so the canvas previews with the same base styles.
+	$global = trim( ekwa_tokens_site_css() );
 	if ( '' === $css && '' === $global ) {
 		return;
 	}

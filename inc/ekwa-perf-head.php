@@ -84,12 +84,22 @@ function ekwa_perf_fa_href( $href = null ) {
 /**
  * Theme-owned style handles that should be deferred. Anything not on this list
  * loads synchronously as before — keeps third-party plugin styles untouched.
+ *
+ * 'ekwa-style' used to be listed here and never did anything: it's registered
+ * with src=false (functions.php) purely as an inline-style carrier, and
+ * WP_Styles::do_item() returns at its `if ( ! $src )` branch — before
+ * style_loader_tag is ever applied — so the filter below could not see it.
+ * Dropped rather than left in place implying coverage it never had.
+ *
+ * The child stylesheet is deliberately NOT deferred. It's the one render-blocking
+ * sheet on a typical page, and deferring it trades a paint-blocking request for a
+ * flash of unstyled content; ekwa_perf_preload_child_style() fixes the same
+ * problem by making it discoverable early instead. @see inc/ekwa-perf.php
+ *
+ * @return string[]
  */
 function ekwa_perf_deferred_handles() {
-	return array(
-		'ekwa-style',
-		'font-awesome',
-	);
+	return (array) apply_filters( 'ekwa_perf_deferred_handles', array( 'font-awesome' ) );
 }
 
 function ekwa_perf_defer_stylesheets( $html, $handle, $href, $media ) {
@@ -263,6 +273,162 @@ function ekwa_perf_emit_mmenu_loader() {
 	<?php
 }
 add_action( 'wp_print_footer_scripts', 'ekwa_perf_emit_mmenu_loader' );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2d. Minify inline styles attached to registered handles
+//
+// The biggest inline <style> blocks in <head> aren't ours and none of them are
+// minified. Measured on a live page: global-styles 20,692 raw, a plugin's form
+// CSS 14,994 raw, plus ~9,500 raw across ten core block stylesheets — 45 KB of
+// unminified CSS in front of the LCP element.
+//
+// They can't be reached through style_loader_tag: every one is registered with
+// src=false as a pure inline carrier, and WP_Styles::do_item() returns at its
+// `if ( ! $src )` branch before that filter runs. What they DO share is
+// $obj->extra['after'], so rewriting it in place before the styles print is the
+// one hook that covers all of them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Minify the inline CSS carried by registered style handles.
+ *
+ * Gated on the existing "Minify inline CSS/JS" toggle, which is off by default —
+ * this rewrites CSS the theme doesn't own, so it stays a deliberate per-site
+ * opt-in that can be verified before it ships. Individual handles can be spared
+ * with the ekwa_perf_minify_skip_handles filter.
+ *
+ * Idempotent: a second pass finds nothing smaller to write, so running on both
+ * head and footer printing is harmless.
+ */
+function ekwa_perf_minify_registered_inline_styles() {
+	if ( is_admin()
+		|| ! function_exists( 'ekwa_inline_minify_enabled' ) || ! ekwa_inline_minify_enabled()
+		|| ! function_exists( 'ekwa_inline_minify_css' ) ) {
+		return;
+	}
+
+	$skip   = (array) apply_filters( 'ekwa_perf_minify_skip_handles', array() );
+	$styles = wp_styles();
+
+	foreach ( $styles->registered as $handle => $obj ) {
+		if ( in_array( $handle, $skip, true ) || empty( $obj->extra['after'] ) || ! is_array( $obj->extra['after'] ) ) {
+			continue;
+		}
+		foreach ( $obj->extra['after'] as $i => $css ) {
+			// Below ~512 bytes there's nothing meaningful to reclaim and the
+			// blob is likelier to be a one-liner that's already tight.
+			if ( ! is_string( $css ) || strlen( $css ) < 512 ) {
+				continue;
+			}
+			$min = ekwa_inline_minify_css( $css );
+			// Only accept a result that is non-empty AND actually smaller, so a
+			// blob the minifier can't improve is left exactly as it was.
+			if ( is_string( $min ) && '' !== trim( $min ) && strlen( $min ) < strlen( $css ) ) {
+				$styles->registered[ $handle ]->extra['after'][ $i ] = $min;
+			}
+		}
+	}
+}
+// Head styles print at wp_head 8, via wp_print_styles() which fires this action
+// first; late-enqueued styles print from the footer through print_late_styles().
+add_action( 'wp_print_styles', 'ekwa_perf_minify_registered_inline_styles', 0 );
+add_action( 'wp_print_footer_scripts', 'ekwa_perf_minify_registered_inline_styles', 0 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2e. Relocate chosen inline stylesheets from <head> to the footer
+//
+// Some plugins register a sizeable inline stylesheet unconditionally, and every
+// byte of it lands ahead of the LCP element. Moving one to the footer takes it
+// out of the critical path entirely.
+//
+// This is OFF and empty by default, and deliberately so: it is only safe for CSS
+// whose elements sit near the BOTTOM of the page. Footer CSS arrives at ~99% of
+// the document, so anything it styles that renders earlier will paint unstyled
+// first and then shift — trading an LCP win for a CLS loss.
+//
+// Worked example, measured rather than assumed: the ekwa-wufoo-inline blob is a
+// tempting 14,953 raw / 3,492 gzip sitting in <head>, but its form renders at
+// 47.3% of the document, so relocating it would flash an unstyled form on every
+// page. It is NOT a good candidate. Verify placement before adding a handle here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Style handles whose inline CSS should print in the footer instead of <head>.
+ *
+ * @return string[]
+ */
+function ekwa_perf_footer_style_handles() {
+	$raw     = (string) get_option( 'ekwa_perf_footer_style_handles', '' );
+	$handles = array_filter( array_map( 'trim', explode( ',', $raw ) ) );
+	return array_values( (array) apply_filters( 'ekwa_perf_footer_style_handles', $handles ) );
+}
+
+/**
+ * Captured inline CSS, keyed by handle. Written by the head pass, drained by the
+ * footer pass.
+ *
+ * @param string|null $handle
+ * @param string|null $css
+ * @return array
+ */
+function ekwa_perf_relocated_styles( $handle = null, $css = null ) {
+	static $held = array();
+	if ( null !== $handle && null !== $css ) {
+		$held[ $handle ] = $css;
+	}
+	return $held;
+}
+
+/**
+ * Lift the configured handles' inline CSS out of the head print queue.
+ *
+ * Priority 1 — after ekwa_perf_minify_registered_inline_styles() at 0 — so what
+ * gets relocated is already minified. Only inline carriers (src === false) are
+ * touched; a handle backed by a real file still prints its <link> as normal,
+ * since moving that is a different trade with different failure modes.
+ */
+function ekwa_perf_relocate_styles_to_footer() {
+	if ( is_admin() ) {
+		return;
+	}
+	$handles = ekwa_perf_footer_style_handles();
+	if ( ! $handles ) {
+		return;
+	}
+
+	$styles = wp_styles();
+	foreach ( $handles as $handle ) {
+		if ( ! isset( $styles->registered[ $handle ] ) ) {
+			continue;
+		}
+		$obj = $styles->registered[ $handle ];
+		if ( ! empty( $obj->src ) || empty( $obj->extra['after'] ) || ! is_array( $obj->extra['after'] ) ) {
+			continue;
+		}
+		$css = implode( "\n", array_filter( $obj->extra['after'], 'is_string' ) );
+		if ( '' === trim( $css ) ) {
+			continue;
+		}
+		ekwa_perf_relocated_styles( $handle, $css );
+		// Emptied rather than dequeued: the handle may still be a declared
+		// dependency of something else, and dropping it would break that chain.
+		$styles->registered[ $handle ]->extra['after'] = array();
+	}
+}
+add_action( 'wp_print_styles', 'ekwa_perf_relocate_styles_to_footer', 1 );
+
+/**
+ * Print the relocated CSS as early in the footer as possible.
+ */
+function ekwa_perf_print_relocated_styles() {
+	if ( is_admin() ) {
+		return;
+	}
+	foreach ( ekwa_perf_relocated_styles() as $handle => $css ) {
+		echo '<style id="' . esc_attr( $handle ) . '-footer-css">' . $css . "</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+}
+add_action( 'wp_footer', 'ekwa_perf_print_relocated_styles', 0 );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Resource hints — preconnect + conditional dns-prefetch

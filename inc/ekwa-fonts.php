@@ -1477,6 +1477,15 @@ add_action( 'wp_head', 'ekwa_fonts_print_preloads', 4 );
  * see the custom variables when authoring.
  */
 function ekwa_fonts_editor_assets() {
+	// enqueue_block_assets fires on the FRONT END as well as in the editor, where
+	// ekwa_fonts_print_head() (wp_head, priority 5) already printed this exact
+	// string as #ekwa-custom-fonts — so every front-end response shipped the whole
+	// @font-face + :root block twice. Both hooks stay registered: enqueue_block_assets
+	// is the only one that reaches inside the FSE editor iframe, and is_admin() is
+	// true there, so the editor keeps both copies of the canvas styling it needs.
+	if ( ! is_admin() ) {
+		return;
+	}
 	$css = ekwa_fonts_build_css();
 	if ( '' === $css ) {
 		return;
@@ -1487,6 +1496,55 @@ function ekwa_fonts_editor_assets() {
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_fonts_editor_assets' );
 add_action( 'enqueue_block_assets', 'ekwa_fonts_editor_assets' );
+
+/**
+ * Drop core's Font Library @font-face printer when ours already covers it.
+ *
+ * The theme registers its configured fonts into theme.json (below) so they appear
+ * in the editor's Typography picker. Core reads that back and prints its own
+ * <style class="wp-fonts-local"> with the same faces #ekwa-custom-fonts already
+ * carries — measured as a third identical copy of four @font-face rules in <head>.
+ *
+ * Removed only when every family core would print is one we print ourselves, so a
+ * font added through WordPress's own Font Library UI (which the theme's Fonts tab
+ * knows nothing about) still gets its @font-face.
+ */
+function ekwa_fonts_dedupe_core_font_faces() {
+	if ( is_admin()
+		|| ! apply_filters( 'ekwa_fonts_dedupe_core_faces', true )
+		|| ! class_exists( 'WP_Font_Face_Resolver' ) ) {
+		return;
+	}
+
+	// If we print nothing, core's copy is the only one — leave it be.
+	if ( '' === ekwa_fonts_build_css() ) {
+		return;
+	}
+
+	$normalize = static function ( $family ) {
+		return strtolower( trim( str_replace( array( '"', "'" ), '', (string) $family ) ) );
+	};
+
+	$ours = array();
+	foreach ( ekwa_fonts_get_all() as $font ) {
+		$family = $normalize( $font['family'] ?? '' );
+		if ( '' !== $family ) {
+			$ours[ $family ] = true;
+		}
+	}
+
+	foreach ( (array) WP_Font_Face_Resolver::get_fonts_from_theme_json() as $faces ) {
+		foreach ( (array) $faces as $face ) {
+			$family = $normalize( is_array( $face ) && isset( $face['font-family'] ) ? $face['font-family'] : '' );
+			if ( '' !== $family && ! isset( $ours[ $family ] ) ) {
+				return; // Core would print a family we don't — keep its printer.
+			}
+		}
+	}
+
+	remove_action( 'wp_head', 'wp_print_font_faces', 50 );
+}
+add_action( 'wp_head', 'ekwa_fonts_dedupe_core_font_faces', 1 );
 
 /* ------------------------------------------------------------------------
  * theme.json: register user fonts as font families so they appear in the

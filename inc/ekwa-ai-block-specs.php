@@ -510,13 +510,15 @@ function ekwa_ai_block_spec_registry() {
 			),
 		),
 
-		'related-posts' => array(
-			'block'    => 'ekwa/related-posts',
+		// ekwa/related-posts is deprecated in favour of this block — do not add a
+		// spec for it, or the generator will keep emitting the retired one.
+		'related-articles' => array(
+			'block'    => 'ekwa/related-articles',
 			'type'     => 'leaf',
 			'contexts' => array( 'section', 'footer' ),
-			'desc'     => 'Lists related blog posts by category context. Rendered automatically.',
-			'attrs'    => array( 'count — number (default 3)', 'headingLevel — h2|h3|…', 'hideHeading — bool' ),
-			'examples' => array( "<!-- wp:ekwa/related-posts {\"count\":3} /-->" ),
+			'desc'     => 'Lists related blog posts by category context, as a carousel or a grid. Rendered automatically on pages and the front page.',
+			'attrs'    => array( 'count — number (default 6)', 'useCarousel — bool (default true; false = grid)', 'headingLevel — h2|h3|…', 'hideHeading — bool' ),
+			'examples' => array( "<!-- wp:ekwa/related-articles {\"count\":6} /-->" ),
 		),
 
 		'elfsight-review' => array(
