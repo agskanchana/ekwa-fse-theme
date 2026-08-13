@@ -2978,17 +2978,25 @@ function ekwa_inner_banner_bg_picture( $thumb_id ) {
 	// hints. data-ekwa-no-webp stops the render_block filter re-swapping a URL
 	// we've already resolved above.
 	//
-	// decoding is deliberately "sync", never "async", regardless of the global
+	// decoding defaults to "sync", not "async", regardless of the global
 	// Performance setting: this image is the inner page's LCP element, and
 	// decoding=async lets the browser paint a frame *without* it, pushing the
 	// LCP paint into a later frame (PageSpeed's "element render delay" subpart).
 	// The async default stays right for the ordinary in-content images it was
 	// written for — it's only wrong for the one image the page is measured on.
+	//
+	// Filterable because sync decoding is main-thread work: on a large banner it
+	// can show up as Total Blocking Time, so it's a real trade (earlier LCP paint
+	// vs. a busier main thread) worth being able to A/B per site rather than a
+	// setting that's obviously right in both directions.
+	$decoding = apply_filters( 'ekwa_inner_banner_decoding', 'sync', $thumb_id );
+	$decoding = in_array( $decoding, array( 'sync', 'async', 'auto' ), true ) ? $decoding : 'sync';
+
 	$full = $sources['full'];
 	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $full['url'] ) . '" alt=""';
 	if ( $full['width'] )  { $out .= ' width="' . $full['width'] . '"'; }
 	if ( $full['height'] ) { $out .= ' height="' . $full['height'] . '"'; }
-	$out .= ' loading="eager" fetchpriority="high" decoding="sync"';
+	$out .= ' loading="eager" fetchpriority="high" decoding="' . esc_attr( $decoding ) . '"';
 	$out .= ' data-ekwa-no-webp="1">';
 	$out .= '</picture>';
 
@@ -4208,7 +4216,21 @@ function ekwa_render_image_block( $attrs ) {
 	}
 
 	if ( $decoding_async ) { $html .= ' decoding="async"'; }
-	if ( $hero )           { $html .= ' fetchpriority="high"'; }
+
+	if ( $hero ) {
+		$html .= ' fetchpriority="high"';
+	} elseif ( $use_lazysizes ) {
+		// No `loading` attribute was emitted just above, and that attribute is the
+		// only signal wp_get_loading_optimization_attributes() reads to tell that
+		// an image is deferred. Without it, core sees a normal <img> with real
+		// dimensions, decides it's the first large in-viewport image, and stamps
+		// fetchpriority="high" on a tag whose src is a placeholder GIF — silently
+		// overriding the author's "Hero image (above the fold)" toggle being OFF.
+		// "auto" is the browser default, so it changes nothing about the fetch; it
+		// exists purely to tell core "may or may not be in the viewport — hands
+		// off". @see ekwa_perf_mark_lazy_for_core()
+		$html .= ' fetchpriority="auto"';
+	}
 	$html .= ekwa_render_inline_style_attr( $attrs, $style );
 	if ( $anchor )         { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $no_webp )        { $html .= ' data-ekwa-no-webp="1"'; }

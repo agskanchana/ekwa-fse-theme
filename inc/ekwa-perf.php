@@ -112,6 +112,23 @@ function ekwa_perf_collect_bg_preload_blocks( $blocks, &$found ) {
 	}
 }
 
+/**
+ * Whether this request emitted an LCP image preload.
+ *
+ * Read by ekwa_perf_preload_child_style() so a stylesheet preload never gets
+ * queued ahead of the image the page is actually measured on.
+ *
+ * @param bool $set Pass true to record that an image preload was emitted.
+ * @return bool
+ */
+function ekwa_perf_image_preload_emitted( $set = false ) {
+	static $emitted = false;
+	if ( $set ) {
+		$emitted = true;
+	}
+	return $emitted;
+}
+
 function ekwa_perf_emit_hero_preloads() {
 	if ( ! is_singular() ) {
 		return;
@@ -191,6 +208,7 @@ function ekwa_perf_emit_hero_preloads() {
 			echo ' href="' . esc_url( $src ) . '"';
 		}
 		echo " fetchpriority=\"high\">\n";
+		ekwa_perf_image_preload_emitted( true );
 	}
 
 	// Inner-banner background (the post's featured image) is the inner-page LCP.
@@ -235,6 +253,7 @@ function ekwa_perf_emit_hero_preloads() {
 			$full_media = $prev_max > 0 ? ' media="(min-width: ' . ( $prev_max + 0.02 ) . 'px)"' : '';
 			echo '<link rel="preload" as="image" href="' . esc_url( $sources['full']['url'] ) . '"'
 				. $full_media . ' fetchpriority="high">' . "\n";
+			ekwa_perf_image_preload_emitted( true );
 		}
 	}
 
@@ -261,6 +280,7 @@ function ekwa_perf_emit_hero_preloads() {
 				$src = ekwa_webp_url_for( $src );
 			}
 			echo '<link rel="preload" as="image" href="' . esc_url( $src ) . "\" fetchpriority=\"high\">\n";
+			ekwa_perf_image_preload_emitted( true );
 		}
 	}
 }
@@ -330,6 +350,251 @@ function ekwa_perf_version_child_style() {
 add_action( 'wp_enqueue_scripts', 'ekwa_perf_version_child_style', 20 );
 
 /**
+ * Whether the child stylesheet should be served as a minified copy.
+ *
+ * Off by default: this swaps the one file every client site's appearance
+ * depends on, so it's opted into per site after a visual check rather than
+ * arriving with a theme update.
+ */
+function ekwa_perf_minify_child_css_enabled() {
+	return (bool) get_option( 'ekwa_perf_minify_child_css', 0 );
+}
+
+/**
+ * Absolute URL for one `url()` reference, resolved against the child theme.
+ *
+ * @param string $rel      Reference as written in the stylesheet.
+ * @param string $base_uri Directory the stylesheet was authored in (no trailing slash).
+ * @return string
+ */
+function ekwa_perf_absolutize_css_url( $rel, $base_uri ) {
+	// Keep ?query / #fragment out of the path arithmetic, then reattach.
+	$suffix = '';
+	$cut    = strcspn( $rel, '?#' );
+	if ( $cut < strlen( $rel ) ) {
+		$suffix = substr( $rel, $cut );
+		$rel    = substr( $rel, 0, $cut );
+	}
+
+	// Split scheme+host off so "../" can never chew past the site root.
+	$prefix = '';
+	$path   = rtrim( $base_uri, '/' );
+	if ( preg_match( '#^(https?://[^/]+|//[^/]+)#i', $path, $m ) ) {
+		$prefix = $m[1];
+		$path   = substr( $path, strlen( $prefix ) );
+	}
+
+	$segments = array_values( array_filter( explode( '/', $path ), 'strlen' ) );
+	foreach ( explode( '/', $rel ) as $segment ) {
+		if ( '' === $segment || '.' === $segment ) {
+			continue;
+		}
+		if ( '..' === $segment ) {
+			array_pop( $segments );
+			continue;
+		}
+		$segments[] = $segment;
+	}
+
+	return $prefix . '/' . implode( '/', $segments ) . $suffix;
+}
+
+/**
+ * Rewrite relative `url()` references so the stylesheet survives being moved.
+ *
+ * The minified copy is served from uploads/, not the theme directory, so every
+ * relative path in it would otherwise resolve against the wrong folder and 404.
+ * Absolute, protocol-relative, root-relative, `data:` and bare-fragment refs
+ * (`url(#filter)`, used by SVG filters) already resolve correctly and are left
+ * exactly as written.
+ *
+ * @param string $css      Stylesheet source.
+ * @param string $base_uri Directory the stylesheet was authored in.
+ * @return string
+ */
+function ekwa_perf_absolutize_css_urls( $css, $base_uri ) {
+	return (string) preg_replace_callback(
+		'#\b(url)\(\s*("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|[^)]*?)\s*\)#i',
+		static function ( $m ) use ( $base_uri ) {
+			$raw   = trim( $m[2] );
+			$quote = '';
+			if ( strlen( $raw ) > 1 && ( '"' === $raw[0] || "'" === $raw[0] ) && substr( $raw, -1 ) === $raw[0] ) {
+				$quote = $raw[0];
+				$raw   = substr( $raw, 1, -1 );
+			}
+
+			$trimmed = trim( $raw );
+			if ( '' === $trimmed
+				|| '/' === $trimmed[0]        // root-relative and protocol-relative
+				|| '#' === $trimmed[0]        // in-document reference
+				|| preg_match( '#^[a-z][a-z0-9+.-]*:#i', $trimmed ) ) { // data:, http:, blob:, …
+				return $m[0];
+			}
+
+			// $m[1] rather than a literal, so `URL(` keeps the author's casing.
+			return $m[1] . '(' . $quote . ekwa_perf_absolutize_css_url( $trimmed, $base_uri ) . $quote . ')';
+		},
+		(string) $css
+	);
+}
+
+/**
+ * Brace counts with comments and quoted strings removed.
+ *
+ * Used as the safety check on minification. Counting raw braces would false-
+ * alarm on any stylesheet containing `/* { *\/` or a brace inside a string,
+ * because the minifier legitimately drops comments.
+ *
+ * @param string $css Stylesheet.
+ * @return array{0:int,1:int} Open and close brace counts.
+ */
+function ekwa_perf_css_brace_signature( $css ) {
+	$stripped = preg_replace(
+		'#/\*.*?\*/|"(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'#s',
+		'',
+		(string) $css
+	);
+	return array( substr_count( (string) $stripped, '{' ), substr_count( (string) $stripped, '}' ) );
+}
+
+/**
+ * Directory the minified child stylesheet is cached in.
+ *
+ * @return array{dir:string,url:string}|false False when uploads is unusable.
+ */
+function ekwa_perf_child_style_cache_dir() {
+	$uploads = wp_upload_dir();
+	if ( ! empty( $uploads['error'] ) || empty( $uploads['basedir'] ) || empty( $uploads['baseurl'] ) ) {
+		return false;
+	}
+	return array(
+		'dir' => $uploads['basedir'] . '/ekwa-perf',
+		'url' => $uploads['baseurl'] . '/ekwa-perf',
+	);
+}
+
+/**
+ * Build (or reuse) the minified copy of the child stylesheet.
+ *
+ * Cached under the source file's mtime, so an edited stylesheet regenerates on
+ * its own and a stale copy can never be served. Generation happens once per
+ * mtime, on whichever front-end request arrives first; concurrent builds are
+ * harmless because they produce identical bytes and land via rename().
+ *
+ * Returns '' on ANY problem — unusable uploads, unreadable source, a minifier
+ * that changed the rule count — so the caller leaves the original file in place.
+ * A slightly larger stylesheet is a non-event; a broken one is every page.
+ *
+ * @param string $source Absolute path to the child style.css.
+ * @param int    $mtime  Its modification time.
+ * @return string URL of the minified copy, or '' to fall back.
+ */
+function ekwa_perf_build_minified_child_style( $source, $mtime ) {
+	$cache = ekwa_perf_child_style_cache_dir();
+	if ( ! $cache ) {
+		return '';
+	}
+
+	$file = 'child-style-' . (int) $mtime . '.css';
+	$path = $cache['dir'] . '/' . $file;
+	if ( is_readable( $path ) && filesize( $path ) > 0 ) {
+		return $cache['url'] . '/' . $file;
+	}
+
+	if ( ! wp_mkdir_p( $cache['dir'] ) ) {
+		return '';
+	}
+
+	$raw = file_get_contents( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	if ( false === $raw || '' === trim( $raw ) ) {
+		return '';
+	}
+
+	$css = ekwa_perf_absolutize_css_urls( $raw, get_stylesheet_directory_uri() );
+	$min = ekwa_inline_minify_css( $css );
+
+	// Refuse to swap unless the result is smaller AND structurally identical.
+	$before = ekwa_perf_css_brace_signature( $css );
+	$after  = ekwa_perf_css_brace_signature( $min );
+	if ( '' === trim( (string) $min )
+		|| strlen( $min ) >= strlen( $raw )
+		|| $before !== $after ) {
+		return '';
+	}
+
+	// Write somewhere else and rename, so a partial write is never served.
+	$tmp = $path . '.' . wp_generate_password( 8, false ) . '.tmp';
+	if ( false === file_put_contents( $tmp, $min ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions
+		return '';
+	}
+	if ( ! @rename( $tmp, $path ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		// Another request may have won the race and already published the file.
+		if ( ! is_readable( $path ) || ! filesize( $path ) ) {
+			return '';
+		}
+	}
+
+	// Drop copies made from earlier revisions of the stylesheet.
+	foreach ( (array) glob( $cache['dir'] . '/child-style-*.css' ) as $old ) {
+		if ( $old && basename( $old ) !== $file ) {
+			@unlink( $old ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+	}
+
+	return $cache['url'] . '/' . $file;
+}
+
+/**
+ * Point the child stylesheet handle at its minified copy.
+ *
+ * Priority 21 — after ekwa_perf_version_child_style() has settled the version at
+ * 20, and well before the wp_head preload at priority 1. Only the registry is
+ * touched, so ekwa_perf_style_href() below rebuilds the preload href from the
+ * same source of truth and the two URLs cannot drift apart.
+ *
+ * PageSpeed values this at roughly 20ms (~4KB at mobile throttling) — it clears
+ * the "Minify CSS" audit rather than moving the score.
+ */
+function ekwa_perf_minify_child_style() {
+	if ( ! ekwa_perf_minify_child_css_enabled() || ! function_exists( 'ekwa_inline_minify_css' ) ) {
+		return;
+	}
+	// Inline mode dequeues the handle and minifies on its own — nothing to do.
+	if ( function_exists( 'ekwa_inline_child_css_enabled' ) && ekwa_inline_child_css_enabled() ) {
+		return;
+	}
+
+	$handle = ekwa_perf_child_style_handle();
+	$styles = wp_styles();
+	if ( ! isset( $styles->registered[ $handle ] ) ) {
+		return;
+	}
+
+	// Same guard as the versioner: only act on a handle really pointing at the
+	// active style.css, so a child that repurposed the handle is left alone.
+	$src = $styles->registered[ $handle ]->src;
+	if ( ! $src || ! is_string( $src ) || 'style.css' !== basename( (string) wp_parse_url( $src, PHP_URL_PATH ) ) ) {
+		return;
+	}
+
+	$source = get_stylesheet_directory() . '/style.css';
+	$mtime  = is_readable( $source ) ? filemtime( $source ) : false;
+	if ( ! $mtime ) {
+		return;
+	}
+
+	$url = ekwa_perf_build_minified_child_style( $source, $mtime );
+	if ( '' === $url ) {
+		return; // Fall back to the original file.
+	}
+
+	$styles->registered[ $handle ]->src = $url;
+	$styles->registered[ $handle ]->ver = (string) $mtime;
+}
+add_action( 'wp_enqueue_scripts', 'ekwa_perf_minify_child_style', 21 );
+
+/**
  * The exact href WordPress will print for a registered style handle.
  *
  * Mirrors WP_Styles::do_item() — base_url prefixing, the ver query arg and the
@@ -386,6 +651,28 @@ function ekwa_perf_preload_child_style() {
 		return;
 	}
 
+	// Optional: yield to the LCP image preload. OFF by default.
+	//
+	// The theory is sound in the abstract — <link rel=preload as=style> is Highest
+	// priority in Chrome while a fetchpriority="high" image is only High, so this
+	// does put ~21 KB of CSS ahead of an ~8 KB banner on a throttled connection.
+	// It was added after a live run scored 88 (LCP 3.6s) with both preloads
+	// present.
+	//
+	// It defaults to false because the very next measurement contradicted it: a
+	// second page on the SAME build, with the identical banner file, head size and
+	// both preloads, scored 99 at LCP 1.5s. Whatever cost that 88, it was not the
+	// stylesheet preload — and that page still reported 470ms of render-blocking
+	// savings available, i.e. the preload is doing useful work there and
+	// suppressing it would give ground back.
+	//
+	// Kept behind a filter rather than deleted so the hypothesis can be re-tested
+	// cheaply if repeat runs on a single URL ever implicate it.
+	if ( ekwa_perf_image_preload_emitted()
+		&& apply_filters( 'ekwa_perf_preload_child_style_yields_to_image', false ) ) {
+		return;
+	}
+
 	// Inline mode dequeues the handle, and a handle with no src has nothing to
 	// preload — either way this no-ops, so the delivery toggle stays the single
 	// source of truth and this never needs a setting of its own.
@@ -399,10 +686,6 @@ function ekwa_perf_preload_child_style() {
 		return;
 	}
 
-	// Deliberately no fetchpriority: as="style" is already Highest in Chrome,
-	// and the LCP image can't paint before layout exists — promoting the image
-	// above the CSS it depends on would delay the very paint it's meant to
-	// speed up.
 	echo '<link rel="preload" as="style" href="' . esc_url( $href ) . "\">\n";
 }
 add_action( 'wp_head', 'ekwa_perf_preload_child_style', 1 );
@@ -532,6 +815,10 @@ function ekwa_perf_lazysize_img_tag( $tag ) {
 	// Strip native loading attribute — lazysizes manages it via JS.
 	$tag = preg_replace( '/\sloading=(["\'])[^"\']*\1/i', '', $tag, 1 );
 
+	// Removing `loading` also removes the only clue WordPress has that this image
+	// is deferred, so replace it with one core understands.
+	$tag = ekwa_perf_mark_lazy_for_core( $tag );
+
 	// noscript fallback uses the unmutated tag so SEO crawlers and
 	// JS-disabled clients still see a working image.
 	return $tag . '<noscript>' . $original . '</noscript>';
@@ -602,6 +889,41 @@ function ekwa_perf_lazysize_content_img( $tag ) {
 	return ekwa_perf_lazysize_img_tag( $tag );
 }
 add_filter( 'wp_content_img_tag', 'ekwa_perf_lazysize_content_img', 25 );
+
+/**
+ * Tell WordPress that a lazysized image is deferred.
+ *
+ * wp_get_loading_optimization_attributes() decides which image gets
+ * fetchpriority="high" — and the ONLY signal it reads to know an image is
+ * deferred is the `loading` attribute:
+ *
+ *     if ( 'lazy' === $attr['loading'] ) { $maybe_in_viewport = false; }
+ *
+ * lazysizes mode deliberately omits that attribute (it "opts out of native lazy
+ * entirely", @see ekwa_render_image_block), so core sees an <img> with a src and
+ * real dimensions, concludes it's the first large in-viewport image, and marks
+ * it fetchpriority="high". The result on a live page: the LCP candidate shipped
+ * as a 43-byte placeholder GIF that couldn't load until lazysizes ran — while an
+ * author had explicitly left the block's "Hero image" toggle OFF. Core even warns
+ * about this exact pairing ("An image should not be lazy-loaded and marked as
+ * high priority at the same time") but never fires it, because it can't tell.
+ *
+ * fetchpriority="auto" is the signal for "may or may not be in the viewport —
+ * don't promote it": core preserves it verbatim and stops the media count from
+ * advancing, so the promotion doesn't simply move to the next lazysized image.
+ * "auto" is also the browser default, so it changes nothing about how the image
+ * is actually fetched — unlike re-adding loading="lazy", which would layer
+ * native lazy-loading on top of lazysizes.
+ *
+ * @param string $tag Lazysized <img> tag.
+ * @return string
+ */
+function ekwa_perf_mark_lazy_for_core( $tag ) {
+	if ( preg_match( '/\sfetchpriority\s*=/i', $tag ) ) {
+		return $tag; // Already carries an explicit priority — leave it alone.
+	}
+	return preg_replace( '/<img\s/i', '<img fetchpriority="auto" ', $tag, 1 );
+}
 
 /**
  * Catches images rendered via wp_get_attachment_image() — featured images,

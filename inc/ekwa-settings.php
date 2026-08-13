@@ -460,6 +460,7 @@ function ekwa_save_settings() {
 	update_option( 'ekwa_perf_defer_fa_mobile', isset( $_POST['ekwa_perf_defer_fa_mobile'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_lazysizes_footer', isset( $_POST['ekwa_perf_lazysizes_footer'] ) ? 1 : 0 );
 	update_option( 'ekwa_perf_minify_inline', isset( $_POST['ekwa_perf_minify_inline'] ) ? 1 : 0 );
+	update_option( 'ekwa_perf_minify_child_css', isset( $_POST['ekwa_perf_minify_child_css'] ) ? 1 : 0 );
 	// Comma-separated style handles; only the handle charset WP itself allows.
 	$footer_handles = isset( $_POST['ekwa_perf_footer_style_handles'] )
 		? sanitize_text_field( wp_unslash( $_POST['ekwa_perf_footer_style_handles'] ) )
@@ -1710,6 +1711,7 @@ function ekwa_render_settings_page() {
 					$defer_fa_mobile_val = get_option( 'ekwa_perf_defer_fa_mobile', 0 );
 					$lazysizes_footer_val = get_option( 'ekwa_perf_lazysizes_footer', 0 );
 					$minify_inline_val = get_option( 'ekwa_perf_minify_inline', 0 );
+					$minify_child_css_val = get_option( 'ekwa_perf_minify_child_css', 0 );
 					$footer_styles_val = (string) get_option( 'ekwa_perf_footer_style_handles', '' );
 					$inline_child_css_val = get_option( 'ekwa_perf_inline_child_css', 0 );
 					$inline_child_js_val  = get_option( 'ekwa_perf_inline_child_js', 0 );
@@ -1825,6 +1827,20 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'Minify all CSS/JS that is inlined into the page', 'ekwa' ); ?>
 								</label>
 								<p class="description"><?php esc_html_e( 'Strips comments and whitespace from inlined block styles/scripts, the blog and carousel assets, and the critical CSS. Also minifies the inline stylesheets WordPress and plugins put in the <head> (global styles, core block CSS, form styles) — typically the largest unminified CSS on the page. Quoted strings and url() values are preserved. Already-minified vendor files (*.min.js) are left untouched.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><?php esc_html_e( 'Minify child theme CSS file', 'ekwa' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="ekwa_perf_minify_child_css" value="1" <?php checked( $minify_child_css_val, 1 ); ?> />
+									<?php esc_html_e( 'Serve the child theme style.css as a minified copy', 'ekwa' ); ?>
+								</label>
+								<p class="description">
+									<?php esc_html_e( 'The setting above only reaches CSS that is inlined into the page; this one covers the child stylesheet when it is served as a separate file, which is the faster setup and the one most sites run. A minified copy is written to uploads/ekwa-perf/ and rebuilt automatically whenever style.css changes — typically around 25% smaller, worth roughly 20ms on mobile. It clears the "Minify CSS" audit in PageSpeed rather than moving the score.', 'ekwa' ); ?>
+									<br />
+									<?php esc_html_e( 'Relative image paths inside the stylesheet are rewritten to absolute URLs, because the copy is served from a different folder. If anything looks wrong, the minified output is checked before use and the original file is served whenever the check fails — but re-check backgrounds and icon fonts after switching this on.', 'ekwa' ); ?>
+								</p>
 							</td>
 						</tr>
 						<tr>
