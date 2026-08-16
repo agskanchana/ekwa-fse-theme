@@ -256,6 +256,22 @@ function ekwa_mc_detect_canonical( $node, $depth, $tag ) {
 		}
 	}
 
+	// The map wrapper. ekwa/map RENDERS div.ekwa-map-wrapper itself, so keeping
+	// the mockup's copy as an ekwa/div produced .ekwa-map-wrapper nested inside
+	// .ekwa-map-wrapper — two elements answering to the same CSS, one of them
+	// re-applying the mockup's height/aspect-ratio to a box that already had it.
+	// Consume the wrapper and let the block re-render it.
+	if ( ekwa_mc_node_has_class( $node, 'ekwa-map-wrapper' ) ) {
+		foreach ( $node->getElementsByTagName( 'iframe' ) as $iframe ) {
+			// NOT $map — that's the static signature table above, and reassigning
+			// it here would leave it a string for every later node.
+			$map_block = ekwa_mc_detect_map_iframe( $iframe, $depth );
+			if ( null !== $map_block ) {
+				return $map_block;
+			}
+		}
+	}
+
 	// Address: the mode travels in the ekwa-address--{mode} modifier class.
 	if ( ekwa_mc_node_has_class( $node, 'ekwa-address' ) ) {
 		$attrs = array();
@@ -496,14 +512,37 @@ function ekwa_mc_detect_copyright( $node, $depth ) {
 		return null;
 	}
 
-	// Guard: skip if this element has many child elements (it's a container, not a copyright line).
-	$child_element_count = 0;
-	foreach ( $node->childNodes as $child ) {
-		if ( $child->nodeType === XML_ELEMENT_NODE ) {
-			$child_element_count++;
+	// ── Container guards. ────────────────────────────────────────────────
+	// This block REPLACES the whole element it matches, so a false positive
+	// doesn't just mis-tag one line — it deletes everything around it. The
+	// direct-child count alone was not enough: a whole <footer> demoted to a
+	// <div> (which is what the header/footer template-part flow does) has just
+	// two wrapper children, so the entire footer — logo, menus, address, social,
+	// map — collapsed into a single ekwa/copyright.
+	//
+	// A real copyright line is short, shallow, and made of nothing but text and
+	// the odd inline link. Anything structural inside means we're looking at a
+	// container that merely CONTAINS the copyright.
+	$normalized = trim( preg_replace( '/\s+/u', ' ', $text ) );
+	if ( mb_strlen( $normalized ) > 200 ) {
+		return null;
+	}
+
+	static $structural = array(
+		'nav', 'ul', 'ol', 'dl', 'table', 'form', 'input', 'button', 'select', 'textarea',
+		'img', 'picture', 'svg', 'iframe', 'video', 'audio', 'figure', 'figcaption',
+		'section', 'article', 'aside', 'header', 'footer', 'main',
+		'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+	);
+	foreach ( $structural as $structural_tag ) {
+		if ( $node->getElementsByTagName( $structural_tag )->length > 0 ) {
+			return null;
 		}
 	}
-	if ( $child_element_count > 3 ) {
+
+	// Descendants, not just direct children — <div><div><span>© …</span></div></div>
+	// is still a copyright line, but a dozen nested elements is a layout.
+	if ( $node->getElementsByTagName( '*' )->length > 4 ) {
 		return null;
 	}
 

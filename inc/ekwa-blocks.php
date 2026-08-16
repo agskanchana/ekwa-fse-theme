@@ -4334,7 +4334,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$rel           = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
 
 	$allowed = array(
-		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a',
+		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a', 'p',
 		'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub',
 		'figcaption', 'button',
 	);

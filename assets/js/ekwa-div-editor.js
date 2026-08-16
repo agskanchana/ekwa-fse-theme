@@ -39,6 +39,9 @@
 		{ label: 'aside',       value: 'aside' },
 		{ label: 'article',     value: 'article' },
 		{ label: 'a',           value: 'a' },
+		// A <p> that wraps an image can't be a core/paragraph (its src would
+		// never resolve), so the converter lands those here.
+		{ label: 'p',           value: 'p' },
 		{ label: '— inline —',  value: '',         disabled: true },
 		{ label: 'span',        value: 'span' },
 		{ label: 'small',       value: 'small' },

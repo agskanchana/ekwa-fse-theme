@@ -252,6 +252,103 @@ function ekwa_mockup_mobile_note() {
 }
 
 /**
+ * A whole canonical footer, with the individual snippets assembled the way the
+ * converter expects to meet them.
+ *
+ * The per-element snippets above answer "what does a phone number look like";
+ * they never answered "what does a FOOTER look like", and the footer is where
+ * most of the dynamic elements live at once. Without a worked example, AI
+ * output reliably fell into the two shapes the converter reads differently
+ * from how they look: the copyright merged into a bar that also holds legal
+ * links, and footer link columns marked up as <nav> (which is the header
+ * menu's tag — a <nav> anywhere converts to a navigation block, not a list).
+ *
+ * @return string
+ */
+function ekwa_mockup_canonical_footer() {
+	return '<footer class="site-footer">
+  <div class="footer-top">
+
+    <div class="footer-brand">
+      <!-- Logo: canonical site-logo markup. -->
+      <div class="wp-block-site-logo">
+        <a href="/" class="custom-logo-link" rel="home">
+          <img class="custom-logo" src="practice-logo.webp" alt="Practice name" width="320" height="89">
+        </a>
+      </div>
+      <p>One or two lines about the practice.</p>
+
+      <div class="ekwa-social-icons">
+        <div class="social-media">
+          <a class="sm-icons" href="https://facebook.com/example" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>
+          <a class="sm-icons" href="https://instagram.com/example" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer link columns: plain <ul>, NOT <nav>. -->
+    <div class="footer-links">
+      <h4>Treatments</h4>
+      <ul class="footer-menu">
+        <li><a href="/invisalign/">Invisalign</a></li>
+        <li><a href="/veneers/">Dental Veneers</a></li>
+      </ul>
+    </div>
+
+    <!-- Contact details: each dynamic element is its OWN element, with its own
+         label beside it. Never merge two of them into one wrapper. -->
+    <div class="footer-contact">
+      <h4>Visit us</h4>
+
+      <div class="footer-row">
+        <span class="footer-label">Address</span>
+        <a class="ekwa-address ekwa-address--full" href="#" aria-label="Get directions">
+          <i class="ekwa-address__icon fa-solid fa-location-dot" aria-hidden="true"></i>
+          123 Main Street, Suite 200, Austin, TX 78701
+        </a>
+      </div>
+
+      <div class="footer-row">
+        <span class="footer-label">Call us</span>
+        <span class="ekwa-phone-number">
+          <a class="ekwa-phone-number__link" href="tel:+15551234567">
+            <i class="fa-solid fa-phone" aria-hidden="true"></i>
+            <span class="ekwa-phone-number__prefix">New Patients:</span> (555) 123-4567
+          </a>
+        </span>
+      </div>
+
+      <div class="footer-row">
+        <span class="footer-label">Hours</span>
+        <div class="ekwa-working-hours">
+          <div class="ekwa-working-hours__list">
+            <div class="ekwa-working-hours__row"><span>Monday &ndash; Friday</span><span>8am &ndash; 6pm</span></div>
+            <div class="ekwa-working-hours__row ekwa-working-hours__row--closed"><span>Sunday</span><span>Closed</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map: the wrapper is the block\'s own markup — do not add a second
+         wrapper around it, and put the real embed iframe inside. -->
+    <div class="ekwa-map-wrapper">
+      <iframe src="https://www.google.com/maps/embed?pb=..." width="100%" height="360" style="border:0;" loading="lazy"></iframe>
+    </div>
+
+  </div>
+
+  <div class="footer-bottom">
+    <!-- The copyright is ALONE in its element. Legal links are siblings. -->
+    <div class="ekwa-copyright">&copy; 2026 Practice Name. All rights reserved.</div>
+    <ul class="footer-legal">
+      <li><a href="/privacy-policy/">Privacy Policy</a></li>
+      <li><a href="/accessibility/">Accessibility</a></li>
+    </ul>
+  </div>
+</footer>';
+}
+
+/**
  * Two ready-to-paste AI prompts (retrofit an existing mockup / create a new
  * one), each self-contained with a compact contract cheat-sheet built from the
  * snippet library so nothing drifts.
@@ -271,11 +368,18 @@ function ekwa_mockup_ai_prompts() {
 	foreach ( array( 'logo', 'phone', 'search', 'address', 'hours', 'social', 'map', 'copyright' ) as $id ) {
 		$cheat .= '- ' . $snips[ $id ]['label'] . ":\n  " . str_replace( "\n", "\n  ", $snips[ $id ]['snippet'] ) . "\n";
 	}
+	$cheat .= "\nA WHOLE FOOTER, ASSEMBLED (this is the shape to copy — the snippets above are the pieces, this is how they sit together):\n"
+		. ekwa_mockup_canonical_footer() . "\n";
 	$cheat .= "\nESCAPE HATCH: if something can't use these structures, add data-ekwa=\"phone|address|hours|social|copyright|logo|menu|search|map\" to the element to force the mapping. Add data-ekwa=\"static\" to opt an element OUT of detection.";
 
 	$rules  = "RULES:\n"
 		. "- " . ekwa_mockup_mobile_note() . "\n"
 		. "- Wrap the site header in <header> and the footer in <footer>; body content in <main>.\n"
+		. "- FOOTER LAYOUT — the footer holds most of the dynamic elements, so four rules decide whether it converts:\n"
+		. "  1. ONE dynamic element per wrapper. Each of the address, phone, hours, social, copyright and map blocks REPLACES the element it is found on, taking everything inside it. So a wrapper that holds a dynamic element must hold nothing else you want to keep — give it its own <div>/<span> and put labels, headings and links BESIDE it as siblings, never around it.\n"
+		. "  2. The copyright line lives alone in <div class=\"ekwa-copyright\">. Do NOT put the © text loose in a bar that also contains the legal links — put the links in a sibling <ul>.\n"
+		. "  3. Footer link columns are plain <ul><li><a>. Do NOT wrap them in <nav>: <nav> means \"the site menu\" and converts to a navigation block, which throws away your list markup and its CSS. <nav> belongs to the header menu only.\n"
+		. "  4. The map's <div class=\"ekwa-map-wrapper\"> IS the block's own markup — put the embed <iframe> directly inside it and don't add another wrapper around it.\n"
 		. "- Phone numbers use tel:+1... links; email uses mailto:; the address/directions link may use \"#\" (the real maps URL comes from settings).\n"
 		. "- Define ALL colors and fonts as CSS variables in :root (they import as design tokens). Use unique, descriptive image filenames.\n"
 		. "- FONTS MUST BE APPLIED THROUGH A VARIABLE, never by name. Declare each typeface once in :root — e.g. --font-heading:'Playfair Display',serif; --font-body:'Inter',sans-serif; — and every rule that sets type uses font-family:var(--font-heading). A literal font-family:'Inter',sans-serif anywhere outside :root is wrong. The theme self-hosts each typeface and re-points that same variable at the local files, which is also what lets it skip downloading the font on mobile — a rule that names the family directly opts out of both. Use the font-family longhand (not the `font:` shorthand) so the variable is visible.\n"
@@ -285,14 +389,19 @@ function ekwa_mockup_ai_prompts() {
 		. "- CONTENT CAROUSELS (rows of cards that slide — services, blog posts, testimonials, before/after galleries): write them as a PLAIN container with one element per card, and NOTHING else — no Owl Carousel, Slick or Swiper markup, no `<div class=\"owl-carousel\">`, no library CSS or JS, and no jQuery. The theme has its own carousel block (vanilla JS, no jQuery, keyboard + screen-reader support) and the converter moves your cards straight into it. Style the CARD; the carousel chrome (arrows, dots, spacing, items per view) is configured on the block, so CSS written against .owl-nav / .owl-stage / .owl-item is wasted work. If you must show the intended layout, just lay the cards out with flex or grid.\n"
 		. "- HERO SLIDERS & BACKGROUND-VIDEO HEROES: design them as simple static markup (one visible slide / a poster image is enough) — do NOT hand-code slider JS, dots, or arrows. The theme's \"Convert with AI\" maps them to its built-in ekwa/slider and ekwa/hero-video blocks (fade/slide/slide-up/zoom/zoom-out/blur/parallax-push/wipe/flip transitions, per-caption entrance animations, arrows, dots, autoplay).\n"
 		. "- YOUTUBE/VIMEO VIDEOS: a real embedded iframe (or even just the video's URL as a placeholder) is enough — do NOT hand-build a custom play button/lightbox. \"Convert with AI\" maps it to ekwa/youtube-video or ekwa/vimeo-video, which auto-fetches the title/thumbnail/duration and adds click-to-play, an optional lightbox, and Schema.org video markup.\n"
-			. "- IMAGE LIGHTBOXES / PHOTO GALLERIES (before-and-afters, smile galleries, office tours): write a plain thumbnail linked to the full-size image and mark the link with class=\"glightbox\" — <a class=\"glightbox\" href=\"case-1-full.jpg\" data-gallery=\"smiles\"><img src=\"case-1-thumb.jpg\" alt=\"…\"></a>. Do NOT ship a lightbox library, its CSS/JS, or any jQuery: the theme has one built in and the converter wires your links to it. data-gallery groups thumbnails into ONE swipeable gallery (same value = same gallery; omit it and the image opens on its own). data-lightbox / data-fancybox / rel=\"lightbox[group]\" are understood too, so existing markup converts as-is. Style the thumbnail; the overlay chrome is the theme's.";
+			. "- IMAGE LIGHTBOXES / PHOTO GALLERIES (before-and-afters, smile galleries, office tours): write a plain thumbnail linked to the full-size image and mark the link with class=\"glightbox\" — <a class=\"glightbox\" href=\"case-1-full.jpg\" data-gallery=\"smiles\"><img src=\"case-1-thumb.jpg\" alt=\"…\"></a>. Do NOT ship a lightbox library, its CSS/JS, or any jQuery: the theme has one built in and the converter wires your links to it. data-gallery groups thumbnails into ONE swipeable gallery (same value = same gallery; omit it and the image opens on its own). data-lightbox / data-fancybox / rel=\"lightbox[group]\" are understood too, so existing markup converts as-is. Style the thumbnail; the overlay chrome is the theme's. The href must point at a real FILE you are shipping with the mockup (case-1-full.jpg, tour.mp4, brochure.pdf) — the converter looks that filename up in the media library exactly like it does an <img src>, so a made-up path or a page URL leaves the lightbox with nothing to open.";
 
 	return array(
 		'retrofit' => array(
 			'title'  => __( 'Prompt A — Make an existing mockup Ekwa-compatible', 'ekwa' ),
 			'intro'  => __( 'Paste this into ChatGPT / Claude / any AI, then paste your existing mockup HTML where indicated. It rewrites only the dynamic header/footer elements to the canonical structures without redesigning anything.', 'ekwa' ),
 			'prompt' => "You are adapting an existing HTML mockup so it is compatible with the Ekwa WordPress theme's Mockup Converter. The theme has dynamic blocks that render real site data (menu, phone, address, hours, social, copyright, logo, search, map) from WordPress settings.\n\n"
-				. "YOUR TASK: rewrite ONLY the header and footer dynamic elements to use the exact canonical structures below, so the converter maps them to the right blocks and my existing CSS keeps working. Do NOT redesign the site, change the visual layout, or touch the body sections — keep every class, wrapper, and style; only swap the inner structure of the dynamic elements and add the ekwa-* classes. Where an element can't be restructured, add the appropriate data-ekwa=\"...\" attribute instead.\n\nREMOVE THE MOBILE HEADER: if my mockup includes a hamburger / menu-toggle button, an off-canvas or slide-down mobile menu, a mobile-only bottom or sticky bar, the JavaScript that toggles any of them, or @media rules that turn the header into a mobile bar — delete all of it. The theme supplies its own mobile header and hides the desktop header below 1200px automatically; leave only the desktop header, and keep the body's own responsive @media rules.\n\n"
+				. "YOUR TASK: rewrite ONLY the header and footer dynamic elements to use the exact canonical structures below, so the converter maps them to the right blocks and my existing CSS keeps working. Do NOT redesign the site, change the visual layout, or touch the body sections — keep every class, wrapper, and style; only swap the inner structure of the dynamic elements and add the ekwa-* classes. Where an element can't be restructured, add the appropriate data-ekwa=\"...\" attribute instead.\n\n"
+				. "TWO EDITS YOU ARE ALLOWED (AND EXPECTED) TO MAKE, because they change no pixels but decide whether the footer converts at all:\n"
+				. "1. ISOLATE each dynamic element. If a wrapper currently holds a dynamic element AND something else — a label, a heading, a button, a second dynamic element — add a wrapper around just the dynamic part, or move the sibling out. The block replaces the element it lands on and takes everything inside with it, so the copyright merged into a bar of legal links takes the links with it, and a \"Hours\" heading inside the hours wrapper disappears with the heading.\n"
+				. "2. RETAG a footer <nav> that is really a link list as <ul><li><a>, keeping its classes. Any <nav> is read as the site menu and converts to a navigation block, discarding your markup. The header's main menu is the one <nav> that should stay a <nav>.\n"
+				. "Compare my footer against the assembled footer example below and fix it to match that SHAPE — not its class names, not its design.\n\n"
+					. "REMOVE THE MOBILE HEADER: if my mockup includes a hamburger / menu-toggle button, an off-canvas or slide-down mobile menu, a mobile-only bottom or sticky bar, the JavaScript that toggles any of them, or @media rules that turn the header into a mobile bar — delete all of it. The theme supplies its own mobile header and hides the desktop header below 1200px automatically; leave only the desktop header, and keep the body's own responsive @media rules.\n\n"
 				. $rules . "\n\n"
 				. $cheat . "\n\n"
 				. "Return the full updated HTML. Here is my current mockup:\n\n[PASTE YOUR HTML HERE]",

@@ -327,8 +327,21 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_heading( $node, $depth, (int) $m[1] );
 	}
 
-	// Paragraph → core/paragraph.
+	// Paragraph → core/paragraph, EXCEPT when it wraps media.
+	//
+	// core/paragraph stores its content as rich text, and the converter writes
+	// that inner HTML through verbatim — fine for <strong>/<em>/<a>/<br>, fatal
+	// for an <img>: its src is never looked up in the media library, so a
+	// mockup's `assets/images/team.jpg` ships to production as a dead relative
+	// path, with no WebP, no srcset, no alt from the attachment, and no way to
+	// swap the picture in the editor. `<p><img></p>` is how most editors and
+	// mockups wrap a standalone image, so this is a common shape, not an edge
+	// case. Route those through ekwa/div tagName=p instead: the wrapper (and its
+	// classes) survives, and each image becomes a real ekwa/image block.
 	if ( $tag === 'p' ) {
+		if ( ekwa_mc_has_media_descendant( $node ) ) {
+			return ekwa_mc_convert_div_block( $node, $depth, 'p' );
+		}
 		return ekwa_mc_convert_paragraph( $node, $depth );
 	}
 
@@ -777,7 +790,13 @@ function ekwa_mc_convert_link( $node, $depth ) {
 	$text   = trim( $node->textContent );
 
 	$attrs = array();
-	if ( $url )   { $attrs['url']  = $url; }
+	// ekwa/link has no href attribute — drop the converter's fallback key so the
+	// block's own `url` (and, for a file, linkType/mediaFileId) is the only source.
+	if ( $url ) {
+		$link_attrs = ekwa_mc_link_attrs( $url );
+		unset( $link_attrs['href'] );
+		$attrs += $link_attrs;
+	}
 	if ( $text )  { $attrs['text'] = $text; }
 	if ( $class ) { $attrs['className'] = $class; }
 	if ( $target === '_blank' ) { $attrs['newTab'] = true; }
@@ -987,6 +1006,113 @@ function ekwa_mc_lightbox_attrs( $node ) {
 	}
 
 	return $attrs;
+}
+
+/**
+ * Resolve an href that points at a local media FILE to the media library.
+ *
+ * A lightbox thumbnail is `<a href="case-1-full.jpg"><img src="case-1-thumb.jpg"></a>`:
+ * the href is what the overlay opens, so it is every bit as much a media
+ * reference as the `<img src>` beside it — but only the src was ever resolved.
+ * The href went through untouched, and `esc_url()` turned the relative
+ * `assets/images/case-1-full.jpg` into `http://assets/images/case-1-full.jpg`,
+ * pointing the lightbox at a host called "assets". Same story for a linked PDF
+ * or MP4.
+ *
+ * Resolution mirrors ekwa_mc_convert_image(): manifest first, then a basename
+ * match in the WP library. On a miss the caller keeps the original path and
+ * this emits the same "No manifest match" warning the images use, so the
+ * converter modal lists the file in its media-mapping step and offers to pick
+ * or upload it — one mapping then fixes the thumbnail and the lightbox target
+ * together.
+ *
+ * Only file-looking, same-site URLs are touched: mailto:/tel:/#anchors, page
+ * URLs and links to other domains are left exactly as written.
+ *
+ * @param string $url Raw href.
+ * @return array{url:string,id:int}|null Resolved target, or null when the href
+ *                                       is not a local media file (or wasn't found).
+ */
+function ekwa_mc_resolve_media_link( $url ) {
+	$url = trim( (string) $url );
+	if ( '' === $url ) {
+		return null;
+	}
+
+	// Not a file reference: anchors, protocols that aren't http(s), data URIs.
+	if ( preg_match( '~^(?:\#|mailto:|tel:|sms:|javascript:|data:)~i', $url ) ) {
+		return null;
+	}
+
+	// Query/fragment don't belong to the filename.
+	$path = preg_replace( '/[?#].*$/', '', $url );
+	if ( ! preg_match( '/\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|mp4|webm|ogv|mov|m4v|mp3|wav|m4a|pdf)$/i', $path ) ) {
+		return null;
+	}
+
+	// An absolute URL to somewhere else stays somewhere else. (A URL on this
+	// site still resolves — mockups exported from a staging site carry those.)
+	if ( preg_match( '#^[a-z][a-z0-9+.-]*://#i', $path ) || 0 === strpos( $path, '//' ) ) {
+		$host = strtolower( (string) parse_url( $path, PHP_URL_HOST ) );
+		$home = function_exists( 'home_url' ) ? strtolower( (string) parse_url( home_url(), PHP_URL_HOST ) ) : '';
+		if ( '' === $home || $host !== $home ) {
+			return null;
+		}
+	}
+
+	$ctx      = ekwa_mc_context();
+	$filename = strtolower( basename( $path ) );
+
+	if ( ! empty( $ctx['media_by_name'][ $filename ] ) ) {
+		$item = $ctx['media_by_name'][ $filename ];
+		return array( 'url' => $item['url'], 'id' => (int) $item['id'] );
+	}
+
+	$lib = ekwa_mc_find_attachment_by_basename( $filename );
+	if ( $lib ) {
+		return array( 'url' => $lib['url'], 'id' => (int) $lib['id'] );
+	}
+
+	// Same wording as the image path — the editor parses this to build the
+	// "map your media" list, so an unresolved link target gets the same
+	// select-or-upload treatment an unresolved <img src> gets.
+	ekwa_mc_warn( "No manifest match for '$filename' (src: $url)", 'media' );
+
+	return null;
+}
+
+/**
+ * Link-source block attributes for an <a> href, resolving media files.
+ *
+ * The Link Source control in the editor reads `url` + `linkType` — the
+ * converter's `href` attribute is only a render-time fallback, which is why a
+ * converted link showed an empty URL field in the sidebar. Every anchor
+ * converter now emits `url` as well, and a media file additionally gets
+ * `linkType:"media"` + `mediaFileId` so the block re-resolves the attachment at
+ * render time (surviving a re-upload) and the sidebar shows the file picker
+ * with the right file already chosen.
+ *
+ * @param string $href Raw href from the mockup.
+ * @return array Block attributes (empty when there is no href).
+ */
+function ekwa_mc_link_attrs( $href ) {
+	$href = trim( (string) $href );
+	if ( '' === $href ) {
+		return array();
+	}
+
+	$media = ekwa_mc_resolve_media_link( $href );
+	if ( $media ) {
+		return array(
+			'href'        => $media['url'],
+			'url'         => $media['url'],
+			'linkType'    => 'media',
+			'mediaUrl'    => $media['url'],
+			'mediaFileId' => $media['id'],
+		);
+	}
+
+	return array( 'href' => $href, 'url' => $href );
 }
 
 /**
@@ -1490,7 +1616,7 @@ function ekwa_mc_convert_anchor_wrapper( $node, $depth ) {
 		$class = ekwa_mc_strip_lightbox_classes( $class );
 	}
 
-	if ( $url && 'a' === $tag )     { $attrs['href']      = $url; }
+	if ( $url && 'a' === $tag )     { $attrs += ekwa_mc_link_attrs( $url ); }
 	if ( $class )                   { $attrs['className'] = $class; }
 	if ( $target === '_blank' )     { $attrs['target']    = '_blank'; }
 	if ( $rel )                     { $attrs['rel']       = $rel; }
@@ -1604,6 +1730,26 @@ function ekwa_mc_has_fa_class( $node ) {
 		}
 	}
 
+	return false;
+}
+
+/**
+ * Does this node contain media that has to become a block of its own?
+ *
+ * These are the elements whose sources are resolved through the media manifest
+ * / library (or that carry their own block); leaving one inside a rich-text
+ * attribute silently strands its URL. Deliberately limited to elements that are
+ * valid *inside* a <p>, so the wrapper can keep its tag either way.
+ *
+ * @param DOMElement $node
+ * @return bool
+ */
+function ekwa_mc_has_media_descendant( $node ) {
+	foreach ( array( 'img', 'picture', 'svg', 'video', 'audio', 'iframe', 'canvas' ) as $tag ) {
+		if ( $node->getElementsByTagName( $tag )->length > 0 ) {
+			return true;
+		}
+	}
 	return false;
 }
 
