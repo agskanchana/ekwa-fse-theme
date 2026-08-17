@@ -653,10 +653,9 @@ function ekwa_render_vimeo_video_block( $attrs ) {
 /**
  * Fetch a YouTube video's transcript.
  *
- * Tries scraping captionTracks out of the public watch page first; if that
- * yields nothing (common on hosting IPs that get a stripped response) falls
- * back to the InnerTube youtubei/v1/player endpoint. Caches hits for 30 days
- * and misses for 5 minutes.
+ * Walks the caption sources in ekwa_video_youtube_caption_tracks() in order
+ * until one both lists a track and actually serves its text. Caches hits for
+ * 30 days and misses for 5 minutes.
  *
  * @param string $video_id
  * @param bool   $force_refresh
@@ -679,27 +678,50 @@ function ekwa_video_fetch_youtube_transcript( $video_id, $force_refresh = false 
 		}
 	}
 
-	$tracks = ekwa_video_youtube_caption_tracks_from_watch_page( $video_id );
-	if ( empty( $tracks ) ) {
-		$tracks = ekwa_video_youtube_caption_tracks_from_innertube( $video_id );
+	$found_tracks = false;
+	$text         = null;
+	$pick         = array();
+
+	// Each source is tried end-to-end (discover → pick → download) because a
+	// source can hand back a perfectly good track list whose baseUrls are dead:
+	// since YouTube's 2025 proof-of-origin change, watch-page/WEB caption URLs
+	// answer 200 with a zero-length body unless they carry a `pot` token, while
+	// the mobile-app clients still serve captions unauthenticated.
+	foreach ( array( 'ios', 'android', 'watch_page', 'innertube_web' ) as $source_name ) {
+		$tracks = ekwa_video_youtube_caption_tracks( $video_id, $source_name );
+		if ( empty( $tracks ) ) {
+			continue;
+		}
+		$found_tracks = true;
+
+		$candidate = ekwa_video_pick_youtube_caption_track( $tracks );
+		if ( empty( $candidate['baseUrl'] ) ) {
+			continue;
+		}
+
+		$candidate_text = ekwa_video_fetch_caption_text( $candidate['baseUrl'], 'json3' );
+		if ( null === $candidate_text ) {
+			// json3 endpoint failed or returned no events — fall back to XML.
+			$candidate_text = ekwa_video_fetch_caption_text( $candidate['baseUrl'], null );
+		}
+
+		if ( ! empty( $candidate_text ) ) {
+			$text = $candidate_text;
+			$pick = $candidate;
+			break;
+		}
+		// Track existed but yielded nothing readable — remember the emptiness
+		// only if no later source does better.
+		if ( '' === $candidate_text && null === $text ) {
+			$text = '';
+			$pick = $candidate;
+		}
 	}
-	if ( empty( $tracks ) ) {
+
+	if ( ! $found_tracks ) {
 		set_transient( $cache_key, '__none__', 5 * MINUTE_IN_SECONDS );
 		return array( 'success' => false, 'message' => __( 'No captions available for this video.', 'ekwa' ) );
 	}
-
-	$pick = ekwa_video_pick_youtube_caption_track( $tracks );
-	if ( empty( $pick['baseUrl'] ) ) {
-		set_transient( $cache_key, '__none__', 5 * MINUTE_IN_SECONDS );
-		return array( 'success' => false, 'message' => __( 'Captions were found but could not be read.', 'ekwa' ) );
-	}
-
-	$text = ekwa_video_fetch_caption_text( $pick['baseUrl'], 'json3' );
-	if ( null === $text ) {
-		// json3 endpoint failed or returned no events — fall back to XML/srv1.
-		$text = ekwa_video_fetch_caption_text( $pick['baseUrl'], null );
-	}
-
 	if ( null === $text ) {
 		return array( 'success' => false, 'message' => __( 'Could not reach YouTube to fetch captions. Try again shortly.', 'ekwa' ) );
 	}
@@ -763,24 +785,101 @@ function ekwa_video_youtube_caption_tracks_from_watch_page( $video_id ) {
 }
 
 /**
- * Fallback: ask YouTube's InnerTube player endpoint directly. Datacenter IPs
- * that get a stripped watch page usually still get a full response here.
+ * InnerTube client definitions, keyed by the source names used above.
+ *
+ * IOS/ANDROID come first at the call site because their caption baseUrls are
+ * still served without a proof-of-origin token; WEB is kept as a last resort
+ * for the day that changes back.
+ *
+ * @return array<string, array{context: array, headers: array}>
+ */
+function ekwa_video_youtube_innertube_clients() {
+	return array(
+		'ios'           => array(
+			'context' => array(
+				'clientName'    => 'IOS',
+				'clientVersion' => '20.10.4',
+				'deviceMake'    => 'Apple',
+				'deviceModel'   => 'iPhone16,2',
+				'osName'        => 'iPhone',
+				'osVersion'     => '18.3.2.22D82',
+				'hl'            => 'en',
+				'gl'            => 'US',
+			),
+			'headers' => array(
+				'User-Agent'               => 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X)',
+				'X-Youtube-Client-Name'    => '5',
+				'X-Youtube-Client-Version' => '20.10.4',
+			),
+		),
+		'android'       => array(
+			'context' => array(
+				'clientName'        => 'ANDROID',
+				'clientVersion'     => '20.10.38',
+				'androidSdkVersion' => 30,
+				'osName'            => 'Android',
+				'osVersion'         => '11',
+				'hl'                => 'en',
+				'gl'                => 'US',
+			),
+			'headers' => array(
+				'User-Agent'               => 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+				'X-Youtube-Client-Name'    => '3',
+				'X-Youtube-Client-Version' => '20.10.38',
+			),
+		),
+		'innertube_web' => array(
+			'context' => array(
+				'clientName'    => 'WEB',
+				'clientVersion' => '2.20240101.00.00',
+				'hl'            => 'en',
+				'gl'            => 'US',
+			),
+			'headers' => array(
+				'User-Agent'               => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				'X-Youtube-Client-Name'    => '1',
+				'X-Youtube-Client-Version' => '2.20240101.00.00',
+				'Origin'                   => 'https://www.youtube.com',
+				'Referer'                  => 'https://www.youtube.com/',
+			),
+		),
+	);
+}
+
+/**
+ * Get a video's caption track list from one named source.
  *
  * @param string $video_id
+ * @param string $source 'ios' | 'android' | 'watch_page' | 'innertube_web'.
  * @return array|null
  */
-function ekwa_video_youtube_caption_tracks_from_innertube( $video_id ) {
+function ekwa_video_youtube_caption_tracks( $video_id, $source ) {
+	if ( 'watch_page' === $source ) {
+		return ekwa_video_youtube_caption_tracks_from_watch_page( $video_id );
+	}
+
+	$clients = ekwa_video_youtube_innertube_clients();
+	if ( ! isset( $clients[ $source ] ) ) {
+		return null;
+	}
+
+	return ekwa_video_youtube_caption_tracks_from_innertube( $video_id, $clients[ $source ] );
+}
+
+/**
+ * Ask YouTube's InnerTube player endpoint directly, posing as $client.
+ *
+ * @param string $video_id
+ * @param array  $client One entry from ekwa_video_youtube_innertube_clients().
+ * @return array|null
+ */
+function ekwa_video_youtube_caption_tracks_from_innertube( $video_id, $client ) {
 	$body = wp_json_encode(
 		array(
-			'videoId' => $video_id,
-			'context' => array(
-				'client' => array(
-					'clientName'    => 'WEB',
-					'clientVersion' => '2.20240101.00.00',
-					'hl'            => 'en',
-					'gl'            => 'US',
-				),
-			),
+			'videoId'        => $video_id,
+			'context'        => array( 'client' => $client['context'] ),
+			'contentCheckOk' => true,
+			'racyCheckOk'    => true,
 		)
 	);
 
@@ -788,15 +887,13 @@ function ekwa_video_youtube_caption_tracks_from_innertube( $video_id ) {
 		'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
 		array(
 			'timeout' => 15,
-			'headers' => array(
-				'Content-Type'             => 'application/json',
-				'Accept'                   => 'application/json',
-				'Accept-Language'          => 'en-US,en;q=0.9',
-				'User-Agent'               => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-				'X-Youtube-Client-Name'    => '1',
-				'X-Youtube-Client-Version' => '2.20240101.00.00',
-				'Origin'                   => 'https://www.youtube.com',
-				'Referer'                  => 'https://www.youtube.com/',
+			'headers' => array_merge(
+				array(
+					'Content-Type'    => 'application/json',
+					'Accept'          => 'application/json',
+					'Accept-Language' => 'en-US,en;q=0.9',
+				),
+				$client['headers']
 			),
 			'body'    => $body,
 		)
@@ -857,11 +954,27 @@ function ekwa_video_fetch_caption_text( $base_url, $fmt ) {
 		$url .= ( false !== strpos( $url, '?' ) ? '&' : '?' ) . 'fmt=' . rawurlencode( $fmt );
 	}
 
-	$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
+	$response = wp_remote_get(
+		$url,
+		array(
+			'timeout' => 15,
+			'headers' => array(
+				'Accept-Language' => 'en-US,en;q=0.9',
+				'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+			),
+		)
+	);
 	if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
 		return null;
 	}
 	$body = wp_remote_retrieve_body( $response );
+
+	// A caption URL that needs a proof-of-origin token answers 200 with an
+	// empty body rather than an error — treat that as a failed source so the
+	// caller moves on, not as "this video has no caption text".
+	if ( '' === trim( $body ) ) {
+		return null;
+	}
 
 	if ( 'json3' === $fmt ) {
 		$json = json_decode( $body, true );
@@ -889,8 +1002,8 @@ function ekwa_video_fetch_caption_text( $base_url, $fmt ) {
 		return trim( preg_replace( '/\s+/', ' ', $text ) );
 	}
 
-	// XML (srv1).
-	if ( '' === $body || false === stripos( $body, '<text' ) ) {
+	// XML: srv1 (<transcript><text>) or srv3 (<timedtext><body><p><s>).
+	if ( false === stripos( $body, '<text' ) && false === stripos( $body, '<p ' ) ) {
 		return null;
 	}
 	$previous = libxml_use_internal_errors( true );
@@ -901,9 +1014,30 @@ function ekwa_video_fetch_caption_text( $base_url, $fmt ) {
 		return null;
 	}
 
+	$cues = array();
+	if ( isset( $xml->text ) ) {
+		foreach ( $xml->text as $node ) {
+			$cues[] = (string) $node;
+		}
+	} else {
+		// srv3 splits a cue across <s> children; concatenate them per <p>.
+		$paragraphs = $xml->xpath( '//p' );
+		foreach ( ( is_array( $paragraphs ) ? $paragraphs : array() ) as $paragraph ) {
+			if ( isset( $paragraph->s ) ) {
+				$cue = '';
+				foreach ( $paragraph->s as $segment ) {
+					$cue .= (string) $segment;
+				}
+				$cues[] = $cue;
+			} else {
+				$cues[] = (string) $paragraph;
+			}
+		}
+	}
+
 	$text = '';
-	foreach ( $xml->text as $node ) {
-		$piece = trim( html_entity_decode( (string) $node, ENT_QUOTES | ENT_XML1, 'UTF-8' ) );
+	foreach ( $cues as $cue ) {
+		$piece = trim( html_entity_decode( $cue, ENT_QUOTES | ENT_XML1, 'UTF-8' ) );
 		if ( '' === $piece || preg_match( '/^[\[\(].*[\]\)]$/', $piece ) ) {
 			continue;
 		}
