@@ -641,7 +641,7 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 	// budget stays generous anyway for section-heavy stylesheets, and "thinking"
 	// stays OFF — copying matching rules out of a stylesheet needs none, and
 	// thinking tokens would eat into the same output budget.
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-flash', 65536, 0 );
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, ekwa_ai_fast_model(), 65536, 0 );
 	if ( is_wp_error( $result ) ) {
 		return $result;
 	}

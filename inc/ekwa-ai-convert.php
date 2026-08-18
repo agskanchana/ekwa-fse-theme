@@ -46,7 +46,7 @@ function ekwa_ai_convert_register_routes() {
 			'model' => array(
 				'required' => false,
 				'type'     => 'string',
-				'default'  => 'gemini-2.5-flash',
+				'default'  => '',
 			),
 			// Same CSS workflow as /convert-markup (extract / child / scoped /
 			// AI-extract) — handled by the shared ekwa_mc_apply_css_options().
@@ -106,7 +106,7 @@ function ekwa_ai_convert_register_routes() {
 			'model' => array(
 				'required' => false,
 				'type'     => 'string',
-				'default'  => 'gemini-2.5-flash',
+				'default'  => '',
 			),
 		),
 	) );
@@ -255,10 +255,7 @@ function ekwa_ai_convert_handle_request( $request ) {
 		return new WP_Error( 'too_large', __( 'That is too large for one pass — convert it section by section (header, each section, footer).', 'ekwa' ), array( 'status' => 413 ) );
 	}
 
-	$allowed = ekwa_ai_generate_allowed_models();
-	if ( ! isset( $allowed[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	// Reduce a full document to body content — same guard the deterministic
 	// converter uses, so pasting a whole index.html is safe.
@@ -488,10 +485,7 @@ function ekwa_ai_reconvert_handle_request( $request ) {
 		$html = substr( $html, 0, 20000 );
 	}
 
-	$allowed = ekwa_ai_generate_allowed_models();
-	if ( ! isset( $allowed[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	$system   = ekwa_ai_reconvert_system_prompt( $target );
 	$contents = array(

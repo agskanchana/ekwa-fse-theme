@@ -314,6 +314,15 @@ function ekwa_save_settings() {
 		'ekwa_appt_url'         => 'esc_url_raw',
 		'ekwa_publisher_logo'   => 'absint',
 		'ekwa_share_image'      => 'absint',
+		'ekwa_schema_id'        => 'esc_url_raw',
+		'ekwa_founder_id'       => 'esc_url_raw',
+		'ekwa_schema_id_page'   => 'absint',
+		'ekwa_founder_id_page'  => 'absint',
+		'ekwa_founder_name'     => 'sanitize_text_field',
+		'ekwa_founder_job_title' => 'sanitize_text_field',
+		'ekwa_founder_page'     => 'absint',
+		'ekwa_founder_description' => 'sanitize_textarea_field',
+		'ekwa_founder_image'    => 'absint',
 		'ekwa_country'          => 'sanitize_text_field',
 		'ekwa_country_custom'   => 'sanitize_text_field',
 		'ekwa_interlink_enabled'      => 'sanitize_text_field',
@@ -1033,12 +1042,8 @@ function ekwa_settings_tabs() {
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
 	);
 
-	// Only offer the tab when the docs module is actually loaded, so removing
-	// inc/ekwa-docs-assistant.php leaves no dead tab behind.
-	if ( function_exists( 'ekwa_render_help_tab' ) ) {
-		$tabs['help'] = __( 'Help & Ask AI', 'ekwa' );
-	}
-
+	// Help & Ask AI is its own page now (Appearance → Help & Ask AI), so it is
+	// deliberately absent here — see ekwa_add_help_page().
 	return $tabs;
 }
 
@@ -1067,6 +1072,27 @@ function ekwa_render_settings_page() {
 	$pub_logo      = get_option( 'ekwa_publisher_logo', 0 );
 	$share_img     = get_option( 'ekwa_share_image', 0 );
 	$country       = get_option( 'ekwa_country', '' );
+	$schema_id     = get_option( 'ekwa_schema_id', '' );
+	$founder_id    = get_option( 'ekwa_founder_id', '' );
+	$schema_id_page  = (int) get_option( 'ekwa_schema_id_page', 0 );
+	$founder_id_page = (int) get_option( 'ekwa_founder_id_page', 0 );
+	$founder_name  = get_option( 'ekwa_founder_name', '' );
+	$founder_job   = get_option( 'ekwa_founder_job_title', '' );
+	$founder_page  = (int) get_option( 'ekwa_founder_page', 0 );
+	$founder_desc  = get_option( 'ekwa_founder_description', '' );
+	$founder_img   = (int) get_option( 'ekwa_founder_image', 0 );
+	$founder_posts = get_posts( array(
+		'numberposts' => -1,
+		'post_status' => 'publish',
+		'orderby'     => 'title',
+		'order'       => 'ASC',
+	) );
+
+	// Show the derived values as placeholders so the admin can see what an
+	// empty field will fall back to (mirrors ekwa_schema_context()).
+	$schema_id_hint  = get_option( 'siteurl' ) . '/#' . strtolower( $org_type ? $org_type : 'organization' );
+	$founder_id_hint = get_option( 'siteurl' ) . '/#' . ( $founder_job ? sanitize_title( $founder_job ) : 'founder' );
+
 	$mmenu_bg          = get_option( 'ekwa_mmenu_bg', '' );
 	$mmenu_text        = get_option( 'ekwa_mmenu_text', '' );
 	$mmenu_icon        = get_option( 'ekwa_mmenu_icon', '' );
@@ -1162,6 +1188,114 @@ function ekwa_render_settings_page() {
 						<tr>
 							<th><label for="ekwa_email"><?php esc_html_e( 'Email Address', 'ekwa' ); ?></label></th>
 							<td><input type="email" id="ekwa_email" name="ekwa_email" value="<?php echo esc_attr( $email ); ?>" class="regular-text" /></td>
+						</tr>
+					</table>
+				</div>
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Schema Identity', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php
+						printf(
+							/* translators: %s: link to the Schema Editor page. */
+							esc_html__( 'These feed the JSON-LD built on the %s page. An @id is the permanent identifier other schema nodes point at, so once a site is live it should not change.', 'ekwa' ),
+							'<a href="' . esc_url( admin_url( 'themes.php?page=ekwa-schema-editor' ) ) . '">' . esc_html__( 'Schema Editor', 'ekwa' ) . '</a>'
+						);
+						?>
+					</p>
+					<table class="form-table">
+						<?php
+						ekwa_render_schema_id_field( array(
+							'id_base'  => 'ekwa_schema_id',
+							'label'    => __( 'Main Entity @id', 'ekwa' ),
+							'tag'      => 'schema_id',
+							'page_val' => $schema_id_page,
+							'manual'   => $schema_id,
+							'hint'     => $schema_id_hint,
+							'pages'    => $pages,
+							'posts'    => $founder_posts,
+						) );
+						ekwa_render_schema_id_field( array(
+							'id_base'  => 'ekwa_founder_id',
+							'label'    => __( 'Founder @id', 'ekwa' ),
+							'tag'      => 'founder_id',
+							'page_val' => $founder_id_page,
+							'manual'   => $founder_id,
+							'hint'     => $founder_id_hint,
+							'pages'    => $pages,
+							'posts'    => $founder_posts,
+						) );
+						?>
+					</table>
+				</div>
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Founder', 'ekwa' ); ?></h2>
+					<p class="description" style="margin-bottom:1em;">
+						<?php esc_html_e( 'Populates the schema founder node. Leave the name blank to omit the founder from the schema entirely.', 'ekwa' ); ?>
+					</p>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_founder_name"><?php esc_html_e( 'Name', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="text" id="ekwa_founder_name" name="ekwa_founder_name" value="<?php echo esc_attr( $founder_name ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Dr. Jane Smith, DDS', 'ekwa' ); ?>" />
+								<p class="description"><?php esc_html_e( 'Include any credentials exactly as they should appear — {{founder_name}}.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_founder_job_title"><?php esc_html_e( 'Job Title', 'ekwa' ); ?></label></th>
+							<td>
+								<input type="text" id="ekwa_founder_job_title" name="ekwa_founder_job_title" value="<?php echo esc_attr( $founder_job ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Lead Dentist', 'ekwa' ); ?>" />
+								<p class="description"><?php esc_html_e( 'Available as {{founder_job_title}}.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_founder_page"><?php esc_html_e( 'Bio Page', 'ekwa' ); ?></label></th>
+							<td>
+								<select id="ekwa_founder_page" name="ekwa_founder_page">
+									<option value="0"><?php esc_html_e( '— Select —', 'ekwa' ); ?></option>
+									<?php if ( ! empty( $pages ) ) : ?>
+										<optgroup label="<?php esc_attr_e( 'Pages', 'ekwa' ); ?>">
+											<?php foreach ( $pages as $p ) : ?>
+												<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $founder_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+											<?php endforeach; ?>
+										</optgroup>
+									<?php endif; ?>
+									<?php if ( ! empty( $founder_posts ) ) : ?>
+										<optgroup label="<?php esc_attr_e( 'Posts', 'ekwa' ); ?>">
+											<?php foreach ( $founder_posts as $p ) : ?>
+												<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $founder_page, $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+											<?php endforeach; ?>
+										</optgroup>
+									<?php endif; ?>
+								</select>
+								<p class="description"><?php esc_html_e( 'The founder’s bio page or post. Its permalink becomes {{founder_url}} — for a bio hosted elsewhere, type the URL straight into the Schema Editor instead.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_founder_description"><?php esc_html_e( 'Description', 'ekwa' ); ?></label></th>
+							<td>
+								<textarea id="ekwa_founder_description" name="ekwa_founder_description" rows="3" class="large-text"><?php echo esc_textarea( $founder_desc ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'One or two sentences of bio. Optional.', 'ekwa' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th><label><?php esc_html_e( 'Photo', 'ekwa' ); ?></label></th>
+							<td>
+								<div class="ekwa-media-field" data-width="400" data-height="400">
+									<input type="hidden" name="ekwa_founder_image" value="<?php echo esc_attr( $founder_img ); ?>" class="ekwa-media-id" />
+									<div class="ekwa-media-preview">
+										<?php if ( $founder_img ) : ?>
+											<?php echo wp_get_attachment_image( $founder_img, array( 150, 150 ) ); ?>
+										<?php else : ?>
+											<span class="ekwa-no-image"><?php esc_html_e( 'No image selected', 'ekwa' ); ?></span>
+										<?php endif; ?>
+									</div>
+									<button type="button" class="button ekwa-media-upload"><?php esc_html_e( 'Select Image', 'ekwa' ); ?></button>
+									<button type="button" class="button ekwa-media-remove" <?php echo ! $founder_img ? 'style="display:none;"' : ''; ?>><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
+									<p class="description"><?php esc_html_e( 'Optional. A square headshot works best.', 'ekwa' ); ?></p>
+								</div>
+							</td>
 						</tr>
 					</table>
 				</div>
@@ -2023,6 +2157,62 @@ function ekwa_render_settings_page() {
 							</td>
 						</tr>
 						<tr>
+								<th><?php esc_html_e( 'Models in use', 'ekwa' ); ?></th>
+								<td>
+									<?php
+									$model_labels  = function_exists( 'ekwa_ai_models' ) ? ekwa_ai_models() : array();
+									$model_error   = function_exists( 'ekwa_ai_model_catalog_error' ) ? ekwa_ai_model_catalog_error() : '';
+									$model_tiers   = function_exists( 'ekwa_ai_default_model' ) ? array(
+										__( 'Default (best quality)', 'ekwa' ) => ekwa_ai_default_model(),
+										__( 'Bulk / background', 'ekwa' )      => ekwa_ai_fast_model(),
+										__( 'Cheapest', 'ekwa' )               => ekwa_ai_cheap_model(),
+									) : array();
+									$refresh_url   = wp_nonce_url(
+										admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=ai&ekwa_refresh_models=1' ),
+										'ekwa_refresh_models'
+									);
+									?>
+									<?php if ( ! empty( $_GET['ekwa_models_refreshed'] ) ) : ?>
+										<p><strong><?php esc_html_e( 'Model list refreshed.', 'ekwa' ); ?></strong></p>
+									<?php endif; ?>
+
+									<table class="widefat striped" style="max-width:520px;margin-bottom:8px;">
+										<tbody>
+										<?php foreach ( $model_tiers as $tier_label => $tier_model ) : ?>
+											<tr>
+												<td style="width:170px;"><?php echo esc_html( $tier_label ); ?></td>
+												<td><code><?php echo esc_html( $tier_model ); ?></code></td>
+											</tr>
+										<?php endforeach; ?>
+										</tbody>
+									</table>
+
+									<a class="button" href="<?php echo esc_url( $refresh_url ); ?>"><?php esc_html_e( 'Refresh model list', 'ekwa' ); ?></a>
+
+									<p class="description">
+										<?php
+										printf(
+											/* translators: %d: number of models. */
+											esc_html( _n( '%d model available to this API key.', '%d models available to this API key.', count( $model_labels ), 'ekwa' ) ),
+											count( $model_labels )
+										);
+										?>
+										<?php esc_html_e( 'Read from Google when the key is saved and re-checked every 12 hours, so new Gemini releases appear without a theme update.', 'ekwa' ); ?>
+									</p>
+									<?php if ( $model_error ) : ?>
+										<p class="description" style="color:#b32d2e;">
+											<?php
+											printf(
+												/* translators: %s: error message from Google. */
+												esc_html__( 'Could not read the live model list (%s) — showing the theme\'s built-in list instead.', 'ekwa' ),
+												esc_html( $model_error )
+											);
+											?>
+										</p>
+									<?php endif; ?>
+								</td>
+							</tr>
+							<tr>
 							<th><label for="ekwa_ai_min_role"><?php esc_html_e( 'Minimum role for AI', 'ekwa' ); ?></label></th>
 							<td>
 								<?php $ai_min_role = get_option( 'ekwa_ai_min_role', 'contributor' ); ?>
@@ -2141,8 +2331,8 @@ function ekwa_render_settings_page() {
 								<th><label for="ekwa_interlink_refine_model"><?php esc_html_e( 'AI Model', 'ekwa' ); ?></label></th>
 								<td>
 									<?php
-									$interlink_model  = get_option( 'ekwa_interlink_refine_model', 'gemini-2.5-flash' );
-									$interlink_models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array( 'gemini-2.5-flash' => 'Gemini 2.5 Flash' );
+									$interlink_model = function_exists( 'ekwa_interlink_refine_model' ) ? ekwa_interlink_refine_model() : (string) get_option( 'ekwa_interlink_refine_model', '' );
+									$interlink_models = function_exists( 'ekwa_ai_models' ) ? ekwa_ai_models() : array();
 									?>
 									<select id="ekwa_interlink_refine_model" name="ekwa_interlink_refine_model">
 										<?php foreach ( $interlink_models as $model_id => $model_label ) : ?>
@@ -2302,13 +2492,6 @@ function ekwa_render_settings_page() {
 			</div><!-- /bulk-pages -->
 		</form>
 
-		<!-- ========== HELP TAB (no form — Enter must never save settings) ========== -->
-		<?php if ( function_exists( 'ekwa_render_help_tab' ) ) : ?>
-			<div class="ekwa-tab-pane <?php echo 'help' === $active_tab ? 'active' : ''; ?>" data-tab="help">
-				<?php ekwa_render_help_tab(); ?>
-			</div><!-- /help -->
-		<?php endif; ?>
-
 		<script>
 			(function () {
 				var tabs  = document.querySelectorAll( '.ekwa-nav-tabs .nav-tab' );
@@ -2366,6 +2549,72 @@ function ekwa_render_settings_page() {
 			})();
 		</script>
 	</div>
+	<?php
+}
+
+/**
+ * Render a schema `@id` field: pick a page/post, or type a value.
+ *
+ * Both controls are always visible rather than hidden behind a mode toggle —
+ * the resolution order is a single rule (typed value wins, then the selected
+ * permalink, then a derived fallback) and showing both makes that visible.
+ *
+ * @param array $args {
+ *     @type string $id_base   Field name prefix, e.g. 'ekwa_schema_id'.
+ *     @type string $label     Row label.
+ *     @type int    $page_val  Currently selected post ID.
+ *     @type string $manual    Currently saved manual value.
+ *     @type string $hint      Derived fallback shown when both are empty.
+ *     @type string $tag       Template tag this feeds, e.g. 'schema_id'.
+ *     @type array  $pages     Pages for the dropdown.
+ *     @type array  $posts     Posts for the dropdown.
+ * }
+ */
+function ekwa_render_schema_id_field( $args ) {
+	$id_base = $args['id_base'];
+	?>
+	<tr>
+		<th><label for="<?php echo esc_attr( $id_base ); ?>_page"><?php echo esc_html( $args['label'] ); ?></label></th>
+		<td>
+			<select id="<?php echo esc_attr( $id_base ); ?>_page" name="<?php echo esc_attr( $id_base ); ?>_page">
+				<option value="0"><?php esc_html_e( '— Select a page or post —', 'ekwa' ); ?></option>
+				<?php if ( ! empty( $args['pages'] ) ) : ?>
+					<optgroup label="<?php esc_attr_e( 'Pages', 'ekwa' ); ?>">
+						<?php foreach ( $args['pages'] as $p ) : ?>
+							<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $args['page_val'], $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+						<?php endforeach; ?>
+					</optgroup>
+				<?php endif; ?>
+				<?php if ( ! empty( $args['posts'] ) ) : ?>
+					<optgroup label="<?php esc_attr_e( 'Posts', 'ekwa' ); ?>">
+						<?php foreach ( $args['posts'] as $p ) : ?>
+							<option value="<?php echo esc_attr( $p->ID ); ?>" <?php selected( $args['page_val'], $p->ID ); ?>><?php echo esc_html( $p->post_title ); ?></option>
+						<?php endforeach; ?>
+					</optgroup>
+				<?php endif; ?>
+			</select>
+
+			<p style="margin:8px 0 4px;">
+				<label for="<?php echo esc_attr( $id_base ); ?>" style="display:block;margin-bottom:2px;">
+					<?php esc_html_e( '…or enter it manually', 'ekwa' ); ?>
+				</label>
+				<input type="text" id="<?php echo esc_attr( $id_base ); ?>" name="<?php echo esc_attr( $id_base ); ?>"
+					value="<?php echo esc_attr( $args['manual'] ); ?>" class="large-text"
+					placeholder="<?php echo esc_attr( $args['hint'] ); ?>" />
+			</p>
+
+			<p class="description">
+				<?php
+				printf(
+					/* translators: 1: template tag, 2: derived fallback URL. */
+					esc_html__( 'Feeds %1$s. A value typed here overrides the selection above; with both left empty the schema falls back to %2$s.', 'ekwa' ),
+					'<code>{{' . esc_html( $args['tag'] ) . '}}</code>',
+					'<code>' . esc_html( $args['hint'] ) . '</code>'
+				);
+				?>
+			</p>
+		</td>
+	</tr>
 	<?php
 }
 

@@ -118,6 +118,11 @@ require_once get_template_directory() . '/inc/ekwa-fonts.php';
 require_once get_template_directory() . '/inc/ekwa-schema.php';
 
 /**
+ * Load the Schema Editor admin page (edits the template ekwa-schema.php renders).
+ */
+require_once get_template_directory() . '/inc/ekwa-schema-editor.php';
+
+/**
  * Load shortcode builder admin page.
  */
 require_once get_template_directory() . '/inc/ekwa-shortcode-builder.php';
@@ -209,6 +214,13 @@ require_once get_template_directory() . '/inc/ekwa-converter-menu.php';
  * the only icon font the theme loads.
  */
 require_once get_template_directory() . '/inc/ekwa-converter-icons.php';
+
+/**
+ * Gemini model catalog — reads the models the configured key can actually call
+ * and supplies every feature's default. Loaded before the AI modules, which
+ * all resolve their model through it.
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-models.php';
 
 /**
  * AI governance — role gating, per-user daily rate limits, usage logging,
@@ -580,7 +592,7 @@ function ekwa_enqueue_converter_editor_script() {
 	if ( file_exists( $child_css_path ) ) {
 		$child_css_uri = add_query_arg( 'ver', filemtime( $child_css_path ), $child_css_uri );
 	}
-	$ai_models     = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
+	$ai_models     = function_exists( 'ekwa_ai_models' ) ? ekwa_ai_models() : array();
 	$ai_model_list = array();
 	foreach ( $ai_models as $model_id => $model_label ) {
 		$ai_model_list[] = array(
@@ -594,7 +606,13 @@ function ekwa_enqueue_converter_editor_script() {
 		array(
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
-			'defaultModel'       => 'gemini-2.5-flash',
+			'defaultModel'       => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
+			// Design tokens + mockup sheet + fonts, exactly as <head> prints
+			// them — without these the preview can't resolve the var() and
+			// component rules the generated CSS is told to build on.
+			'previewCss'         => function_exists( 'ekwa_ai_generate_preview_head_css' )
+				? ekwa_ai_generate_preview_head_css()
+				: '',
 		)
 	);
 
@@ -623,7 +641,7 @@ function ekwa_enqueue_converter_editor_script() {
 		array(
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
-			'defaultModel'       => 'gemini-2.5-flash',
+			'defaultModel'       => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
 		)
 	);
 }
@@ -691,7 +709,7 @@ function ekwa_enqueue_interlink_editor_script() {
 		true
 	);
 
-	$ai_models     = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
+	$ai_models     = function_exists( 'ekwa_ai_models' ) ? ekwa_ai_models() : array();
 	$ai_model_list = array();
 	foreach ( $ai_models as $model_id => $model_label ) {
 		$ai_model_list[] = array(
@@ -704,7 +722,7 @@ function ekwa_enqueue_interlink_editor_script() {
 		'ekwaInterlink',
 		array(
 			'models'       => $ai_model_list,
-			'defaultModel' => function_exists( 'ekwa_interlink_refine_model' ) ? ekwa_interlink_refine_model() : 'gemini-2.5-flash',
+			'defaultModel' => function_exists( 'ekwa_interlink_refine_model' ) ? ekwa_interlink_refine_model() : ekwa_ai_default_model(),
 			'hasApiKey'    => (bool) ekwa_get_ai_api_key(),
 		)
 	);

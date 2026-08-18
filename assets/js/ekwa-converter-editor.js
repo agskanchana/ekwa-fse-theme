@@ -31,7 +31,6 @@
 	var apiFetch           = wp.apiFetch;
 	var parse              = wp.blocks.parse;
 	var createBlock        = wp.blocks.createBlock;
-	var SelectControl      = wp.components.SelectControl;
 	var dispatch           = wp.data.dispatch;
 	var __                 = wp.i18n.__;
 
@@ -69,17 +68,20 @@
 	}
 
 	// ─── Cross-plugin handoff store ─────────────────────────────────────────
-	// The AI Generator plugin calls window.ekwaMockupConverter.openWithHtml(html)
-	// to pre-fill this modal. We hold the pending HTML and a single open-listener
-	// that the converter plugin registers when it mounts.
+	// The AI Generator plugin calls window.ekwaMockupConverter.openWithHtml(html, css)
+	// to pre-fill this modal. We hold the pending HTML/CSS and a single
+	// open-listener that the converter plugin registers when it mounts.
 
 	var pendingHtml   = '';
+	var pendingCss    = '';
 	var openListener  = null;
 
 	window.ekwaMockupConverter = window.ekwaMockupConverter || {};
 
-	window.ekwaMockupConverter.openWithHtml = function ( html ) {
+	// css is optional — an older generator build calls this with html alone.
+	window.ekwaMockupConverter.openWithHtml = function ( html, css ) {
 		pendingHtml = typeof html === 'string' ? html : '';
+		pendingCss  = typeof css === 'string' ? css : '';
 		if ( typeof openListener === 'function' ) {
 			openListener();
 		}
@@ -89,6 +91,12 @@
 	function consumePendingHtml() {
 		var v = pendingHtml;
 		pendingHtml = '';
+		return v;
+	}
+
+	function consumePendingCss() {
+		var v = pendingCss;
+		pendingCss = '';
 		return v;
 	}
 
@@ -195,6 +203,7 @@
 	function ConverterModal( props ) {
 		var onClose      = props.onClose;
 		var initialHtml  = props.initialHtml || '';
+		var initialCss   = props.initialCss || '';
 
 		// ── State ────────────────────────────────────────────────────
 		var s1 = useState( initialHtml ); var htmlValue    = s1[0]; var setHtmlValue    = s1[1];
@@ -213,8 +222,14 @@
 		// steps: 'input' | 'result'
 
 		// Mockup CSS import + structured report.
-		var s13 = useState( '' );        var cssValue   = s13[0]; var setCssValue   = s13[1];
-		var s14 = useState( 'extract' ); var cssMode    = s14[0]; var setCssMode    = s14[1];
+		var s13 = useState( initialCss ); var cssValue   = s13[0]; var setCssValue   = s13[1];
+		// CSS always attaches to the section as Scoped CSS. The other
+		// destinations ("extract fonts & colors only", "append to child
+		// style.css") produced sections whose styling lived somewhere else, or
+		// nowhere — scoped is the only one that keeps a converted section
+		// self-contained. Kept as state, not a constant, because the REST
+		// parameter still accepts the other modes for older callers.
+		var s14 = useState( 'scoped' ); var cssMode = s14[0];
 		// AI CSS extraction is retired — the mockup stylesheet is printed whole
 		// instead of being split section by section, so nothing sends
 		// css_ai_extract any more. The REST parameter still works for an older
@@ -465,16 +480,9 @@
 						placeholder: '/* paste the mockup’s style.css here */',
 						help: __( 'Fonts and colors are always extracted and shown after conversion.', 'ekwa' ),
 					} ),
-					cssValue.trim() ? el( SelectControl, {
-						label: __( 'CSS destination', 'ekwa' ),
-						value: cssMode,
-						options: [
-							{ label: __( 'Just extract fonts & colors', 'ekwa' ), value: 'extract' },
-							{ label: __( 'Append to child theme style.css', 'ekwa' ), value: 'child' },
-							{ label: __( 'Attach to section as Scoped CSS (inlined only where it renders)', 'ekwa' ), value: 'scoped' },
-						],
-						onChange: setCssMode,
-					} ) : null
+					cssValue.trim() ? el( 'p', { className: 'ekwa-mc-css-dest' },
+						__( 'This CSS is attached to the section as Scoped CSS — inlined only where the section renders.', 'ekwa' )
+					) : null
 				)
 			);
 
@@ -856,10 +864,15 @@
 		var modalInitialHtml = hs[0];
 		var setModalInitialHtml = hs[1];
 
+		var cs = useState( '' );
+		var modalInitialCss = cs[0];
+		var setModalInitialCss = cs[1];
+
 		// Register the open-listener so the AI Generator plugin can open us.
 		useEffect( function () {
 			setOpenListener( function () {
 				setModalInitialHtml( consumePendingHtml() );
+				setModalInitialCss( consumePendingCss() );
 				setOpen( true );
 			} );
 			return function () { setOpenListener( null ); };
@@ -868,6 +881,7 @@
 		function handleClose() {
 			setOpen( false );
 			setModalInitialHtml( '' );
+			setModalInitialCss( '' );
 		}
 
 		var trigger;
@@ -876,7 +890,9 @@
 			trigger = el( PluginMoreMenuItem, {
 				icon: 'editor-code',
 				onClick: function () {
+					// Opened manually — never inherit a stale AI handoff payload.
 					setModalInitialHtml( '' );
+					setModalInitialCss( '' );
 					setOpen( true );
 				},
 			}, __( 'Mockup Converter', 'ekwa' ) );
@@ -885,7 +901,9 @@
 				icon: 'editor-code',
 				label: __( 'Mockup Converter', 'ekwa' ),
 				onClick: function () {
+					// Opened manually — never inherit a stale AI handoff payload.
 					setModalInitialHtml( '' );
+					setModalInitialCss( '' );
 					setOpen( true );
 				},
 				className: 'ekwa-converter-fab',
@@ -898,6 +916,7 @@
 				? el( ConverterModal, {
 					onClose: handleClose,
 					initialHtml: modalInitialHtml,
+					initialCss: modalInitialCss,
 				} )
 				: null
 		);

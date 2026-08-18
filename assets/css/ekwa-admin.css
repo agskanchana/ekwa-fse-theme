@@ -637,3 +637,189 @@
 .ekwa-ask__foot {
 	margin-top: 8px;
 }
+
+/* ── Schema Editor ─────────────────────────────────────────────────────── */
+
+/* One palette, used by both the editor overlay and the tag chips, so a chip
+   in the reference list is the same colour as the tag it inserts. */
+.ekwa-schema-wrap {
+	--ekwa-schema-tag: #2271b1;    /* scalar {{tag}}          */
+	--ekwa-schema-node: #b8630a;   /* structural "{{node}}"   */
+	--ekwa-schema-block: #7a4bbd;  /* {{#each}} / {{#if}}     */
+	--ekwa-schema-helper: #1a7f5a; /* {{@first}} / {{@last}}  */
+}
+
+.ekwa-schema-intro {
+	max-width: 900px;
+	font-size: 14px;
+	margin-bottom: 18px;
+}
+
+.ekwa-schema-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+	gap: 24px;
+	align-items: start;
+}
+
+.ekwa-schema-col__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+}
+.ekwa-schema-col__head h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.ekwa-schema-badge {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	padding: 3px 8px;
+	border-radius: 10px;
+}
+.ekwa-schema-badge.is-default {
+	background: #f0f0f1;
+	color: #646970;
+}
+.ekwa-schema-badge.is-custom {
+	background: #e6f2fb;
+	color: var(--ekwa-schema-tag);
+}
+
+.ekwa-schema-status {
+	font-size: 12px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: 10px;
+}
+.ekwa-schema-status.is-good { background: #edfaef; color: #1a7f37; }
+.ekwa-schema-status.is-bad  { background: #fcf0f1; color: #b32d2e; }
+.ekwa-schema-status.is-busy { background: #f0f0f1; color: #646970; }
+
+.ekwa-schema-preview {
+	margin: 0;
+	padding: 14px;
+	height: 520px;
+	overflow: auto;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre;
+	tab-size: 4;
+}
+
+.ekwa-schema-error {
+	margin: 0 0 10px;
+}
+
+.ekwa-schema-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 12px 0 4px;
+}
+.ekwa-schema-prune {
+	margin-left: auto;
+	font-size: 13px;
+}
+
+/* CodeMirror overlay classes emitted by the page script. */
+.ekwa-schema-wrap .CodeMirror {
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.6;
+}
+.ekwa-schema-wrap .cm-ekwa-tag {
+	color: var(--ekwa-schema-tag);
+	font-weight: 600;
+	background: rgba(34, 113, 177, .08);
+	border-radius: 2px;
+}
+.ekwa-schema-wrap .cm-ekwa-block {
+	color: var(--ekwa-schema-block);
+	font-weight: 700;
+	background: rgba(122, 75, 189, .10);
+	border-radius: 2px;
+}
+.ekwa-schema-wrap .cm-ekwa-helper {
+	color: var(--ekwa-schema-helper);
+	font-weight: 600;
+	background: rgba(26, 127, 90, .10);
+	border-radius: 2px;
+}
+
+/* Tag reference */
+.ekwa-schema-tags {
+	margin-top: 30px;
+	padding-top: 8px;
+	border-top: 1px solid #dcdcde;
+}
+.ekwa-schema-tags h2 {
+	font-size: 15px;
+	margin-bottom: 4px;
+}
+.ekwa-schema-taggroup {
+	margin-top: 18px;
+}
+.ekwa-schema-taggroup h3 {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: #646970;
+	margin: 0 0 8px;
+}
+.ekwa-schema-taggroup ul {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+	gap: 6px 24px;
+	margin: 0;
+	list-style: none;
+}
+.ekwa-schema-taggroup li {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin: 0;
+	min-width: 0;
+}
+.ekwa-schema-tag {
+	flex: none;
+	cursor: pointer;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 2px 7px;
+	border-radius: 3px;
+	border: 1px solid transparent;
+	background: rgba(34, 113, 177, .08);
+	color: var(--ekwa-schema-tag);
+}
+.ekwa-schema-tag:hover {
+	border-color: currentColor;
+}
+.ekwa-schema-taggroup--structural .ekwa-schema-tag {
+	background: rgba(184, 99, 10, .10);
+	color: var(--ekwa-schema-node);
+}
+.ekwa-schema-taggroup--blocks .ekwa-schema-tag {
+	background: rgba(122, 75, 189, .10);
+	color: var(--ekwa-schema-block);
+}
+.ekwa-schema-taggroup--founder .ekwa-schema-tag {
+	background: rgba(26, 127, 90, .10);
+	color: var(--ekwa-schema-helper);
+}
+.ekwa-schema-tagdesc {
+	color: #646970;
+	font-size: 12px;
+	min-width: 0;
+}

@@ -44,7 +44,9 @@
 	var CFG           = window.ekwaInterlink || {};
 	var MODEL_OPTIONS = Array.isArray( CFG.models ) && CFG.models.length
 		? CFG.models
-		: [ { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' } ];
+		// PHP always sends the list; this only fires if localization failed.
+		// An empty value means "let the server pick", so it can never go stale.
+		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = CFG.defaultModel || MODEL_OPTIONS[0].value;
 	var HAS_API_KEY   = !! CFG.hasApiKey;
 

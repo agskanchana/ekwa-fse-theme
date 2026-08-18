@@ -714,13 +714,36 @@ add_action( 'wp_head', 'ekwa_tokens_print_mockup_css', 4 );
  * with real token values — plus the site stylesheet so base typography matches
  * the front end.
  */
+/**
+ * Is this the pass that collects styles for the iframed editor CANVAS, rather
+ * than the one that styles the admin page around it?
+ *
+ * On an editor screen `enqueue_block_assets` fires twice: once from
+ * wp_common_block_scripts_and_styles() on admin_enqueue_scripts — that output
+ * goes into the admin document, where the site's `body { font-family }` restyles
+ * WordPress' own chrome — and once from _wp_get_iframed_editor_assets(), which
+ * is the canvas. Core forces `should_load_block_editor_scripts_and_styles` to
+ * false for the duration of the second one, and that flag is the only reliable
+ * way to tell the two apart.
+ *
+ * @return bool
+ */
+function ekwa_is_editor_canvas_pass() {
+	if ( ! is_admin() ) {
+		return false;
+	}
+	if ( ! function_exists( 'wp_should_load_block_editor_scripts_and_styles' ) ) {
+		return true; // Pre-5.8 — no shell/canvas split to worry about.
+	}
+	return ! wp_should_load_block_editor_scripts_and_styles();
+}
+
 function ekwa_tokens_editor_assets() {
 	// enqueue_block_assets fires on the FRONT END as well as in the editor, and
 	// ekwa_tokens_print_head() (wp_head, priority 3) already prints this exact
 	// :root block there as #ekwa-design-tokens — so it shipped twice in every
-	// response. Both hooks stay registered: enqueue_block_assets is the only one
-	// that reaches inside the FSE editor iframe, and is_admin() is true there.
-	if ( ! is_admin() ) {
+	// response.
+	if ( ! ekwa_is_editor_canvas_pass() ) {
 		return;
 	}
 	$css = ekwa_tokens_root_css();
@@ -739,7 +762,11 @@ function ekwa_tokens_editor_assets() {
 		wp_add_inline_style( 'ekwa-tokens-inline', ekwa_tokens_sanitize_css_blob( $global ) );
 	}
 }
-add_action( 'enqueue_block_editor_assets', 'ekwa_tokens_editor_assets' );
+// enqueue_block_assets ONLY. Core fires it from _wp_get_iframed_editor_assets(),
+// so it lands inside the editor canvas — which is the only place site CSS
+// belongs. enqueue_block_editor_assets is deliberately NOT used: that one prints
+// into the admin page around the canvas, where the mockup's `body { font-family;
+// background; color }` restyled WordPress' own chrome on every editor screen.
 add_action( 'enqueue_block_assets', 'ekwa_tokens_editor_assets' );
 
 /**

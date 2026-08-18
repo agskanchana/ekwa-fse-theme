@@ -39,9 +39,15 @@
 	// Localized config from PHP (functions.php → wp_localize_script).
 	var bridgeCfg     = window.ekwaAiGenerate || {};
 	var CHILD_CSS_URL = bridgeCfg.childStylesheetUrl || '';
+	// The <head> CSS the front end prints (design tokens, mockup sheet, fonts).
+	// The preview needs it for the same reason the front end does: the generated
+	// CSS is written against those variables and base rules.
+	var PREVIEW_CSS   = bridgeCfg.previewCss || '';
 	var MODEL_OPTIONS = Array.isArray( bridgeCfg.models ) && bridgeCfg.models.length
 		? bridgeCfg.models
-		: [ { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' } ];
+		// PHP always sends the list; this only fires if localization failed.
+		// An empty value means "let the server pick", so it can never go stale.
+		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = bridgeCfg.defaultModel || MODEL_OPTIONS[0].value;
 
 	// Context drives the BLOCK MARKUP HINTS section of the server-side prompt
@@ -295,7 +301,10 @@
 				return;
 			}
 			onClose();
-			bridge.openWithHtml( html );
+			// Hand the generated CSS over too — it was extracted out of the
+			// markup on the way in, so the converter would otherwise receive a
+			// fragment whose styling the operator has to paste back by hand.
+			bridge.openWithHtml( html, extractedCss );
 		}
 
 		// ── Render ─────────────────────────────────────────────────────
@@ -407,10 +416,19 @@
 			// container (transform ancestors break `position: fixed`).
 			var previewIframe = el( 'iframe', {
 				className: 'ekwa-ai-preview-frame',
-				sandbox: '',
+				// allow-same-origin, and nothing else. An empty sandbox gives the
+				// frame an opaque origin, and @font-face requests from an opaque
+				// origin fail the CORS check — so the site's own webfonts silently
+				// never loaded and the preview fell back to a system font. Scripts
+				// stay blocked (no allow-scripts), and the generator strips <script>
+				// out of the markup before it ever reaches here.
+				sandbox: 'allow-same-origin',
 				srcDoc: '<!doctype html><html><head><meta charset="utf-8">'
 					+ '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
 					+ ( CHILD_CSS_URL ? '<link rel="stylesheet" href="' + CHILD_CSS_URL + '">' : '' )
+					// Site CSS before the reset, so the reset's margin:0 wins,
+					// and both before the generated CSS, which must stay last.
+					+ ( PREVIEW_CSS ? '<style>' + PREVIEW_CSS + '</style>' : '' )
 					+ '<style>body{margin:0;padding:0;}img{max-width:100%;height:auto;}</style>'
 					+ ( extractedCss ? '<style>' + extractedCss + '</style>' : '' )
 					+ '</head><body>' + html + '</body></html>',

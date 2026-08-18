@@ -43,7 +43,7 @@ function ekwa_ai_generate_blocks_register_routes() {
 			'history'       => array( 'required' => false, 'type' => 'array',   'default' => array() ),
 			'use_child_css' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
 			'temperature'   => array( 'required' => false, 'type' => 'number',  'default' => 0.3 ),
-			'model'         => array( 'required' => false, 'type' => 'string',  'default' => 'gemini-2.5-flash' ),
+			'model'         => array( 'required' => false, 'type' => 'string',  'default' => '' ),
 			'context'       => array(
 				'required' => false,
 				'type'     => 'string',
@@ -110,10 +110,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		$mode = 'create';
 	}
 
-	$allowed_models = ekwa_ai_generate_allowed_models();
-	if ( ! isset( $allowed_models[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	if ( '' === $prompt ) {
 		return new WP_Error( 'empty_prompt', 'Prompt is required.', array( 'status' => 400 ) );
@@ -1058,7 +1055,7 @@ function ekwa_ai_blocks_self_correct( $markup, $api_key ) {
 	// The correction echoes the WHOLE markup back, so give it the same full output
 	// window the generation step now uses — otherwise a large section that fits on
 	// generation would be truncated here and rejected by the caller's parse check.
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, 'gemini-2.5-pro', 65536 );
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.1, $api_key, ekwa_ai_default_model(), 65536 );
 	if ( is_wp_error( $result ) ) {
 		return null;
 	}

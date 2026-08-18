@@ -45,9 +45,7 @@ function ekwa_interlink_enabled() {
  * @return string
  */
 function ekwa_interlink_refine_model() {
-	$model  = (string) get_option( 'ekwa_interlink_refine_model', 'gemini-2.5-flash' );
-	$models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
-	return isset( $models[ $model ] ) ? $model : 'gemini-2.5-flash';
+	return ekwa_ai_resolve_model( (string) get_option( 'ekwa_interlink_refine_model', '' ), 'pro' );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -542,7 +540,7 @@ function ekwa_interlink_rest_refine( $request ) {
 	}
 
 	$model  = (string) $request->get_param( 'model' );
-	$models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
+	$models = ekwa_ai_models();
 	if ( ! isset( $models[ $model ] ) ) {
 		$model = ekwa_interlink_refine_model();
 	}

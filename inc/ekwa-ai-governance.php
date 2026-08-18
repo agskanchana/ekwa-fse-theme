@@ -271,7 +271,7 @@ function ekwa_ai_rest_test_key() {
 		array( array( 'role' => 'user', 'parts' => array( array( 'text' => 'ping' ) ) ) ),
 		0.0,
 		$api_key,
-		'gemini-2.5-flash-lite'
+		ekwa_ai_cheap_model()
 	);
 
 	if ( is_wp_error( $result ) ) {

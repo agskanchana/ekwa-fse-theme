@@ -413,6 +413,14 @@
 	line-height: 1.5;
 }
 
+/* Fixed CSS destination note — replaces the old destination dropdown. */
+.ekwa-mc-css-dest {
+	color: #616161;
+	font-size: 12px;
+	line-height: 1.5;
+	margin: 4px 0 0;
+}
+
 /* Textareas */
 .ekwa-converter-modal .ekwa-mc-textarea textarea {
 	font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;

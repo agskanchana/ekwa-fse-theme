@@ -30,7 +30,7 @@ function ekwa_ai_alt_register_routes() {
 			'model'         => array(
 				'required' => false,
 				'type'     => 'string',
-				'default'  => 'gemini-2.5-flash',
+				'default'  => '',
 			),
 			'context'       => array(
 				'required'          => false,
@@ -131,12 +131,10 @@ function ekwa_ai_alt_handle_request( $request ) {
 		return new WP_Error( 'image_failed', __( 'The image could not be prepared for AI analysis.', 'ekwa' ), array( 'status' => 422 ) );
 	}
 
-	// Validate the requested model against the allowed list.
-	$model  = (string) $request->get_param( 'model' );
-	$models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
-	if ( ! isset( $models[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	// Validate the requested model against the allowed list. Alt text is bulk,
+	// per-image work where throughput matters more than peak quality, so an
+	// unspecified model resolves to the Flash tier rather than the site default.
+	$model = ekwa_ai_resolve_model( (string) $request->get_param( 'model' ), 'flash' );
 
 	$system_prompt = 'You write alt text for website images. Return ONLY the alt text: '
 		. 'one concise, factual phrase (aim for under 125 characters) describing the image '

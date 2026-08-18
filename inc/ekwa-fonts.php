@@ -979,13 +979,9 @@ function ekwa_fonts_ajax_ai_detect() {
 		wp_send_json_error( array( 'message' => $css->get_error_message() ) );
 	}
 
-	$model = 'gemini-2.5-flash';
-	if ( function_exists( 'ekwa_ai_generate_allowed_models' ) ) {
-		$models = ekwa_ai_generate_allowed_models();
-		if ( ! isset( $models[ $model ] ) ) {
-			$model = (string) array_key_first( $models );
-		}
-	}
+	// Reading font declarations out of a stylesheet is mechanical work — the
+	// Flash tier is enough and keeps the detection pass snappy.
+	$model = ekwa_ai_fast_model();
 
 	$contents = array(
 		array(
@@ -1355,8 +1351,17 @@ function ekwa_fonts_build_css() {
 		}
 
 		foreach ( $weights as $weight => $filename ) {
+			$filename = trim( (string) $filename );
+			// Guard the empty-filename case explicitly: $dir_base . '' is the
+			// fonts DIRECTORY, and file_exists() confirms a directory happily —
+			// so a weight row saved without a file would pass the check and emit
+			// @font-face{…src:url('') …}, an invalid src that makes the browser
+			// discard the whole face. is_file() is the correct test here.
+			if ( '' === $filename ) {
+				continue;
+			}
 			$file_path = $dir_base . $filename;
-			if ( ! file_exists( $file_path ) ) {
+			if ( ! is_file( $file_path ) ) {
 				continue;
 			}
 			$ext     = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
@@ -1480,10 +1485,13 @@ function ekwa_fonts_editor_assets() {
 	// enqueue_block_assets fires on the FRONT END as well as in the editor, where
 	// ekwa_fonts_print_head() (wp_head, priority 5) already printed this exact
 	// string as #ekwa-custom-fonts — so every front-end response shipped the whole
-	// @font-face + :root block twice. Both hooks stay registered: enqueue_block_assets
-	// is the only one that reaches inside the FSE editor iframe, and is_admin() is
-	// true there, so the editor keeps both copies of the canvas styling it needs.
-	if ( ! is_admin() ) {
+	// @font-face + :root block twice. The canvas-pass check keeps the site's
+	// fonts out of the admin chrome — see ekwa_is_editor_canvas_pass().
+	if ( function_exists( 'ekwa_is_editor_canvas_pass' ) ) {
+		if ( ! ekwa_is_editor_canvas_pass() ) {
+			return;
+		}
+	} elseif ( ! is_admin() ) {
 		return;
 	}
 	$css = ekwa_fonts_build_css();
@@ -1494,7 +1502,9 @@ function ekwa_fonts_editor_assets() {
 	wp_enqueue_style( 'ekwa-fonts-inline' );
 	wp_add_inline_style( 'ekwa-fonts-inline', $css );
 }
-add_action( 'enqueue_block_editor_assets', 'ekwa_fonts_editor_assets' );
+// enqueue_block_assets ONLY — see the matching note in inc/ekwa-tokens.php.
+// Core fires it from _wp_get_iframed_editor_assets(), so the font variables
+// reach the editor canvas without the admin chrome inheriting the site's fonts.
 add_action( 'enqueue_block_assets', 'ekwa_fonts_editor_assets' );
 
 /**

@@ -52,7 +52,9 @@
 	var CHILD_CSS_URL = cfg.childStylesheetUrl || '';
 	var MODEL_OPTIONS = Array.isArray( cfg.models ) && cfg.models.length
 		? cfg.models
-		: [ { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' } ];
+		// PHP always sends the list; this only fires if localization failed.
+		// An empty value means "let the server pick", so it can never go stale.
+		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = cfg.defaultModel || MODEL_OPTIONS[0].value;
 
 	var CONTEXT_LABELS = {

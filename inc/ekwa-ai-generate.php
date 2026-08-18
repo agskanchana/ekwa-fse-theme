@@ -57,7 +57,7 @@ function ekwa_ai_generate_register_routes() {
 			'model' => array(
 				'required' => false,
 				'type'     => 'string',
-				'default'  => 'gemini-2.5-flash',
+				'default'  => '',
 			),
 			'context' => array(
 				'required' => false,
@@ -71,16 +71,16 @@ function ekwa_ai_generate_register_routes() {
 
 /**
  * Allow-list of Gemini models the front end can request. Anything else
- * falls back to the default Flash model.
+ * falls back to the current best model for the feature's tier.
+ *
+ * Kept as a thin wrapper because several modules already call it; the list
+ * itself now comes from inc/ekwa-ai-models.php, which reads what the
+ * configured API key can actually call.
  *
  * @return array<string,string> Map of model id → human label.
  */
 function ekwa_ai_generate_allowed_models() {
-	return array(
-		'gemini-2.5-flash'      => 'Gemini 2.5 Flash (fast, default)',
-		'gemini-2.5-pro'        => 'Gemini 2.5 Pro (best quality)',
-		'gemini-2.5-flash-lite' => 'Gemini 2.5 Flash-Lite (cheapest)',
-	);
+	return ekwa_ai_models();
 }
 
 /**
@@ -113,10 +113,7 @@ function ekwa_ai_generate_handle_request( $request ) {
 		$context = 'page';
 	}
 
-	$allowed_models = ekwa_ai_generate_allowed_models();
-	if ( ! isset( $allowed_models[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	if ( '' === $prompt ) {
 		return new WP_Error(
@@ -210,6 +207,8 @@ CSS — YOU HAVE FULL FREEDOM:
 - Use inline style="..." attributes only for one-off, element-specific styling.
 - Use semantic class names (BEM-style or descriptive) so the rules in <style> can target them.
 - COLORS & DESIGN TOKENS: When a SITE STYLESHEET is provided below, reuse its existing CSS custom properties for colors (and for fonts/spacing/radii where they fit) — e.g. `color: var(--brand-primary)`. Do NOT hardcode hex/rgb values that duplicate an existing variable, and do NOT redefine color variables that the site stylesheet already declares. Only add a new variable when no suitable one exists.
+- NEVER REFERENCE A CLASS YOU DID NOT DEFINE. You may reuse a class from the SITE STYLESHEET only if that exact class appears there — check before using it. If you want a variant the stylesheet does not have (e.g. it defines `.btn--ghost` and you want `.btn--ghost-light`), you MUST write the rule for it in your own <style>. A class that is neither in the site stylesheet nor in your <style> produces an element with no styling at all: this is the single most common way a generated section looks right in preview and broken once it is on the page.
+- The same applies to fonts: only use a font variable the site stylesheet actually declares. If you name a font family directly, the site has no way to load it — prefer the existing variables.
 - The user will paste extracted CSS into a shared stylesheet, so feel free to use as much or as little CSS as the design needs.
 
 JS — ALSO FREE:
@@ -225,6 +224,7 @@ PREFERRED HTML PATTERNS (the converter understands these best):
 - Lists: <ul> / <ol> with <li>
 - Images: <img src="..." alt="..." width="..." height="...">
 - Phone links: <a href="tel:+15551234567"><i class="fa-solid fa-phone"></i> (555) 123-4567</a>
+  When a phone sits in a button/CTA row, give the <a> the SAME classes as the buttons next to it (e.g. class="btn btn-outline") and write matching rules in <style>. The converter preserves that element verbatim, so classes are what keeps it styled after conversion; an unclassed tel: link is re-rendered with plain theme markup and will look unstyled beside a styled button.
 - Email links: <a href="mailto:hello@example.com">hello@example.com</a>
 - Map links: <a href="https://www.google.com/maps/...">Get Directions</a>
 - Icons: <i class="fa-solid fa-..."></i> (Font Awesome class names)
@@ -251,6 +251,52 @@ PROMPT;
 	}
 
 	return $context_cue . $prompt;
+}
+
+/**
+ * The CSS the front end prints in <head>, assembled for an off-page preview.
+ *
+ * The generator is told to reuse the site's design tokens (`var(--brand-…)`)
+ * and the mockup's shared component rules (`.btn`, body typography, resets) —
+ * but none of that lives in the child style.css. It is echoed into <head> by
+ * ekwa-tokens.php and ekwa-fonts.php, so a preview iframe that loads only the
+ * stylesheet gets undefined variables and no base rules, and renders unstyled
+ * while the same markup looks correct on the front end.
+ *
+ * Concatenated in wp_head priority order so the cascade matches the real page:
+ * tokens (3) → mockup sheet (4) → fonts (5) → legacy global pool (6).
+ *
+ * @return string
+ */
+function ekwa_ai_generate_preview_head_css() {
+	$parts = array();
+
+	if ( function_exists( 'ekwa_tokens_root_css' ) ) {
+		$parts[] = ekwa_tokens_root_css();
+	}
+
+	$legacy = function_exists( 'ekwa_tokens_legacy_mode' ) && ekwa_tokens_legacy_mode();
+
+	if ( ! $legacy && function_exists( 'ekwa_tokens_printable_mockup_css' ) ) {
+		$parts[] = ekwa_tokens_printable_mockup_css();
+	}
+
+	if ( function_exists( 'ekwa_fonts_build_css' ) ) {
+		$parts[] = ekwa_fonts_build_css();
+	}
+
+	if ( $legacy && function_exists( 'ekwa_tokens_global_css' ) ) {
+		$parts[] = ekwa_tokens_global_css();
+	}
+
+	$css = trim( implode( "\n\n", array_filter( array_map( 'trim', $parts ) ) ) );
+
+	/**
+	 * Filter the stylesheet handed to the AI generator's preview iframe.
+	 *
+	 * @param string $css Concatenated head CSS.
+	 */
+	return apply_filters( 'ekwa_ai_preview_head_css', $css );
 }
 
 /**
@@ -427,7 +473,8 @@ function ekwa_ai_generate_image_part( $img ) {
  * @param array    $contents          Pre-built `contents` array.
  * @param float    $temperature       Sampling temperature.
  * @param string   $api_key           Gemini API key.
- * @param string   $model             Gemini model id (e.g. gemini-2.5-flash).
+ * @param string   $model             Gemini model id. Empty resolves to the
+ *                                    current most-capable model.
  * @param int      $max_output_tokens Output-token cap. Raise it for tasks that
  *                                    must echo large input back (e.g. the CSS
  *                                    splitter returns the whole leftover pool);
@@ -443,7 +490,11 @@ function ekwa_ai_generate_image_part( $img ) {
  *                                    truncation/empty responses on the 2.5 models.
  * @return array|WP_Error { content: string, tokens: int, finish_reason: string } or error.
  */
-function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = 'gemini-2.5-flash', $max_output_tokens = 16384, $thinking_budget = null ) {
+function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = '', $max_output_tokens = 16384, $thinking_budget = null ) {
+	if ( '' === trim( (string) $model ) ) {
+		$model = ekwa_ai_default_model();
+	}
+
 	$url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent?key=' . urlencode( $api_key );
 
 	$generation_config = array(

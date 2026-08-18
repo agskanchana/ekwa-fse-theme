@@ -54,11 +54,11 @@ function ekwa_ai_block_hints_registry() {
 		'phone' => array(
 			'block'       => 'ekwa/phone',
 			'contexts'    => array( 'header', 'footer', 'page' ),
-			'description' => 'Single phone number. Detector triggers for any <a href="tel:…">. Prefix text before the digits is captured into the "prefix" attribute; words "new" or "existing" set the patient type; icon class is read from any nested <i class="fa-…">. Variations: with/without prefix label, with/without icon, any Font Awesome icon class.',
+			'description' => 'Single phone number. Detector triggers for any <a href="tel:…">. Prefix text before the digits is captured into the "prefix" attribute; words "new" or "existing" set the patient type; icon class is read from any nested <i class="fa-…">. Variations: with/without prefix label, with/without icon, any Font Awesome icon class. STYLING: put the phone link\'s classes on the <a> itself — the converter keeps that exact element and only swaps the digits, so a phone styled as a button must carry the SAME classes as the other buttons beside it (e.g. class="btn btn-outline"). A tel: link with no class is rendered with the theme\'s own plain markup instead, which is what makes a phone come out unstyled next to a styled button.',
 			'examples'    => array(
 				'<a href="tel:+15551234567"><i class="fa-solid fa-phone"></i> New Patients: (555) 123-4567</a>',
 				'<a href="tel:+15559871234">Existing Patients: (555) 987-1234</a>',
-				'<a href="tel:+15551234567"><i class="fa-solid fa-mobile-screen"></i> (555) 123-4567</a>',
+				'<a href="tel:+15551234567" class="btn btn-outline"><i class="fa-solid fa-phone"></i> (555) 123-4567</a>',
 			),
 		),
 

@@ -232,9 +232,10 @@ function ekwa_docs_rest_ask( $request ) {
 
 	ekwa_ai_current_feature( 'ask-docs' );
 	// thinkingBudget 0: this is retrieval from a supplied corpus, not reasoning,
-	// and 2.5-flash's thinking step otherwise eats the output budget — spending
-	// the whole allowance before writing any answer.
-	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.2, $api_key, 'gemini-2.5-flash', 4096, 0 );
+	// and the thinking step otherwise eats the output budget — spending the
+	// whole allowance before writing any answer. Pinned to the Flash tier for
+	// that reason: the Pro models don't let thinking be switched off.
+	$result = ekwa_ai_generate_call_gemini( $system, $contents, 0.2, $api_key, ekwa_ai_fast_model(), 4096, 0 );
 
 	if ( is_wp_error( $result ) ) {
 		return rest_ensure_response( array(
@@ -284,12 +285,88 @@ function ekwa_docs_quick_links() {
 	) );
 }
 
-/**
- * Render the Help & Ask AI tab on the settings page.
+/* ------------------------------------------------------------------
+ * Appearance → Help & Ask AI.
  *
- * Deliberately contains no <form>: the pane sits outside the settings forms so
- * pressing Enter in the question box can never submit — and silently save —
- * the whole settings page.
+ * This used to be a tab on the settings page. It's a page of its own now:
+ * nothing here saves settings, so it never belonged inside that form, and a
+ * top-level entry makes the docs reachable without hunting through tabs.
+ * ------------------------------------------------------------------ */
+function ekwa_add_help_page() {
+	add_theme_page(
+		__( 'Help & Ask AI', 'ekwa' ),
+		__( 'Help & Ask AI', 'ekwa' ),
+		'manage_options',
+		'ekwa-help',
+		'ekwa_render_help_page'
+	);
+}
+add_action( 'admin_menu', 'ekwa_add_help_page' );
+
+/**
+ * Assets for the standalone Help page.
+ *
+ * The Ask AI script is inline in ekwa_render_help_tab() and reads its endpoint
+ * off `ekwaAdmin`, which is normally localized onto ekwa-admin-js — a handle
+ * that is only enqueued on the settings screen. Provide the same global here
+ * with just the keys that script touches.
+ *
+ * @param string $hook
+ */
+function ekwa_help_page_enqueue( $hook ) {
+	if ( 'appearance_page_ekwa-help' !== $hook ) {
+		return;
+	}
+
+	wp_enqueue_style(
+		'ekwa-admin-css',
+		get_template_directory_uri() . '/assets/css/ekwa-admin.css',
+		array(),
+		wp_get_theme()->get( 'Version' )
+	);
+
+	// ekwaAdmin rides on the jquery handle here, so ensure it is enqueued.
+	wp_enqueue_script( 'jquery' );
+
+	wp_localize_script(
+		'jquery',
+		'ekwaAdmin',
+		array(
+			'askDocsUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ask-docs' ) ),
+			'webpRestNonce'  => wp_create_nonce( 'wp_rest' ),
+			'askDocsStrings' => array(
+				'thinking'  => __( 'Thinking…', 'ekwa' ),
+				'error'     => __( 'Request failed. Check the connection and try again.', 'ekwa' ),
+				'truncated' => __( 'That answer was cut off at the length limit — ask something narrower for the full answer.', 'ekwa' ),
+			),
+		)
+	);
+}
+add_action( 'admin_enqueue_scripts', 'ekwa_help_page_enqueue' );
+
+/**
+ * Render the standalone Help & Ask AI page.
+ */
+function ekwa_render_help_page() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	?>
+	<div class="wrap ekwa-settings-wrap">
+		<h1>
+			<span class="dashicons dashicons-editor-help" aria-hidden="true"></span>
+			<?php esc_html_e( 'Help & Ask AI', 'ekwa' ); ?>
+		</h1>
+		<?php ekwa_render_help_tab(); ?>
+	</div>
+	<?php
+}
+
+/**
+ * Render the Help & Ask AI panes.
+ *
+ * Deliberately contains no <form>: pressing Enter in the question box must
+ * never submit anything.
  */
 function ekwa_render_help_tab() {
 	$has_key = function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key();
@@ -328,7 +405,8 @@ function ekwa_render_help_tab() {
 					printf(
 						/* translators: %s: link to the AI tab. */
 						esc_html__( 'No Gemini API key is configured, so Ask AI is unavailable. Add one under %s.', 'ekwa' ),
-						'<a href="#ai">' . esc_html__( 'Ekwa Settings → AI', 'ekwa' ) . '</a>'
+						'<a href="' . esc_url( admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=ai' ) ) . '">'
+							. esc_html__( 'Ekwa Settings → AI', 'ekwa' ) . '</a>'
 					);
 					?>
 				</p>

@@ -99,7 +99,7 @@ function ekwa_ai_edit_block_routes() {
 		'args'                => array(
 			'slug'        => array( 'required' => true, 'type' => 'string' ),
 			'instruction' => array( 'required' => true, 'type' => 'string' ),
-			'model'       => array( 'required' => false, 'type' => 'string', 'default' => 'gemini-2.5-flash' ),
+			'model'       => array( 'required' => false, 'type' => 'string', 'default' => '' ),
 		),
 	) );
 
@@ -145,10 +145,7 @@ function ekwa_ai_edit_block_generate( $request ) {
 	if ( '' === $instruction ) {
 		return new WP_Error( 'no_instruction', __( 'Describe the change you want.', 'ekwa' ), array( 'status' => 400 ) );
 	}
-	$allowed_models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
-	if ( ! isset( $allowed_models[ $model ] ) ) {
-		$model = 'gemini-2.5-flash';
-	}
+	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	$api_key = function_exists( 'ekwa_get_ai_api_key' ) ? ekwa_get_ai_api_key() : '';
 	if ( ! $api_key ) {
@@ -437,16 +434,15 @@ function ekwa_ai_edit_block_enqueue( $hook_suffix ) {
 		true
 	);
 
-	$models = function_exists( 'ekwa_ai_generate_allowed_models' ) ? ekwa_ai_generate_allowed_models() : array();
-	$list   = array();
-	foreach ( $models as $id => $label ) {
+	$list = array();
+	foreach ( ekwa_ai_models() as $id => $label ) {
 		$list[] = array( 'value' => $id, 'label' => $label );
 	}
 	wp_localize_script( 'ekwa-ai-edit-block', 'ekwaAiEditBlock', array(
 		'rest'         => esc_url_raw( rest_url( 'ekwa/v1/' ) ),
 		'nonce'        => wp_create_nonce( 'wp_rest' ),
 		'models'       => $list,
-		'defaultModel' => 'gemini-2.5-flash',
+		'defaultModel' => ekwa_ai_default_model(),
 	) );
 }
 add_action( 'admin_enqueue_scripts', 'ekwa_ai_edit_block_enqueue' );

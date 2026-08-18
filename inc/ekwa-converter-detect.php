@@ -440,12 +440,113 @@ function ekwa_mc_detect_phone( $node, $depth ) {
 	}
 	$attrs['iconClass'] = $icon_class;
 
+	// Keep the mockup's own anchor when it is styled. The canonical renderer
+	// emits <span class="ekwa-phone-number"><a class="ekwa-phone-number__link">,
+	// which drops whatever classes the mockup put on the link — so a phone
+	// styled as a button (<a class="btn btn-outline">) lost its styling on the
+	// front end while the button beside it kept it. A customTemplate keeps the
+	// original element and only substitutes the live values.
+	$template = ekwa_mc_phone_custom_template( $node, $clean );
+	if ( '' !== $template ) {
+		$attrs['customTemplate'] = $template;
+	}
+
 	$indent     = str_repeat( '  ', $depth );
 	$attrs_json = ' ' . ekwa_mc_json_encode_block_attrs( $attrs );
 
 	ekwa_mc_warn( "Auto-detected tel: link → ekwa/phone (type: $type)" );
 
 	return $indent . '<!-- wp:ekwa/phone' . $attrs_json . ' /-->' . "\n";
+}
+
+/**
+ * Turn a styled tel: anchor into a customTemplate for ekwa/phone.
+ *
+ * Works on a clone so the source tree is untouched, swapping the live values
+ * for their placeholders: href → {{tel}}, the icon's class → {{icon}}, the
+ * digits → {{number}}, and the label before them → {{prefix}}.
+ *
+ * @param DOMElement $node   The <a href="tel:…"> element.
+ * @param string     $prefix Prefix text as it appears in the markup ('' when none).
+ * @return string Empty when the anchor carries no styling worth preserving,
+ *                in which case the canonical block markup is the better output.
+ */
+function ekwa_mc_phone_custom_template( $node, $prefix ) {
+	$has_class = '' !== trim( (string) $node->getAttribute( 'class' ) );
+	$has_style = '' !== trim( (string) $node->getAttribute( 'style' ) );
+	if ( ! $has_class && ! $has_style ) {
+		return '';
+	}
+
+	$clone = $node->cloneNode( true );
+
+	// saveHTML() percent-encodes URL attributes, which would turn {{tel}} into
+	// %7B%7Btel%7D%7D and leave a placeholder that never substitutes. Park a
+	// bare sentinel in the href and swap it back after serialization.
+	$tel_sentinel = 'ekwatelplaceholder';
+	$clone->setAttribute( 'href', 'tel:' . $tel_sentinel );
+
+	// The icon class is already captured into the iconClass attribute, so the
+	// template refers to it rather than freezing the mockup's spelling.
+	$icons = $clone->getElementsByTagName( 'i' );
+	foreach ( $icons as $icon_el ) {
+		if ( '' !== trim( (string) $icon_el->getAttribute( 'class' ) ) ) {
+			$icon_el->setAttribute( 'class', '{{icon}}' );
+		}
+	}
+
+	// Walk text nodes rather than the serialized string: the digits and the
+	// prefix are content, and only content should be rewritten. Collected by
+	// hand rather than with XPath, which needs its context node to be attached
+	// to the document — a clone is not.
+	$texts  = ekwa_mc_collect_text_nodes( $clone );
+	$placed = false;
+
+	foreach ( $texts as $text ) {
+		$value = $text->nodeValue;
+
+		$replaced = preg_replace( '/\(?\d[\d\s\(\)\-\.]{6,}\d/', '{{number}}', $value, 1, $count );
+		if ( $count ) {
+			$value  = $replaced;
+			$placed = true;
+		}
+
+		if ( '' !== $prefix && false !== strpos( $value, $prefix ) ) {
+			$value = str_replace( $prefix, '{{prefix}}', $value );
+		}
+
+		if ( $value !== $text->nodeValue ) {
+			$text->nodeValue = $value;
+		}
+	}
+
+	// No digits in the markup means nothing to substitute — the number would be
+	// dropped entirely rather than rendered, so fall back to the canonical block.
+	if ( ! $placed ) {
+		return '';
+	}
+
+	$html = trim( (string) $clone->ownerDocument->saveHTML( $clone ) );
+
+	return str_replace( 'tel:' . $tel_sentinel, 'tel:{{tel}}', $html );
+}
+
+/**
+ * Collect every descendant text node of a node, depth-first.
+ *
+ * @param DOMNode $node
+ * @return DOMText[]
+ */
+function ekwa_mc_collect_text_nodes( $node ) {
+	$out = array();
+	foreach ( $node->childNodes as $child ) {
+		if ( XML_TEXT_NODE === $child->nodeType ) {
+			$out[] = $child;
+		} elseif ( $child->hasChildNodes() ) {
+			$out = array_merge( $out, ekwa_mc_collect_text_nodes( $child ) );
+		}
+	}
+	return $out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
