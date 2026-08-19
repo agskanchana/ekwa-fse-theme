@@ -38,6 +38,8 @@
 		{ label: 'main',        value: 'main' },
 		{ label: 'aside',       value: 'aside' },
 		{ label: 'article',     value: 'article' },
+		{ label: 'ul',          value: 'ul' },
+		{ label: 'li',          value: 'li' },
 		{ label: 'a',           value: 'a' },
 		// A <p> that wraps an image can't be a core/paragraph (its src would
 		// never resolve), so the converter lands those here.
@@ -553,4 +555,96 @@
 			return el( InnerBlocks.Content, null );
 		},
 	} );
+
+	/**
+	 * List View tag-name badge.
+	 *
+	 * List View has no per-block-type extension point for a second pill —
+	 * only the `anchor` attribute gets one, hardcoded in core's row renderer
+	 * (block-editor-list-view-block-select-button__anchor-wrapper/__anchor).
+	 * This reuses those same classes (for matching layout/shape) plus our own
+	 * modifier class (for color) and injects a pill showing the ekwa/div tag
+	 * name next to the row title, mirroring how the anchor pill reads.
+	 *
+	 * DOM injection into a React-owned tree is inherently fragile — a future
+	 * Gutenberg version that renames these classes or restructures the row
+	 * will silently stop showing the badge (fails soft, not loud) rather than
+	 * throwing. Re-check against wp-includes/js/dist/block-editor.js if the
+	 * badge stops appearing after a core update.
+	 */
+	function initDivTagBadges() {
+		var dataStore = wp.data && wp.data.select( 'core/block-editor' );
+		if ( ! dataStore ) {
+			return;
+		}
+
+		function applyBadge( row, tagName ) {
+			var labelWrapper = row.querySelector( '.block-editor-list-view-block-select-button__label-wrapper' );
+			if ( ! labelWrapper ) {
+				return;
+			}
+
+			var pillWrapper = labelWrapper.querySelector( '.ekwa-div-tag-pill-wrapper' );
+
+			if ( ! tagName || tagName === 'div' ) {
+				if ( pillWrapper ) {
+					pillWrapper.remove();
+				}
+				return;
+			}
+
+			if ( pillWrapper ) {
+				var badge = pillWrapper.querySelector( '.ekwa-div-tag-pill' );
+				if ( badge && badge.textContent !== tagName ) {
+					badge.textContent = tagName;
+				}
+				return;
+			}
+
+			pillWrapper = document.createElement( 'span' );
+			pillWrapper.className = 'block-editor-list-view-block-select-button__anchor-wrapper ekwa-div-tag-pill-wrapper';
+
+			var pill = document.createElement( 'span' );
+			pill.className = 'block-editor-list-view-block-select-button__anchor ekwa-div-tag-pill';
+			pill.textContent = tagName;
+			pillWrapper.appendChild( pill );
+
+			labelWrapper.appendChild( pillWrapper );
+		}
+
+		function scan() {
+			var rows = document.querySelectorAll( '.block-editor-list-view-tree tr[data-block]' );
+			for ( var i = 0; i < rows.length; i++ ) {
+				var row      = rows[ i ];
+				var clientId = row.getAttribute( 'data-block' );
+				if ( ! clientId || dataStore.getBlockName( clientId ) !== 'ekwa/div' ) {
+					continue;
+				}
+				var attrs = dataStore.getBlockAttributes( clientId ) || {};
+				applyBadge( row, attrs.tagName );
+			}
+		}
+
+		var scheduled = false;
+		function scheduleScan() {
+			if ( scheduled ) {
+				return;
+			}
+			scheduled = true;
+			( window.requestAnimationFrame || window.setTimeout )( function () {
+				scheduled = false;
+				scan();
+			} );
+		}
+
+		wp.data.subscribe( scheduleScan );
+		new MutationObserver( scheduleScan ).observe( document.body, { childList: true, subtree: true } );
+		scheduleScan();
+	}
+
+	if ( 'loading' === document.readyState ) {
+		document.addEventListener( 'DOMContentLoaded', initDivTagBadges );
+	} else {
+		initDivTagBadges();
+	}
 } )( window.wp );

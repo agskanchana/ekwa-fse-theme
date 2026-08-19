@@ -2974,9 +2974,10 @@ function ekwa_inner_banner_bg_picture( $thumb_id ) {
 			. ' srcset="' . esc_url( $rung['url'] ) . '">';
 	}
 
-	// Default fallback <img> = full original, carrying the decorative alt + LCP
-	// hints. data-ekwa-no-webp stops the render_block filter re-swapping a URL
-	// we've already resolved above.
+	// Default fallback <img> = full original, carrying the attachment's alt
+	// text (empty when the media library entry has none, which browsers/AT
+	// treat as decorative) + LCP hints. data-ekwa-no-webp stops the
+	// render_block filter re-swapping a URL we've already resolved above.
 	//
 	// decoding defaults to "sync", not "async", regardless of the global
 	// Performance setting: this image is the inner page's LCP element, and
@@ -2993,7 +2994,8 @@ function ekwa_inner_banner_bg_picture( $thumb_id ) {
 	$decoding = in_array( $decoding, array( 'sync', 'async', 'auto' ), true ) ? $decoding : 'sync';
 
 	$full = $sources['full'];
-	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $full['url'] ) . '" alt=""';
+	$alt  = trim( (string) get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) );
+	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $full['url'] ) . '" alt="' . esc_attr( $alt ) . '"';
 	if ( $full['width'] )  { $out .= ' width="' . $full['width'] . '"'; }
 	if ( $full['height'] ) { $out .= ' height="' . $full['height'] . '"'; }
 	$out .= ' loading="eager" fetchpriority="high" decoding="' . esc_attr( $decoding ) . '"';
@@ -4285,7 +4287,7 @@ function ekwa_render_image_block( $attrs ) {
  * Server-side render callback for the ekwa/div block.
  *
  * Outputs a clean wrapper element with only the user's classes and children.
- * Supports div, section, header, footer, nav, main, aside, article.
+ * Supports div, section, header, footer, nav, main, aside, article, ul, li.
  * No layout styles, no inner wrappers, no forced classes.
  *
  * @param array  $attrs   Block attributes.
@@ -4334,7 +4336,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$rel           = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
 
 	$allowed = array(
-		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'a', 'p',
+		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'ul', 'li', 'a', 'p',
 		'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub',
 		'figcaption', 'button',
 	);

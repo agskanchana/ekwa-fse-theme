@@ -42,13 +42,28 @@
 		var attrs    = props.attributes;
 		var setAttrs = props.setAttributes;
 
-		/* Fetch all published pages (up to 100) for the checkbox list */
+		/* Fetch all published pages (up to 100) for the checkbox list. Includes
+		 * the static front page, if one is set (Settings → Reading) — it's a
+		 * regular 'page' post like any other and isn't filtered out here. */
 		var pages = useSelect( function ( select ) {
 			return select( 'core' ).getEntityRecords( 'postType', 'page', {
 				per_page : 100,
 				status   : 'publish',
 			} );
 		}, [] );
+
+		/* Filters the checkbox list only — doesn't touch selectedPageIds, so
+		 * searching, ticking, clearing the search and searching again to tick
+		 * more pages all just work. */
+		var pageSearchState = useState( '' );
+		var pageSearch      = pageSearchState[ 0 ];
+		var setPageSearch   = pageSearchState[ 1 ];
+
+		var filteredPages = ( pages || [] ).filter( function ( page ) {
+			if ( ! pageSearch ) { return true; }
+			var title = ( page.title && ( page.title.rendered || page.title.raw ) ) || '';
+			return title.toLowerCase().indexOf( pageSearch.toLowerCase() ) > -1;
+		} );
 
 		function togglePage( id ) {
 			setAttrs( { selectedPageIds: toggleItem( attrs.selectedPageIds || [], id ) } );
@@ -130,6 +145,12 @@
 						),
 						! pages && el( 'p', { style: { fontSize: 12, color: '#757575' } }, __( 'Loading pages…', 'ekwa' ) ),
 						pages && pages.length === 0 && el( 'p', { style: { fontSize: 12, color: '#757575' } }, __( 'No published pages found.', 'ekwa' ) ),
+						pages && pages.length > 0 && el( TextControl, {
+							placeholder: __( 'Search pages…', 'ekwa' ),
+							value      : pageSearch,
+							onChange   : function ( v ) { setPageSearch( v ); },
+							style      : { marginBottom: 4 },
+						} ),
 						pages && pages.length > 0 && el( 'div', {
 							style: {
 								maxHeight    : '200px',
@@ -140,7 +161,8 @@
 								background   : '#fff',
 							},
 						},
-							pages.map( function ( page ) {
+							filteredPages.length === 0 && el( 'p', { style: { fontSize: 12, color: '#757575', margin: '4px 0' } }, __( 'No pages match your search.', 'ekwa' ) ),
+							filteredPages.map( function ( page ) {
 								var title = ( page.title && ( page.title.rendered || page.title.raw ) ) || '(untitled)';
 								var isChecked = ( attrs.selectedPageIds || [] ).indexOf( page.id ) > -1;
 								return el( CheckboxControl, {

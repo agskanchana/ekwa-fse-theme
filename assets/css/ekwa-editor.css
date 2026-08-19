@@ -384,6 +384,19 @@
 	outline-offset: 2px;
 }
 
+/* Ekwa Div — List View tag-name pill.
+   Reuses core's own anchor-pill classes (block-editor-list-view-block-select-
+   button__anchor-wrapper/__anchor) for identical shape/spacing, so it only
+   needs a color override here to read as a distinct "tag" pill next to the
+   anchor pill core already renders. Injected via JS — see ekwa-div-editor.js. */
+.ekwa-div-tag-pill-wrapper {
+	margin-left: 4px;
+}
+.ekwa-div-tag-pill {
+	background: #3858e9;
+	color: #fff;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOCKUP CONVERTER MODAL
    ═══════════════════════════════════════════════════════════════════════════ */
