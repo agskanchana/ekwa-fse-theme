@@ -5036,8 +5036,8 @@ function ekwa_render_related_articles_block( $attrs ) {
 		? ''
 		: '<' . $heading_level . ' class="ekwa-related__title">' . esc_html( $heading_text ) . '</' . $heading_level . '>';
 
-	$wrap_open  = '<section class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
-	$wrap_close = '</section>';
+	$wrap_open  = '<div class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
+	$wrap_close = '</div>';
 
 	// Each card uses the editable "Post item template" (Settings → Related Posts)
 	// so this block honours the same token template as ekwa/related-posts.
@@ -5219,8 +5219,37 @@ function ekwa_related_posts_default_template() {
  *   {{excerpt:N}}                   — N-word excerpt
  *   {{author}} {{author_url}}
  *   {{categories}}                  — comma-separated linked category list
+ *   {{categories:exclude=slug-a,slug-b}} — same, omitting the given category slugs
  *   {{read_time}}                   — minutes read
  */
+
+/**
+ * Build the comma-separated linked category list for a post.
+ *
+ * @param int   $post_id       Post ID.
+ * @param array $exclude_slugs Category slugs (lowercase) to leave out.
+ * @return string HTML.
+ */
+function ekwa_related_posts_category_links( $post_id, $exclude_slugs = array() ) {
+	$cats = get_the_category( $post_id );
+	if ( ! $cats ) {
+		return '';
+	}
+
+	if ( $exclude_slugs ) {
+		$cats = array_filter( $cats, function ( $cat ) use ( $exclude_slugs ) {
+			return ! in_array( strtolower( $cat->slug ), $exclude_slugs, true );
+		} );
+	}
+
+	$cat_links = array();
+	foreach ( $cats as $cat ) {
+		$cat_links[] = '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '">' . esc_html( $cat->name ) . '</a>';
+	}
+
+	return implode( ', ', $cat_links );
+}
+
 function ekwa_related_posts_render_template( $template, $post_id ) {
 	$default_format = get_option( 'ekwa_related_posts_date_format', 'M j, Y' );
 	$default_words  = absint( get_option( 'ekwa_related_posts_excerpt_words', 22 ) );
@@ -5249,23 +5278,14 @@ function ekwa_related_posts_render_template( $template, $post_id ) {
 	$replacements['{{read_time}}'] = esc_html( sprintf( _n( '%d min read', '%d min read', $minutes, 'ekwa' ), $minutes ) );
 
 	// Categories (linked).
-	$cats = get_the_category( $post_id );
-	if ( $cats ) {
-		$cat_links = array();
-		foreach ( $cats as $cat ) {
-			$cat_links[] = '<a href="' . esc_url( get_category_link( $cat->term_id ) ) . '">' . esc_html( $cat->name ) . '</a>';
-		}
-		$replacements['{{categories}}'] = implode( ', ', $cat_links );
-	} else {
-		$replacements['{{categories}}'] = '';
-	}
+	$replacements['{{categories}}'] = ekwa_related_posts_category_links( $post_id );
 
 	// Apply static tokens.
 	$out = strtr( $template, $replacements );
 
 	// Parametrized tokens: {{date:format}}, {{excerpt:N}}, {{featured_image:size}}, {{featured_image_url:size}}.
 	$out = preg_replace_callback(
-		'/\{\{(date|excerpt|featured_image|featured_image_url):([^}]+)\}\}/',
+		'/\{\{(date|excerpt|featured_image|featured_image_url|categories):([^}]+)\}\}/',
 		function ( $m ) use ( $post_id ) {
 			$key = $m[1];
 			$arg = trim( $m[2] );
@@ -5280,6 +5300,12 @@ function ekwa_related_posts_render_template( $template, $post_id ) {
 					return get_the_post_thumbnail( $post_id, $arg, array( 'loading' => 'lazy' ) );
 				case 'featured_image_url':
 					return esc_url( get_the_post_thumbnail_url( $post_id, $arg ) ?: '' );
+				case 'categories':
+					$exclude_slugs = array();
+					if ( preg_match( '/^exclude=(.+)$/i', $arg, $em ) ) {
+						$exclude_slugs = array_map( 'sanitize_title', array_map( 'trim', explode( ',', $em[1] ) ) );
+					}
+					return ekwa_related_posts_category_links( $post_id, $exclude_slugs );
 			}
 			return '';
 		},

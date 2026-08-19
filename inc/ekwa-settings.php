@@ -1735,6 +1735,7 @@ function ekwa_render_settings_page() {
 											<tr><td style="padding:4px 8px;"><code>{{author}}</code></td><td>Author display name.</td></tr>
 											<tr><td style="padding:4px 8px;"><code>{{author_url}}</code></td><td>Link to the author page.</td></tr>
 											<tr><td style="padding:4px 8px;"><code>{{categories}}</code></td><td>Comma-separated linked category list.</td></tr>
+											<tr><td style="padding:4px 8px;"><code>{{categories:exclude=slug-a,slug-b}}</code></td><td>Same, leaving out the given category slugs (e.g. <code>{{categories:exclude=featured-articles}}</code>).</td></tr>
 											<tr><td style="padding:4px 8px;"><code>{{read_time}}</code></td><td>Estimated read time, e.g. <em>4 min read</em>.</td></tr>
 										</tbody>
 									</table>
