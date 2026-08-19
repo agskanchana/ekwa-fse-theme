@@ -557,20 +557,46 @@
 	} );
 
 	/**
+	 * Deterministic per-tag color so, e.g., every "section" pill and every
+	 * "ul" pill reads as the same color at a glance while scanning a long
+	 * list — a fixed hand-picked map would need upkeep every time a tag is
+	 * added to TAG_OPTIONS; hashing the tag name needs none and never
+	 * collides with itself.
+	 *
+	 * @param {string} tag Tag name, e.g. "section".
+	 * @return {string} Hex color.
+	 */
+	var TAG_PILL_PALETTE = [
+		'#3858e9', '#0ca678', '#e8590c', '#ae3ec9',
+		'#e64980', '#1971c2', '#f08c00', '#099268',
+		'#7048e8', '#c2255c', '#0b7285', '#4c6ef5',
+	];
+	function colorForTag( tag ) {
+		var hash = 0;
+		for ( var i = 0; i < tag.length; i++ ) {
+			hash = ( hash * 31 + tag.charCodeAt( i ) ) >>> 0;
+		}
+		return TAG_PILL_PALETTE[ hash % TAG_PILL_PALETTE.length ];
+	}
+
+	/**
 	 * List View tag-name badge.
 	 *
 	 * List View has no per-block-type extension point for a second pill —
-	 * only the `anchor` attribute gets one, hardcoded in core's row renderer
-	 * (block-editor-list-view-block-select-button__anchor-wrapper/__anchor).
-	 * This reuses those same classes (for matching layout/shape) plus our own
-	 * modifier class (for color) and injects a pill showing the ekwa/div tag
-	 * name next to the row title, mirroring how the anchor pill reads.
+	 * only the `anchor` attribute gets one, hardcoded in core's row renderer.
+	 * The pill itself is core's <Badge> component: a `components-badge`
+	 * wrapping a `components-badge__flex-wrapper` > `components-badge__content`,
+	 * positioned via `block-editor-list-view-block-select-button__anchor`.
+	 * All three layers matter — the anchor class only positions it, the
+	 * padding/border-radius/font-size come from `components-badge`, so
+	 * skipping any of them is what left the first version unstyled.
 	 *
 	 * DOM injection into a React-owned tree is inherently fragile — a future
 	 * Gutenberg version that renames these classes or restructures the row
 	 * will silently stop showing the badge (fails soft, not loud) rather than
-	 * throwing. Re-check against wp-includes/js/dist/block-editor.js if the
-	 * badge stops appearing after a core update.
+	 * throwing. Re-check against wp-includes/js/dist/block-editor.js and
+	 * wp-includes/css/dist/components/style.css (.components-badge) if the
+	 * badge stops appearing, or its styling drifts, after a core update.
 	 */
 	function initDivTagBadges() {
 		var dataStore = wp.data && wp.data.select( 'core/block-editor' );
@@ -594,9 +620,13 @@
 			}
 
 			if ( pillWrapper ) {
-				var badge = pillWrapper.querySelector( '.ekwa-div-tag-pill' );
-				if ( badge && badge.textContent !== tagName ) {
-					badge.textContent = tagName;
+				var pill    = pillWrapper.querySelector( '.ekwa-div-tag-pill' );
+				var content = pillWrapper.querySelector( '.components-badge__content' );
+				if ( pill ) {
+					pill.style.setProperty( '--ekwa-tag-color', colorForTag( tagName ) );
+				}
+				if ( content && content.textContent !== tagName ) {
+					content.textContent = tagName;
 				}
 				return;
 			}
@@ -604,11 +634,20 @@
 			pillWrapper = document.createElement( 'span' );
 			pillWrapper.className = 'block-editor-list-view-block-select-button__anchor-wrapper ekwa-div-tag-pill-wrapper';
 
-			var pill = document.createElement( 'span' );
-			pill.className = 'block-editor-list-view-block-select-button__anchor ekwa-div-tag-pill';
-			pill.textContent = tagName;
-			pillWrapper.appendChild( pill );
+			var badge = document.createElement( 'span' );
+			badge.className = 'components-badge block-editor-list-view-block-select-button__anchor ekwa-div-tag-pill';
+			badge.style.setProperty( '--ekwa-tag-color', colorForTag( tagName ) );
 
+			var flexWrapper = document.createElement( 'span' );
+			flexWrapper.className = 'components-badge__flex-wrapper';
+
+			var badgeContent = document.createElement( 'span' );
+			badgeContent.className = 'components-badge__content';
+			badgeContent.textContent = tagName;
+
+			flexWrapper.appendChild( badgeContent );
+			badge.appendChild( flexWrapper );
+			pillWrapper.appendChild( badge );
 			labelWrapper.appendChild( pillWrapper );
 		}
 

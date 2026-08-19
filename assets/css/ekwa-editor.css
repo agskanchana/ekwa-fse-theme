@@ -385,16 +385,22 @@
 }
 
 /* Ekwa Div — List View tag-name pill.
-   Reuses core's own anchor-pill classes (block-editor-list-view-block-select-
-   button__anchor-wrapper/__anchor) for identical shape/spacing, so it only
-   needs a color override here to read as a distinct "tag" pill next to the
-   anchor pill core already renders. Injected via JS — see ekwa-div-editor.js. */
+   Reuses core's own Badge component classes (components-badge and its
+   __flex-wrapper/__content children) plus the anchor-pill positioning class,
+   so shape/padding/font-size match the anchor pill exactly. Each tag gets a
+   deterministic color (--ekwa-tag-color, set inline per pill in JS) mixed
+   the same way core mixes its is-info/is-warning/etc variants, so pills stay
+   readable without hand-picking a background/text pair per tag.
+   Injected via JS — see ekwa-div-editor.js. */
 .ekwa-div-tag-pill-wrapper {
 	margin-left: 4px;
 }
 .ekwa-div-tag-pill {
-	background: #3858e9;
-	color: #fff;
+	/* Sharing core's __anchor class means its own .is-selected override
+	   (higher specificity, sets the background shorthand) already wins over
+	   this on a selected row — no separate rule needed here for that state. */
+	background-color: color-mix( in srgb, #fff 90%, var( --ekwa-tag-color, #3858e9 ) );
+	color: color-mix( in srgb, #000 50%, var( --ekwa-tag-color, #3858e9 ) );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
