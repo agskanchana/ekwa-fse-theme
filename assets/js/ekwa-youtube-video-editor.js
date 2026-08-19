@@ -184,7 +184,7 @@
 				apiFetch( {
 					path: '/ekwa/v1/video-transcript',
 					method: 'POST',
-					data: { video_id: a.videoId, force_refresh: !! forceRefresh },
+					data: { video_id: a.videoId, provider: 'youtube', force_refresh: !! forceRefresh },
 				} )
 					.then( function ( res ) {
 						set( { transcript: res.transcript, showTranscript: true } );

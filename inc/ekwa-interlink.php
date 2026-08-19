@@ -138,6 +138,7 @@ function ekwa_interlink_rest_targets( $request ) {
 			'title'    => $t['title'],
 			'url'      => $t['url'],
 			'keywords' => array_values( $t['keywords'] ),
+			'linkType' => isset( $t['linkType'] ) ? $t['linkType'] : '',
 		);
 	}
 
@@ -257,6 +258,12 @@ function ekwa_interlink_special_targets() {
 			'postId'   => $appt_post,
 			'title'    => __( 'Appointment', 'ekwa' ),
 			'url'      => $appt_url,
+			// Tells the editor to apply the dynamic ekwa/appointment-link format
+			// (a class marker, not a literal href) instead of a plain link, so the
+			// inserted link keeps resolving to the live Appointment URL setting
+			// instead of going stale — see ekwa-appointment-link-format.js and
+			// ekwa_resolve_appointment_link_format().
+			'linkType' => 'appointment',
 			'keywords' => array(
 				'book an appointment',
 				'schedule an appointment',

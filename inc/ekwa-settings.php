@@ -73,6 +73,7 @@ function ekwa_admin_enqueue( $hook ) {
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
 		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
 		'aiTestKeyUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ai-test-key' ) ),
+		'vimeoTestKeyUrl'  => esc_url_raw( rest_url( 'ekwa/v1/vimeo-test-key' ) ),
 		'askDocsUrl'       => esc_url_raw( rest_url( 'ekwa/v1/ask-docs' ) ),
 		'askDocsStrings'   => array(
 			'thinking'  => __( 'Thinking…', 'ekwa' ),
@@ -199,6 +200,26 @@ function ekwa_get_appointment_url() {
 	}
 	$link = get_permalink( $page_id );
 	return $link ? $link : '';
+}
+
+/**
+ * Resolve the Vimeo API Personal Access Token used to fetch caption/transcript
+ * data (see ekwa_video_fetch_vimeo_transcript() in inc/ekwa-video-embed.php).
+ *
+ * The Settings field, when filled in, always wins. Otherwise this falls back
+ * to a token baked into the theme — this is an internal, single-team theme
+ * (not distributed externally), so shipping a working default here means new
+ * site installs get Vimeo transcripts with zero setup; the Settings field
+ * exists only for swapping it later without touching code.
+ *
+ * @return string Token, or '' when nothing is configured.
+ */
+function ekwa_get_vimeo_api_token() {
+	$option = trim( (string) get_option( 'ekwa_vimeo_api_token', '' ) );
+	if ( '' !== $option ) {
+		return $option;
+	}
+	return '5789f91caa236c2fc11ac74098c4dcc9';
 }
 
 /**
@@ -352,6 +373,16 @@ function ekwa_save_settings() {
 		$submitted = sanitize_text_field( wp_unslash( $_POST['ekwa_gemini_api_key'] ) );
 		if ( '' !== $submitted && false === strpos( $submitted, '•' ) ) {
 			update_option( 'ekwa_gemini_api_key', $submitted );
+		}
+	}
+
+	// Vimeo API token — same masked-field convention as the Gemini key above.
+	// A blank submit keeps whatever is stored (including "nothing stored",
+	// which falls back to the built-in default — see ekwa_get_vimeo_api_token()).
+	if ( isset( $_POST['ekwa_vimeo_api_token'] ) ) {
+		$submitted = sanitize_text_field( wp_unslash( $_POST['ekwa_vimeo_api_token'] ) );
+		if ( '' !== $submitted && false === strpos( $submitted, '•' ) ) {
+			update_option( 'ekwa_vimeo_api_token', $submitted );
 		}
 	}
 
@@ -1377,6 +1408,57 @@ function ekwa_render_settings_page() {
 							</td>
 						</tr>
 					</table>
+				</div>
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'Video Embeds', 'ekwa' ); ?></h2>
+					<table class="form-table">
+						<tr>
+							<th><label for="ekwa_vimeo_api_token"><?php esc_html_e( 'Vimeo API Token', 'ekwa' ); ?></label></th>
+							<td>
+								<?php
+								$vimeo_token_option = get_option( 'ekwa_vimeo_api_token', '' );
+								$vimeo_masked       = ( $vimeo_token_option && function_exists( 'ekwa_ai_mask_key' ) ) ? ekwa_ai_mask_key( $vimeo_token_option ) : '';
+								?>
+								<input type="password" id="ekwa_vimeo_api_token" name="ekwa_vimeo_api_token" value="" class="regular-text" autocomplete="off" placeholder="<?php echo $vimeo_masked ? esc_attr( $vimeo_masked . '  —  ' . __( 'leave blank to keep', 'ekwa' ) ) : esc_attr__( 'Using the theme\'s built-in default — leave blank to keep it', 'ekwa' ); ?>" />
+								<button type="button" class="button" id="ekwa-vimeo-test-key"><?php esc_html_e( 'Test key', 'ekwa' ); ?></button>
+								<span id="ekwa-vimeo-test-key-status" style="margin-left:8px;"></span>
+								<p class="description">
+									<?php
+									printf(
+										/* translators: %s: link to Vimeo's developer apps page */
+										esc_html__( 'Used by the Ekwa Vimeo Video block to fetch a transcript — only works for videos where captions were uploaded (Vimeo does not auto-generate them for every video like YouTube). Get a Personal Access Token from %s. The stored token is never shown in full; leave blank to keep the current one or fall back to the built-in default.', 'ekwa' ),
+										'<a href="https://developer.vimeo.com/apps" target="_blank" rel="noopener">developer.vimeo.com</a>'
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+					</table>
+					<script>
+					document.addEventListener( 'DOMContentLoaded', function () {
+						var btn = document.getElementById( 'ekwa-vimeo-test-key' );
+						if ( ! btn || typeof ekwaAdmin === 'undefined' ) { return; }
+						var status = document.getElementById( 'ekwa-vimeo-test-key-status' );
+						btn.addEventListener( 'click', function () {
+							btn.disabled = true;
+							status.textContent = ekwaAdmin.aiTestStrings.testing;
+							status.style.color = '#646970';
+							fetch( ekwaAdmin.vimeoTestKeyUrl, {
+								method: 'POST',
+								headers: { 'X-WP-Nonce': ekwaAdmin.webpRestNonce },
+							} ).then( function ( r ) { return r.json(); } ).then( function ( res ) {
+								btn.disabled = false;
+								status.textContent = res.message || '';
+								status.style.color = res.ok ? '#008a20' : '#d63638';
+							} ).catch( function () {
+								btn.disabled = false;
+								status.textContent = ekwaAdmin.aiTestStrings.error;
+								status.style.color = '#d63638';
+							} );
+						} );
+					} );
+					</script>
 				</div>
 
 				<div class="ekwa-section">

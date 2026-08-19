@@ -1047,6 +1047,154 @@ function ekwa_video_fetch_caption_text( $base_url, $fmt ) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// VIMEO TRANSCRIPT (official API — texttracks, requires a Personal Access Token)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch a Vimeo video's transcript via the official texttracks endpoint.
+ *
+ * Unlike YouTube, this only returns something when the video owner actually
+ * uploaded a caption/subtitle track — Vimeo doesn't auto-generate captions for
+ * every video, so "no captions available" is a normal, common outcome here,
+ * not a failure. Requires ekwa_get_vimeo_api_token() to resolve to a token
+ * (Settings → General → Vimeo API Token, or the theme's built-in default).
+ *
+ * @param string $video_id
+ * @param bool   $force_refresh
+ * @return array{success:bool, transcript?:string, source?:string, message?:string}
+ */
+function ekwa_video_fetch_vimeo_transcript( $video_id, $force_refresh = false ) {
+	if ( empty( $video_id ) ) {
+		return array( 'success' => false, 'message' => __( 'Missing video ID.', 'ekwa' ) );
+	}
+
+	$token = function_exists( 'ekwa_get_vimeo_api_token' ) ? ekwa_get_vimeo_api_token() : '';
+	if ( '' === $token ) {
+		return array( 'success' => false, 'message' => __( 'No Vimeo API token configured (Settings → General → Video Embeds).', 'ekwa' ) );
+	}
+
+	// Separate cache namespace from the YouTube transcript cache — Vimeo IDs
+	// are numeric and YouTube's are 11-char alphanumeric, so collisions aren't
+	// realistically possible, but the prefix keeps the two providers' cache
+	// entries unambiguous on inspection.
+	$cache_key = 'ekwa_vid_transcript_vm_' . md5( $video_id );
+	if ( $force_refresh ) {
+		delete_transient( $cache_key );
+	} else {
+		$cached = get_transient( $cache_key );
+		if ( false !== $cached ) {
+			return ( '__none__' === $cached )
+				? array( 'success' => false, 'message' => __( 'No captions available for this video — the uploader hasn\'t added any.', 'ekwa' ) )
+				: array( 'success' => true, 'transcript' => $cached['text'], 'source' => $cached['source'] );
+		}
+	}
+
+	$response = wp_remote_get(
+		'https://api.vimeo.com/videos/' . rawurlencode( $video_id ) . '/texttracks',
+		array(
+			'timeout' => 15,
+			'headers' => array(
+				'Authorization' => 'Bearer ' . $token,
+				'Accept'        => 'application/vnd.vimeo.*+json;version=3.4',
+			),
+		)
+	);
+	if ( is_wp_error( $response ) ) {
+		return array( 'success' => false, 'message' => __( 'Could not reach Vimeo to fetch captions. Try again shortly.', 'ekwa' ) );
+	}
+	$code = wp_remote_retrieve_response_code( $response );
+	if ( 401 === $code || 403 === $code ) {
+		return array( 'success' => false, 'message' => __( 'Vimeo rejected the API token — check it under Settings → General → Video Embeds.', 'ekwa' ) );
+	}
+	if ( 200 !== $code ) {
+		return array( 'success' => false, 'message' => __( 'Could not reach Vimeo to fetch captions. Try again shortly.', 'ekwa' ) );
+	}
+
+	$body   = json_decode( wp_remote_retrieve_body( $response ), true );
+	$tracks = ( is_array( $body ) && ! empty( $body['data'] ) && is_array( $body['data'] ) ) ? $body['data'] : array();
+
+	// Prefer the track Vimeo marks active; otherwise the first with a link.
+	$pick = null;
+	foreach ( $tracks as $track ) {
+		if ( ! empty( $track['active'] ) && ! empty( $track['link'] ) ) {
+			$pick = $track;
+			break;
+		}
+	}
+	if ( ! $pick ) {
+		foreach ( $tracks as $track ) {
+			if ( ! empty( $track['link'] ) ) {
+				$pick = $track;
+				break;
+			}
+		}
+	}
+	if ( ! $pick ) {
+		set_transient( $cache_key, '__none__', 5 * MINUTE_IN_SECONDS );
+		return array( 'success' => false, 'message' => __( 'No captions available for this video — the uploader hasn\'t added any.', 'ekwa' ) );
+	}
+
+	$vtt_response = wp_remote_get( $pick['link'], array( 'timeout' => 15 ) );
+	if ( is_wp_error( $vtt_response ) || 200 !== wp_remote_retrieve_response_code( $vtt_response ) ) {
+		return array( 'success' => false, 'message' => __( 'Could not download the caption file from Vimeo. Try again shortly.', 'ekwa' ) );
+	}
+
+	$text = ekwa_video_parse_vtt_text( wp_remote_retrieve_body( $vtt_response ) );
+	if ( '' === $text ) {
+		set_transient( $cache_key, '__none__', 5 * MINUTE_IN_SECONDS );
+		return array( 'success' => false, 'message' => __( 'Captions were empty for this video.', 'ekwa' ) );
+	}
+
+	// Vimeo's texttracks schema has no machine-generated flag (unlike YouTube's
+	// kind=asr), including for its own Pro+/Business+ auto-caption feature, so
+	// there's no reliable way to distinguish auto from human here.
+	$source = 'human';
+	set_transient( $cache_key, array( 'text' => $text, 'source' => $source ), 30 * DAY_IN_SECONDS );
+
+	return array( 'success' => true, 'transcript' => $text, 'source' => $source );
+}
+
+/**
+ * Strip a WebVTT caption file down to plain text.
+ *
+ * Drops the WEBVTT header, NOTE/STYLE blocks, cue-timing lines, bare numeric
+ * cue identifiers, and inline markup (<v Speaker>, <i>, <b>, <c>, in-cue
+ * timestamps), then joins what's left into one space-separated string —
+ * matching the flat (non-paragraphed) shape ekwa_video_fetch_youtube_transcript()
+ * already returns, so both providers feed the same transcript textarea/toggle
+ * the same way.
+ *
+ * @param string $vtt Raw WebVTT file contents.
+ * @return string Plain text, or '' if nothing readable was found.
+ */
+function ekwa_video_parse_vtt_text( $vtt ) {
+	$lines = preg_split( '/\r\n|\r|\n/', (string) $vtt );
+	$text  = '';
+	foreach ( $lines as $line ) {
+		$line = trim( $line );
+		if ( '' === $line ) {
+			continue;
+		}
+		if ( 0 === stripos( $line, 'WEBVTT' ) || 0 === stripos( $line, 'NOTE' ) || 0 === stripos( $line, 'STYLE' ) ) {
+			continue;
+		}
+		if ( false !== strpos( $line, '-->' ) ) { // Cue timing line.
+			continue;
+		}
+		if ( preg_match( '/^\d+$/', $line ) ) { // Bare numeric cue identifier.
+			continue;
+		}
+		$line = preg_replace( '/<[^>]*>/', '', $line ); // <v Speaker>, <i>, <b>, <c>, timestamps.
+		$line = trim( html_entity_decode( $line, ENT_QUOTES, 'UTF-8' ) );
+		if ( '' === $line ) {
+			continue;
+		}
+		$text .= $line . ' ';
+	}
+	return trim( preg_replace( '/\s+/', ' ', $text ) );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // REST ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1081,8 +1229,21 @@ function ekwa_video_embed_register_rest_routes() {
 			},
 			'args'                => array(
 				'video_id'      => array( 'required' => true, 'type' => 'string' ),
+				'provider'      => array( 'required' => false, 'type' => 'string', 'enum' => array( 'youtube', 'vimeo' ), 'default' => 'youtube' ),
 				'force_refresh' => array( 'required' => false, 'type' => 'boolean', 'default' => false ),
 			),
+		)
+	);
+
+	register_rest_route(
+		'ekwa/v1',
+		'/vimeo-test-key',
+		array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => 'ekwa_video_rest_test_vimeo_key',
+			'permission_callback' => function () {
+				return current_user_can( 'manage_options' );
+			},
 		)
 	);
 }
@@ -1117,13 +1278,20 @@ function ekwa_video_rest_metadata( $request ) {
 }
 
 /**
- * REST: fetch (or refresh) a YouTube video's transcript.
+ * REST: fetch (or refresh) a video's transcript — YouTube (scraped) or Vimeo
+ * (official texttracks API).
  *
  * @param WP_REST_Request $request
  * @return WP_REST_Response|WP_Error
  */
 function ekwa_video_rest_transcript( $request ) {
-	$result = ekwa_video_fetch_youtube_transcript( $request->get_param( 'video_id' ), (bool) $request->get_param( 'force_refresh' ) );
+	$video_id      = $request->get_param( 'video_id' );
+	$force_refresh = (bool) $request->get_param( 'force_refresh' );
+	$provider      = $request->get_param( 'provider' );
+
+	$result = ( 'vimeo' === $provider )
+		? ekwa_video_fetch_vimeo_transcript( $video_id, $force_refresh )
+		: ekwa_video_fetch_youtube_transcript( $video_id, $force_refresh );
 
 	if ( empty( $result['success'] ) ) {
 		return new WP_Error( 'ekwa_video_transcript_failed', $result['message'] ?? __( 'Could not fetch transcript.', 'ekwa' ), array( 'status' => 422 ) );
@@ -1135,6 +1303,54 @@ function ekwa_video_rest_transcript( $request ) {
 			'source'     => $result['source'],
 		)
 	);
+}
+
+/**
+ * REST: verify the configured Vimeo API token with a minimal authenticated call.
+ *
+ * @return WP_REST_Response
+ */
+function ekwa_video_rest_test_vimeo_key() {
+	$token = function_exists( 'ekwa_get_vimeo_api_token' ) ? ekwa_get_vimeo_api_token() : '';
+	if ( '' === $token ) {
+		return rest_ensure_response( array(
+			'ok'      => false,
+			'message' => __( 'No API token configured.', 'ekwa' ),
+		) );
+	}
+
+	$response = wp_remote_get( 'https://api.vimeo.com/me', array(
+		'timeout' => 10,
+		'headers' => array(
+			'Authorization' => 'Bearer ' . $token,
+			'Accept'        => 'application/vnd.vimeo.*+json;version=3.4',
+		),
+	) );
+
+	if ( is_wp_error( $response ) ) {
+		return rest_ensure_response( array(
+			'ok'      => false,
+			'message' => $response->get_error_message(),
+		) );
+	}
+
+	$code = wp_remote_retrieve_response_code( $response );
+	if ( 200 !== $code ) {
+		return rest_ensure_response( array(
+			'ok'      => false,
+			/* translators: %d: HTTP status code Vimeo responded with. */
+			'message' => sprintf( __( 'Vimeo responded with an error (HTTP %d).', 'ekwa' ), $code ),
+		) );
+	}
+
+	$body = json_decode( wp_remote_retrieve_body( $response ), true );
+	$name = ( is_array( $body ) && ! empty( $body['name'] ) ) ? $body['name'] : '';
+
+	return rest_ensure_response( array(
+		'ok'      => true,
+		/* translators: %s: the Vimeo account name the token authenticated as. */
+		'message' => $name ? sprintf( __( 'Key works — authenticated as %s.', 'ekwa' ), $name ) : __( 'Key works.', 'ekwa' ),
+	) );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

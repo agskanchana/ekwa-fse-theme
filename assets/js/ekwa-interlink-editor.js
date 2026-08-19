@@ -184,8 +184,11 @@
 		return null;
 	}
 
-	// Wrap the matched range in <a href>. Returns true on success.
-	function wrapMatch( bodyEl, runs, hit, url ) {
+	// Wrap the matched range in <a href>. When linkType is 'appointment', marks
+	// the anchor for ekwa_resolve_appointment_link_format() to keep re-resolving
+	// on every render instead of baking in a URL that goes stale — see
+	// ekwa-appointment-link-format.js. Returns true on success.
+	function wrapMatch( bodyEl, runs, hit, url, linkType ) {
 		var containing = null;
 		for ( var i = 0; i < runs.length; i++ ) {
 			if ( hit.index >= runs[ i ].start && hit.index < runs[ i ].end ) {
@@ -210,6 +213,10 @@
 
 		var anchor = bodyEl.ownerDocument.createElement( 'a' );
 		anchor.setAttribute( 'href', url );
+		if ( 'appointment' === linkType ) {
+			anchor.className = 'ekwa-appointment-link';
+			anchor.setAttribute( 'data-ekwa-link-type', 'appointment' );
+		}
 		anchor.textContent = mid.nodeValue;      // preserve original casing
 		mid.parentNode.replaceChild( anchor, mid );
 		return true;
@@ -245,7 +252,7 @@
 			( t.keywords || [] ).forEach( function ( kw ) {
 				kw = String( kw || '' ).trim();
 				if ( kw.length >= 3 ) {
-					list.push( { phrase: kw, url: t.url, title: t.title || t.url } );
+					list.push( { phrase: kw, url: t.url, title: t.title || t.url, linkType: t.linkType || '' } );
 				}
 			} );
 		} );
@@ -277,6 +284,7 @@
 						phrase:   c.phrase,
 						url:      c.url,
 						title:    c.title,
+						linkType: c.linkType,
 						clientId: field.clientId,
 						attrKey:  field.attrKey
 					} );
@@ -306,7 +314,7 @@
 		var body = parseFragment( live.html );
 		var collected = collectRuns( body );
 		var hit = findPhrase( collected.plain, s.phrase );
-		if ( ! hit || ! wrapMatch( body, collected.runs, hit, s.url ) ) {
+		if ( ! hit || ! wrapMatch( body, collected.runs, hit, s.url, s.linkType ) ) {
 			return false;
 		}
 		writeField( s.clientId, live.block.name, s.attrKey, body.innerHTML );
@@ -338,7 +346,7 @@
 				g.items.forEach( function ( s ) {
 					var collected = collectRuns( body ); // re-collect → no stale offsets
 					var hit = findPhrase( collected.plain, s.phrase );
-					if ( hit && wrapMatch( body, collected.runs, hit, s.url ) ) {
+					if ( hit && wrapMatch( body, collected.runs, hit, s.url, s.linkType ) ) {
 						changed = true;
 					}
 				} );

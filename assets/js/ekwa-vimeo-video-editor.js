@@ -5,8 +5,9 @@
  * → thumbnail preview. Also registers a paste-transform: a bare Vimeo URL
  * pasted on its own line becomes this block instead of core/embed (priority
  * below core/embed's default so ours wins), plus a block-switcher transform
- * to/from core/embed. Vimeo has no public transcript API, so — unlike the
- * YouTube block — transcript text here is paste-your-own only.
+ * to/from core/embed. Transcript can be fetched from Vimeo's official
+ * texttracks API (requires a token — Settings → General → Video Embeds) when
+ * the video owner uploaded captions, or pasted in manually either way.
  *
  * Plain wp.element (no JSX / build step), matching the theme's other editor JS.
  */
@@ -105,6 +106,12 @@
 			var durationErrorState = useState( '' );
 			var durationError       = durationErrorState[ 0 ];
 			var setDurationError    = durationErrorState[ 1 ];
+			var fetchingTranscriptState = useState( false );
+			var fetchingTranscript      = fetchingTranscriptState[ 0 ];
+			var setFetchingTranscript   = fetchingTranscriptState[ 1 ];
+			var transcriptStatusState   = useState( null );
+			var transcriptStatus        = transcriptStatusState[ 0 ];
+			var setTranscriptStatus     = transcriptStatusState[ 1 ];
 
 			// Keep the human-readable duration field in sync when the ISO value
 			// changes from elsewhere (metadata fetch, URL cleared, etc.).
@@ -173,6 +180,28 @@
 				}
 				// eslint-disable-next-line
 			}, [] );
+
+			function fetchTranscript( forceRefresh ) {
+				if ( fetchingTranscript || ! a.videoId ) { return; }
+				setFetchingTranscript( true );
+				setTranscriptStatus( {
+					type: 'info',
+					message: forceRefresh ? __( 'Retrying (skipping cache)…', 'ekwa' ) : __( 'Fetching transcript…', 'ekwa' ),
+				} );
+				apiFetch( {
+					path: '/ekwa/v1/video-transcript',
+					method: 'POST',
+					data: { video_id: a.videoId, provider: 'vimeo', force_refresh: !! forceRefresh },
+				} )
+					.then( function ( res ) {
+						set( { transcript: res.transcript, showTranscript: true } );
+						setTranscriptStatus( { type: 'success', message: __( 'Transcript fetched.', 'ekwa' ) } );
+					} )
+					.catch( function ( err ) {
+						setTranscriptStatus( { type: 'error', message: ( err && err.message ) || __( 'Could not fetch transcript.', 'ekwa' ) } );
+					} )
+					.finally( function () { setFetchingTranscript( false ); } );
+			}
 
 			var blockProps = useBlockProps( { className: 'ekwa-video-embed-editor' } );
 
@@ -272,10 +301,26 @@
 				) : null,
 				a.videoUrl && a.videoId ? el( PanelBody, { title: __( 'Transcript', 'ekwa' ), initialOpen: false },
 					el( ToggleControl, { label: __( 'Show transcript button', 'ekwa' ), checked: a.showTranscript, onChange: function ( v ) { set( { showTranscript: v } ); } } ),
-					el( 'p', { style: { marginTop: 0, color: '#757575', fontSize: '12px' } }, __( 'Vimeo has no public captions API — paste the transcript text yourself.', 'ekwa' ) ),
+					el( 'div', { style: { margin: '8px 0' } },
+						el( Button, {
+							variant: 'secondary',
+							disabled: fetchingTranscript,
+							onClick: function () { fetchTranscript( false ); },
+						}, fetchingTranscript ? __( 'Fetching…', 'ekwa' ) : __( 'Fetch transcript from Vimeo', 'ekwa' ) ),
+						transcriptStatus && 'error' === transcriptStatus.type
+							? el( Button, { variant: 'secondary', disabled: fetchingTranscript, style: { marginLeft: '8px' }, onClick: function () { fetchTranscript( true ); } }, __( 'Retry (skip cache)', 'ekwa' ) )
+							: null
+					),
+					transcriptStatus ? el( Notice, {
+						status: 'error' === transcriptStatus.type ? 'error' : 'success' === transcriptStatus.type ? 'success' : 'info',
+						isDismissible: true,
+						onRemove: function () { setTranscriptStatus( null ); },
+					}, transcriptStatus.message ) : null,
+					el( 'p', { style: { marginTop: 0, color: '#757575', fontSize: '12px' } },
+						__( 'Only works if the video owner uploaded captions on Vimeo — unlike YouTube, Vimeo doesn\'t auto-generate them for every video. If fetching finds nothing, paste the transcript text yourself below.', 'ekwa' ) ),
 					el( TextareaControl, {
 						label: __( 'Transcript text', 'ekwa' ),
-						help: __( 'Blank line between paragraphs.', 'ekwa' ),
+						help: __( 'Blank line between paragraphs. Fetched automatically above (when available), or paste your own.', 'ekwa' ),
 						value: a.transcript || '',
 						onChange: function ( v ) { set( { transcript: v } ); },
 						rows: 8,

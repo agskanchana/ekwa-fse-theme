@@ -111,6 +111,19 @@ function ekwa_register_blocks() {
 		true
 	);
 
+	// Inline Appointment Link format (RichText equivalent of the block-level
+	// Link Source "Appointment URL" option — see ekwa-appointment-link-format.js).
+	// Depends on ekwa-link-source-control so the ekwaBlockData localization
+	// (appointmentUrl, for the editor-preview href) is guaranteed to have
+	// loaded first.
+	wp_register_script(
+		'ekwa-appointment-link-format',
+		get_theme_file_uri( 'assets/js/ekwa-appointment-link-format.js' ),
+		array( 'wp-rich-text', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-appointment-link-format.js' ) ),
+		true
+	);
+
 	// Phone number block.
 	wp_register_script(
 		'ekwa-phone-editor',
@@ -804,6 +817,7 @@ add_action( 'init', 'ekwa_register_blocks' );
  */
 function ekwa_enqueue_editor_assets() {
 	wp_enqueue_script( 'ekwa-icon-format' );
+	wp_enqueue_script( 'ekwa-appointment-link-format' );
 	wp_enqueue_style(
 		'ekwa-editor-css',
 		get_template_directory_uri() . '/assets/css/ekwa-editor.css',
@@ -3838,6 +3852,42 @@ function ekwa_resolve_block_link_url( $attrs ) {
 	}
 	return isset( $attrs['url'] ) ? (string) $attrs['url'] : '';
 }
+
+
+/**
+ * Resolve <a class="ekwa-appointment-link"> hrefs to the live appointment URL.
+ *
+ * The RichText counterpart to the linkType==='appointment' branch above —
+ * see ekwa-appointment-link-format.js. That format writes the appointment
+ * URL into href only as an editor-preview convenience; the value baked into
+ * saved content is never trusted on the front end, so it can't go stale when
+ * the appointment URL setting changes. Runs on every block's rendered HTML
+ * (paragraphs, headings, list items, anywhere RichText can carry a link), so
+ * it opens with a cheap strpos() to skip the regex on the common case of no
+ * such link being present.
+ *
+ * @param string $block_content Rendered block HTML.
+ * @return string
+ */
+function ekwa_resolve_appointment_link_format( $block_content ) {
+	if ( false === strpos( $block_content, 'ekwa-appointment-link' ) ) {
+		return $block_content;
+	}
+
+	$appt_url = ekwa_get_appointment_url();
+
+	return preg_replace_callback(
+		'/<a\b[^>]*\bclass="[^"]*\bekwa-appointment-link\b[^"]*"[^>]*>/i',
+		function ( $m ) use ( $appt_url ) {
+			$tag = $m[0];
+			return preg_match( '/\bhref="[^"]*"/i', $tag )
+				? preg_replace( '/\bhref="[^"]*"/i', 'href="' . esc_attr( $appt_url ) . '"', $tag, 1 )
+				: preg_replace( '/^<a\b/i', '<a href="' . esc_attr( $appt_url ) . '"', $tag, 1 );
+		},
+		$block_content
+	);
+}
+add_filter( 'render_block', 'ekwa_resolve_appointment_link_format' );
 
 
 /**
