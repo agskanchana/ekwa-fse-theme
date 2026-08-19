@@ -101,8 +101,6 @@
 .ekwa-single__featured img {
 	width: 100%;
 	height: auto;
-	max-height: 460px;
-	object-fit: cover;
 	border-radius: 14px;
 	display: block;
 }
@@ -177,9 +175,6 @@
 			"postnav"
 			"widgets";
 		column-gap: 0;
-	}
-	.ekwa-single__featured img {
-		max-height: 280px;
 	}
 }
 
@@ -380,11 +375,6 @@
    RELATED ARTICLES (carousel + grid modes)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.ekwa-related {
-	max-width: 1200px;
-	margin: 0 auto;
-	padding: 32px 16px;
-}
 .ekwa-related__title {
 	font-size: clamp(22px, 3vw, 28px);
 	font-weight: 700;
