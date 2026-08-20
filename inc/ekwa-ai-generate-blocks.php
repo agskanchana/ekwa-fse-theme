@@ -72,6 +72,40 @@ function ekwa_ai_generate_blocks_register_routes() {
 			),
 		),
 	) );
+
+	// Front-end render of arbitrary block markup, for the modal's preview pane.
+	// No AI call, so it sits outside the AI role-gate / daily cap.
+	register_rest_route( 'ekwa/v1', '/ai-blocks-preview', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_ai_blocks_preview_request',
+		'permission_callback' => function () { return current_user_can( 'edit_posts' ); },
+		'args' => array(
+			'markup' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+			),
+		),
+	) );
+}
+
+/**
+ * Handle POST /ekwa/v1/ai-blocks-preview — render block markup the way the front
+ * end would.
+ *
+ * "Edit with AI" needs this to show the *current* selection before any AI turn:
+ * the editor canvas can't supply it, because what it holds is editor DOM
+ * (placeholders, Replace/Remove buttons) styled by the editor's own stylesheets.
+ * Rendering here also runs the render_block filters, so each block's front-end
+ * CSS is inlined into the returned HTML (see inc/ekwa-inline-assets.php).
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response
+ */
+function ekwa_ai_blocks_preview_request( $request ) {
+	return rest_ensure_response( array(
+		'rendered_html' => ekwa_ai_generate_blocks_render_preview( (string) $request->get_param( 'markup' ) ),
+	) );
 }
 
 /**

@@ -50,6 +50,10 @@
 	// Localized config from PHP (functions.php → wp_localize_script).
 	var cfg           = window.ekwaAiBlocks || {};
 	var CHILD_CSS_URL = cfg.childStylesheetUrl || '';
+	// Design tokens + mockup sheet + fonts, exactly as <head> prints them. The
+	// preview iframe is styled from scratch, so without these the rendered blocks
+	// resolve none of their var()s and land on browser defaults.
+	var PREVIEW_CSS   = cfg.previewCss || '';
 	var MODEL_OPTIONS = Array.isArray( cfg.models ) && cfg.models.length
 		? cfg.models
 		// PHP always sends the list; this only fires if localization failed.
@@ -120,29 +124,28 @@
 	}
 
 	/**
-	 * Grab the rendered HTML of the selected block(s) straight from the editor
-	 * canvas, so "Edit with AI" can show a live preview of the current section
-	 * immediately (before any AI round-trip). The canvas lives in an iframe in the
-	 * site/post editor; fall back to the main document otherwise. Returns '' if it
-	 * can't be read — the modal then shows its placeholder.
+	 * Render block markup server-side, the way the front end would, so "Edit with
+	 * AI" can preview the current section before any AI round-trip.
 	 *
-	 * @param {Array} clientIds Selected block client ids.
-	 * @return {string}
+	 * Reading the editor canvas instead is tempting but wrong: the canvas holds
+	 * editor DOM — media placeholders, Replace/Remove buttons, block wrappers —
+	 * styled by stylesheets the preview iframe doesn't load, so it renders as
+	 * unstyled markup. The REST render also inlines each block's front-end CSS.
+	 *
+	 * @param {string} markup Serialized block markup.
+	 * @return {Promise<string>} Rendered HTML, or '' when it can't be rendered.
 	 */
-	function selectionPreviewHtml( clientIds ) {
-		try {
-			var doc    = document;
-			var iframe = document.querySelector( 'iframe[name="editor-canvas"]' );
-			if ( iframe && iframe.contentDocument ) { doc = iframe.contentDocument; }
-			var html = '';
-			( clientIds || [] ).forEach( function ( id ) {
-				var node = doc.querySelector( '[data-block="' + id + '"]' );
-				if ( node ) { html += node.outerHTML; }
-			} );
-			return html;
-		} catch ( e ) {
+	function renderPreviewMarkup( markup ) {
+		if ( ! markup ) { return Promise.resolve( '' ); }
+		return apiFetch( {
+			path: '/ekwa/v1/ai-blocks-preview',
+			method: 'POST',
+			data: { markup: markup },
+		} ).then( function ( res ) {
+			return ( res && res.rendered_html ) || '';
+		} ).catch( function () {
 			return '';
-		}
+		} );
 	}
 
 	function readFileAsBase64( file ) {
@@ -208,7 +211,7 @@
 		var s4  = useState( null );          var error        = s4[0];  var setError        = s4[1];
 		var s5  = useState( props.seedMarkup || '' ); var markup    = s5[0];  var setMarkup       = s5[1];
 		var s6  = useState( props.seedCss || '' );    var css       = s6[0];  var setCss          = s6[1];
-		var s7  = useState( props.seedRendered || '' ); var renderedHtml = s7[0]; var setRenderedHtml = s7[1];
+		var s7  = useState( '' );            var renderedHtml = s7[0];  var setRenderedHtml = s7[1];
 		var s8  = useState( [] );            var warnings     = s8[0];  var setWarnings     = s8[1];
 		var s9  = useState( false );         var copiedMarkup = s9[0];  var setCopiedMarkup = s9[1];
 		var s10 = useState( false );         var copiedCss    = s10[0]; var setCopiedCss    = s10[1];
@@ -218,6 +221,10 @@
 		var s14 = useState( false );         var isFullscreen = s14[0]; var setIsFullscreen = s14[1];
 		var s15 = useState( props.context || 'section' ); var context = s15[0]; var setContext = s15[1];
 		var s16 = useState( false );         var inserted     = s16[0]; var setInserted     = s16[1];
+		// The front-end render of the untouched selection: the edit-mode starting
+		// preview, and what "Back" returns to. Filled in by the effect below.
+		var s17 = useState( '' );            var seedRendered = s17[0]; var setSeedRendered = s17[1];
+		var s18 = useState( !! props.editMode ); var previewLoading = s18[0]; var setPreviewLoading = s18[1];
 
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
@@ -233,6 +240,20 @@
 		var fileRef = useRef( null );
 
 		var step = markup ? 'result' : 'generate';
+
+		// Edit mode: render the selected blocks server-side for the opening preview.
+		// Fire-and-forget — until it lands the preview pane shows its placeholder.
+		useEffect( function () {
+			if ( ! editMode || ! props.seedMarkup ) { setPreviewLoading( false ); return; }
+			renderPreviewMarkup( props.seedMarkup ).then( function ( html ) {
+				setPreviewLoading( false );
+				if ( ! html ) { return; }
+				setSeedRendered( html );
+				// Adopt it only while nothing else fills the pane; if an AI turn beat
+				// us to it, that result's own render must stand.
+				setRenderedHtml( function ( prev ) { return prev ? prev : html; } );
+			} );
+		}, [] );
 
 		// Load the recent-sessions index once when the modal mounts.
 		useEffect( function () {
@@ -460,7 +481,7 @@
 			// emptying the form (which would drop the section being edited).
 			setMarkup( editMode ? ( props.seedMarkup || '' ) : '' );
 			setCss( editMode ? ( props.seedCss || '' ) : '' );
-			setRenderedHtml( editMode ? ( props.seedRendered || '' ) : '' );
+			setRenderedHtml( editMode ? seedRendered : '' );
 			setWarnings( [] );
 			setHistory( [] );
 			setError( null );
@@ -669,16 +690,26 @@
 			var previewIframe = renderedHtml
 				? el( 'iframe', {
 					className: 'ekwa-ai-preview-frame',
-					sandbox: '',
+					// allow-same-origin, and nothing else. An empty sandbox gives the
+					// frame an opaque origin, and @font-face requests from an opaque
+					// origin fail the CORS check — so the site's own webfonts silently
+					// never load and the preview falls back to a system font. Scripts
+					// stay blocked (no allow-scripts).
+					sandbox: 'allow-same-origin',
 					srcDoc: '<!doctype html><html><head><meta charset="utf-8">'
 						+ '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
 						+ ( CHILD_CSS_URL ? '<link rel="stylesheet" href="' + CHILD_CSS_URL + '">' : '' )
+						// Site CSS before the reset, so the reset's margin:0 wins,
+						// and both before the section CSS, which must stay last.
+						+ ( PREVIEW_CSS ? '<style>' + PREVIEW_CSS + '</style>' : '' )
 						+ '<style>body{margin:0;padding:0;}img{max-width:100%;height:auto;}</style>'
 						+ ( css ? '<style>' + css + '</style>' : '' )
 						+ '</head><body>' + renderedHtml + '</body></html>',
 				} )
 				: el( 'div', { className: 'ekwa-ai-preview-frame ekwa-ai-preview-frame--placeholder' },
-					el( 'span', null, __( 'Live preview unavailable for this content — the block markup below is still valid and ready to insert.', 'ekwa' ) )
+					previewLoading
+						? el( Fragment, null, el( Spinner, null ), el( 'span', null, __( 'Rendering preview…', 'ekwa' ) ) )
+						: el( 'span', null, __( 'Live preview unavailable for this content — the block markup below is still valid and ready to insert.', 'ekwa' ) )
 				);
 
 			var previewHeader = el( 'div', { className: 'ekwa-ai-preview-label' },
@@ -871,14 +902,12 @@
 		var sm = useState( '' );         var seedMarkup = sm[0]; var setSeedMarkup = sm[1];
 		var sc = useState( '' );         var seedCss    = sc[0]; var setSeedCss    = sc[1];
 		var ci = useState( [] );         var editIds    = ci[0]; var setEditIds    = ci[1];
-		var sr = useState( '' );         var seedRendered = sr[0]; var setSeedRendered = sr[1];
 
 		// Build a new section from scratch (from the editor "more" menu).
 		function open() {
 			setEditMode( false );
 			setSeedMarkup( '' );
 			setSeedCss( '' );
-			setSeedRendered( '' );
 			setEditIds( [] );
 			setCtx( detectContext() );
 			setOpen( true );
@@ -901,7 +930,6 @@
 			setEditIds( ids );
 			setSeedMarkup( seed.markup );
 			setSeedCss( seed.css );
-			setSeedRendered( selectionPreviewHtml( ids ) );
 			setEditMode( true );
 			setCtx( detectContext() );
 			setOpen( true );
@@ -937,7 +965,6 @@
 					editMode: editMode,
 					seedMarkup: seedMarkup,
 					seedCss: seedCss,
-					seedRendered: seedRendered,
 					editClientIds: editIds,
 					onClose: function () { setOpen( false ); },
 				} )

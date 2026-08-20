@@ -642,6 +642,12 @@ function ekwa_enqueue_converter_editor_script() {
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
 			'defaultModel'       => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
+			// Same design tokens + mockup sheet + fonts the HTML generator's
+			// preview gets — without them the preview iframe can't resolve the
+			// var() and component rules the rendered blocks are built on.
+			'previewCss'         => function_exists( 'ekwa_ai_generate_preview_head_css' )
+				? ekwa_ai_generate_preview_head_css()
+				: '',
 		)
 	);
 }
