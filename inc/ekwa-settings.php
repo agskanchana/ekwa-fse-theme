@@ -577,9 +577,9 @@ add_action( 'admin_init', 'ekwa_save_settings' );
  * from the saved locations. Used to swap raw phone numbers found in the
  * bulk-import CSV's title/description fields for the dynamic shortcode.
  *
- * The map itself lives in inc/ekwa-paste-phone.php, which does the same swap
- * for content pasted into the editor — one definition keeps both paths turning
- * the same numbers into the same shortcodes.
+ * The map itself lives in inc/ekwa-phone-tokens.php, which does the same swap
+ * for pasted content and for Yoast meta — one definition keeps every path
+ * turning the same numbers into the same shortcodes.
  */
 function ekwa_bulk_pages_phone_map() {
 	return ekwa_phone_token_map();
@@ -589,34 +589,12 @@ function ekwa_bulk_pages_phone_map() {
  * Replace phone numbers in a text blob with the matching [ekwa_phone]
  * shortcode. Only numbers that match a configured location phone are
  * swapped — unrelated digit runs are left alone.
+ *
+ * The swap itself lives in inc/ekwa-phone-tokens.php, alongside the paste and
+ * Yoast-save paths, so all three recognise the same number formats.
  */
 function ekwa_bulk_pages_replace_phones( $text, $phone_map ) {
-	if ( '' === $text || empty( $phone_map ) ) {
-		return $text;
-	}
-
-	// Matches common US phone formats: optional country code, optional parens
-	// around area code, separators of space / dot / hyphen, e.g.
-	//   (813) 734-7102   813-734-7102   +1 813.734.7102   8137347102
-	//
-	// The lookarounds stop the match starting or ending part-way through a
-	// longer run of digits. Nothing depends on them today — a partial match
-	// normalises to the wrong length and misses the map lookup below — but
-	// they keep that safety in the pattern itself rather than resting it
-	// entirely on the lookup.
-	$pattern = '/(?<!\d)(?:\+?\d{1,3}[\s.\-]*)?\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}(?!\d)/';
-
-	return preg_replace_callback(
-		$pattern,
-		static function ( $matches ) use ( $phone_map ) {
-			$digits = preg_replace( '/\D+/', '', $matches[0] );
-			if ( 11 === strlen( $digits ) && '1' === $digits[0] ) {
-				$digits = substr( $digits, 1 );
-			}
-			return isset( $phone_map[ $digits ] ) ? $phone_map[ $digits ] : $matches[0];
-		},
-		$text
-	);
+	return ekwa_phone_replace_in_text( $text, $phone_map );
 }
 
 /**

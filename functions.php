@@ -133,10 +133,12 @@ require_once get_template_directory() . '/inc/ekwa-shortcode-builder.php';
 require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 
 /**
- * Swap phone numbers pasted into the editor for the live [ekwa_phone] shortcode.
- * Loaded after the shortcodes it inserts.
+ * Keep authored phone numbers in sync with Settings → Locations: swap them for
+ * the [ekwa_phone] shortcode on paste and on Yoast meta save, and resolve that
+ * token back to a bare number in meta tags and schema. Loaded after the
+ * shortcodes it inserts.
  */
-require_once get_template_directory() . '/inc/ekwa-paste-phone.php';
+require_once get_template_directory() . '/inc/ekwa-phone-tokens.php';
 
 /**
  * Shortcode Blocks — a post type whose block-editor content is published as a

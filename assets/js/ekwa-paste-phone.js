@@ -14,7 +14,8 @@
  * paste actually changed. Anything already on the page is untouched.
  *
  * Plain wp.element-free JS (no JSX / build step), matching the theme's other
- * editor scripts. See inc/ekwa-paste-phone.php for the number map.
+ * editor scripts. See inc/ekwa-phone-tokens.php for the number map, and for the
+ * server-side equivalent that covers Yoast's SEO title / meta description.
  *
  * @package ekwa
  */
@@ -32,12 +33,22 @@
 	var _n      = wp.i18n._n;
 	var sprintf = wp.i18n.sprintf;
 
-	// Common US phone formats: optional country code, optional parens around the
-	// area code, space / dot / hyphen separators. Deliberately loose — the map
-	// lookup below is what decides whether a match is one of ours. Digit-boundary
-	// checks are done by hand rather than with lookbehind so this keeps working
-	// in browsers that don't support it.
-	var PHONE_RE = /(?:\+?\d{1,3}[\s.\-]*)?\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}/g;
+	// Anything shaped like a phone number: an optional country code, an area code
+	// that may be wrapped in (), [] or {}, then 3 + 4 digits. Separators cover
+	// spaces (including &nbsp;), dots, slashes, hyphens and the typographic
+	// dashes copy from Word tends to carry.
+	//
+	// Deliberately loose — the map lookup is what decides whether a match is one
+	// of ours, so a stray digit run costs nothing and a format we failed to
+	// anticipate would cost a missed swap. Digit-boundary checks are done by hand
+	// rather than with lookbehind, so this keeps working in older browsers.
+	var PHONE_SEP = '[\\s.\\u00b7\\u2010-\\u2015/-]*';
+	var PHONE_RE  = new RegExp(
+		'(?:\\+?\\d{1,3}' + PHONE_SEP + ')?' +   // optional country code
+		'[(\\[{]?\\d{3}[)\\]}]?' + PHONE_SEP +   // area code, bracketed or bare
+		'\\d{3}' + PHONE_SEP + '\\d{4}',
+		'g'
+	);
 
 	// ─── Number matching ──────────────────────────────────────────────────────
 
