@@ -10,9 +10,9 @@
  * This swaps them at the one moment the author is guaranteed to be looking: the
  * paste. Any number in the pasted content that matches a configured location
  * number — new-patient, existing-patient, any location — is replaced with the
- * matching [ekwa_phone type="…" location="…"] shortcode, which resolves live on
- * every render. Numbers the settings don't know about (a referral office, a
- * lab, a fax) are left exactly as pasted.
+ * matching [ekwa_phone] shortcode, which resolves live on every render. Numbers
+ * the settings don't know about (a referral office, a lab, a fax) are left
+ * exactly as pasted.
  *
  * The matching runs in the editor (assets/js/ekwa-paste-phone.js) against the
  * map localized below; this file owns the map itself, which the bulk-page
@@ -54,16 +54,38 @@ function ekwa_phone_token_map() {
 
 		$new = ekwa_phone_normalize_digits( $loc['phone_new'] ?? '' );
 		if ( strlen( $new ) >= 7 && ! isset( $map[ $new ] ) ) {
-			$map[ $new ] = sprintf( '[ekwa_phone type="new" location="%d"]', $loc_num );
+			$map[ $new ] = ekwa_phone_shortcode_tag( 'new', $loc_num );
 		}
 
 		$existing = ekwa_phone_normalize_digits( $loc['phone_existing'] ?? '' );
 		if ( strlen( $existing ) >= 7 && ! isset( $map[ $existing ] ) ) {
-			$map[ $existing ] = sprintf( '[ekwa_phone type="existing" location="%d"]', $loc_num );
+			$map[ $existing ] = ekwa_phone_shortcode_tag( 'existing', $loc_num );
 		}
 	}
 
 	return $map;
+}
+
+/**
+ * Write the shortest [ekwa_phone] tag that resolves to a given number.
+ *
+ * ekwa_phone_shortcode() already defaults to type="new" location="1", so
+ * spelling either out adds nothing but noise in the middle of a paragraph —
+ * the first location's new-patient number is simply [ekwa_phone].
+ *
+ * @param string $type    'new' or 'existing'.
+ * @param int    $loc_num 1-based location index.
+ * @return string Shortcode tag.
+ */
+function ekwa_phone_shortcode_tag( $type, $loc_num ) {
+	$atts = '';
+	if ( 'new' !== $type ) {
+		$atts .= sprintf( ' type="%s"', $type );
+	}
+	if ( 1 !== (int) $loc_num ) {
+		$atts .= sprintf( ' location="%d"', (int) $loc_num );
+	}
+	return '[ekwa_phone' . $atts . ']';
 }
 
 /**

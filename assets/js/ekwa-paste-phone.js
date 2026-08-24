@@ -22,7 +22,7 @@
 	'use strict';
 
 	var CFG = window.ekwaPastePhone || {};
-	var MAP = CFG.map || {};   // digits -> '[ekwa_phone type="…" location="…"]'
+	var MAP = CFG.map || {};   // digits -> '[ekwa_phone …]' (defaults left off)
 
 	if ( ! wp || ! wp.data || ! wp.blocks || ! Object.keys( MAP ).length ) {
 		return;
