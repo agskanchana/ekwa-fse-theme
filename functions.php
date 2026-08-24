@@ -133,6 +133,12 @@ require_once get_template_directory() . '/inc/ekwa-shortcode-builder.php';
 require_once get_template_directory() . '/inc/ekwa-shortcodes.php';
 
 /**
+ * Swap phone numbers pasted into the editor for the live [ekwa_phone] shortcode.
+ * Loaded after the shortcodes it inserts.
+ */
+require_once get_template_directory() . '/inc/ekwa-paste-phone.php';
+
+/**
  * Shortcode Blocks — a post type whose block-editor content is published as a
  * shortcode ([my-slug] / [ekwa_block slug="my-slug"]). Complements the builder
  * above, which only configures the built-in [ekwa_*] data shortcodes.

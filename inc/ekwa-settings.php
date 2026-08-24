@@ -577,47 +577,12 @@ add_action( 'admin_init', 'ekwa_save_settings' );
  * from the saved locations. Used to swap raw phone numbers found in the
  * bulk-import CSV's title/description fields for the dynamic shortcode.
  *
- * Keys are digits-only (with any leading "1" trimmed) so we can match the
- * same number written in (xxx) xxx-xxxx / xxx-xxx-xxxx / +1 xxx xxx xxxx
- * styles indifferently.
+ * The map itself lives in inc/ekwa-paste-phone.php, which does the same swap
+ * for content pasted into the editor — one definition keeps both paths turning
+ * the same numbers into the same shortcodes.
  */
 function ekwa_bulk_pages_phone_map() {
-	$locations = get_option( 'ekwa_locations', array() );
-	$map       = array();
-
-	if ( ! is_array( $locations ) ) {
-		return $map;
-	}
-
-	$normalize = static function ( $raw ) {
-		$digits = preg_replace( '/\D+/', '', (string) $raw );
-		if ( '' === $digits ) {
-			return '';
-		}
-		if ( 11 === strlen( $digits ) && '1' === $digits[0] ) {
-			$digits = substr( $digits, 1 );
-		}
-		return $digits;
-	};
-
-	foreach ( $locations as $i => $loc ) {
-		if ( ! is_array( $loc ) ) {
-			continue;
-		}
-		$loc_num = $i + 1;
-
-		$new = $normalize( $loc['phone_new'] ?? '' );
-		if ( strlen( $new ) >= 7 && ! isset( $map[ $new ] ) ) {
-			$map[ $new ] = sprintf( '[ekwa_phone type="new" location="%d"]', $loc_num );
-		}
-
-		$existing = $normalize( $loc['phone_existing'] ?? '' );
-		if ( strlen( $existing ) >= 7 && ! isset( $map[ $existing ] ) ) {
-			$map[ $existing ] = sprintf( '[ekwa_phone type="existing" location="%d"]', $loc_num );
-		}
-	}
-
-	return $map;
+	return ekwa_phone_token_map();
 }
 
 /**

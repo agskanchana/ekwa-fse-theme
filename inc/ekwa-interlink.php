@@ -135,6 +135,10 @@ function ekwa_interlink_rest_targets( $request ) {
 			continue;
 		}
 		$out[] = array(
+			// Carried through so the editor can spot a page that is already
+			// linked by a block-level Link Source, which stores a post ID
+			// rather than a URL — see collectExistingKeys() in the editor JS.
+			'postId'   => isset( $t['postId'] ) ? (int) $t['postId'] : 0,
 			'title'    => $t['title'],
 			'url'      => $t['url'],
 			'keywords' => array_values( $t['keywords'] ),
@@ -277,18 +281,66 @@ function ekwa_interlink_special_targets() {
 		);
 	}
 
-	// Directions — first location with a direction URL or a usable address.
-	$directions = ekwa_interlink_directions_url();
-	if ( '' !== $directions ) {
+	// Directions — one target per configured location, so a practice with more
+	// than one office links each address to its own map rather than sending
+	// every mention to the first office.
+	$targets = array_merge( $targets, ekwa_interlink_directions_targets() );
+
+	return $targets;
+}
+
+/**
+ * Directions targets, one per location that resolves to a map URL.
+ *
+ * Each location contributes its own street address as anchor keywords, which is
+ * what lets an address written out in body copy become a link to that office's
+ * directions. The generic anchors ("get directions") go to the first usable
+ * location only — with several offices configured there is nothing in a bare
+ * "directions" to say which one is meant, so it goes to the primary.
+ *
+ * @return array
+ */
+function ekwa_interlink_directions_targets() {
+	$locations = get_option( 'ekwa_locations', array() );
+	if ( ! is_array( $locations ) ) {
+		return array();
+	}
+
+	$generic = array(
+		'driving directions',
+		'get directions',
+		'directions',
+	);
+
+	$targets = array();
+	foreach ( $locations as $loc ) {
+		if ( ! is_array( $loc ) ) {
+			continue;
+		}
+		$url = ekwa_interlink_location_directions_url( $loc );
+		if ( '' === $url ) {
+			continue;
+		}
+
+		$keywords = ekwa_interlink_address_keywords( $loc );
+		if ( $generic ) {
+			$keywords = array_merge( $keywords, $generic );
+			$generic  = array();
+		}
+		if ( ! $keywords ) {
+			continue;
+		}
+
+		$city = trim( (string) ( $loc['city'] ?? '' ) );
+
 		$targets[] = array(
 			'postId'   => 0,
-			'title'    => __( 'Directions', 'ekwa' ),
-			'url'      => $directions,
-			'keywords' => array(
-				'driving directions',
-				'get directions',
-				'directions',
-			),
+			'title'    => '' !== $city
+				/* translators: %s: city name. */
+				? sprintf( __( 'Directions — %s', 'ekwa' ), $city )
+				: __( 'Directions', 'ekwa' ),
+			'url'      => $url,
+			'keywords' => ekwa_interlink_clean_keywords( $keywords ),
 		);
 	}
 
@@ -296,8 +348,74 @@ function ekwa_interlink_special_targets() {
 }
 
 /**
- * Resolve a directions URL from the first location that has one, or build a
- * Google Maps link from its address. Empty string when no address is present.
+ * Anchor phrases for one location's street address, longest form first.
+ *
+ * Copy quotes an address in whatever detail suits the sentence — the full line
+ * in a footer, just the street in a paragraph — so every usable truncation is
+ * offered and the editor's longest-match-first ordering picks the most complete
+ * one that is actually on the page. The editor treats commas as whitespace when
+ * matching, so a variant written without them still matches.
+ *
+ * The street line is required and must contain a number: city or state alone
+ * would match every incidental mention of the town.
+ *
+ * @param array $loc Location record.
+ * @return string[]
+ */
+function ekwa_interlink_address_keywords( $loc ) {
+	$street = trim( (string) ( $loc['street'] ?? '' ) );
+	$city   = trim( (string) ( $loc['city'] ?? '' ) );
+	$state  = trim( (string) ( $loc['state'] ?? '' ) );
+	$zip    = trim( (string) ( $loc['zip'] ?? '' ) );
+
+	if ( '' === $street || ! preg_match( '/\d/', $street ) ) {
+		return array();
+	}
+
+	$keywords = array();
+	$region   = trim( $state . ' ' . $zip );
+
+	if ( '' !== $city && '' !== $region ) {
+		$keywords[] = $street . ', ' . $city . ', ' . $region;
+	}
+	if ( '' !== $city && '' !== $state && $state !== $region ) {
+		$keywords[] = $street . ', ' . $city . ', ' . $state;
+	}
+	if ( '' !== $city ) {
+		$keywords[] = $street . ', ' . $city;
+	}
+	$keywords[] = $street;
+
+	return $keywords;
+}
+
+/**
+ * Resolve one location to a directions URL: its saved Direction URL, else a
+ * Google Maps search on the address, else on the coordinates.
+ *
+ * @param array $loc Location record.
+ * @return string Empty when the location has nothing to point at.
+ */
+function ekwa_interlink_location_directions_url( $loc ) {
+	if ( ! empty( $loc['direction'] ) ) {
+		return (string) $loc['direction'];
+	}
+	$parts = array_filter( array(
+		$loc['street'] ?? '',
+		$loc['city'] ?? '',
+		trim( ( $loc['state'] ?? '' ) . ' ' . ( $loc['zip'] ?? '' ) ),
+	) );
+	if ( $parts ) {
+		return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( implode( ', ', $parts ) );
+	}
+	if ( ! empty( $loc['latitude'] ) && ! empty( $loc['longitude'] ) ) {
+		return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( $loc['latitude'] . ',' . $loc['longitude'] );
+	}
+	return '';
+}
+
+/**
+ * Directions URL for the first location that resolves to one.
  *
  * @return string
  */
@@ -310,19 +428,9 @@ function ekwa_interlink_directions_url() {
 		if ( ! is_array( $loc ) ) {
 			continue;
 		}
-		if ( ! empty( $loc['direction'] ) ) {
-			return (string) $loc['direction'];
-		}
-		$parts = array_filter( array(
-			$loc['street'] ?? '',
-			$loc['city'] ?? '',
-			trim( ( $loc['state'] ?? '' ) . ' ' . ( $loc['zip'] ?? '' ) ),
-		) );
-		if ( $parts ) {
-			return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( implode( ', ', $parts ) );
-		}
-		if ( ! empty( $loc['latitude'] ) && ! empty( $loc['longitude'] ) ) {
-			return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( $loc['latitude'] . ',' . $loc['longitude'] );
+		$url = ekwa_interlink_location_directions_url( $loc );
+		if ( '' !== $url ) {
+			return $url;
 		}
 	}
 	return '';
