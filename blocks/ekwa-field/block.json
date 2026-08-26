@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/field",
+	"version": "1.0.0",
+	"title": "Ekwa Custom Field",
+	"category": "ekwa-dynamic",
+	"icon": "editor-customchar",
+	"description": "Prints an ACF field (or raw post meta) for the current page. Safe to place in a header, footer or any shared template: on pages where the field is empty the block renders nothing at all — the wrapper element included.",
+	"textdomain": "ekwa",
+	"keywords": [ "acf", "custom field", "meta", "dynamic", "field" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"gradients": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true
+		},
+		"typography": {
+			"fontSize": true,
+			"fontWeight": true,
+			"lineHeight": true,
+			"letterSpacing": true,
+			"textTransform": true
+		}
+	},
+	"attributes": {
+		"fieldKey":         { "type": "string", "default": "" },
+		"source":           { "type": "string", "default": "auto" },
+		"postSource":       { "type": "string", "default": "current" },
+		"postId":           { "type": "number", "default": 0 },
+		"tagName":          { "type": "string", "default": "div" },
+		"before":           { "type": "string", "default": "" },
+		"after":            { "type": "string", "default": "" },
+		"format":           { "type": "string", "default": "text" },
+		"inlineStyle":      { "type": "string", "default": "" },
+		"customAttributes": { "type": "object", "default": {} }
+	},
+	"editorScript": "ekwa-field-editor"
+}

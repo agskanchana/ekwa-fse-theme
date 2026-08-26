@@ -1,0 +1,15 @@
+/* Ekwa Banner Title.
+ *
+ * Only the resets the element cannot do without — a heading here is a page
+ * heading, not a document-flow heading, so the browser's default margins are
+ * always wrong. Size, weight and tracking are deliberately NOT set here: inside
+ * a banner they come from the banner's style variation, and outside one they
+ * come from the block's own typography controls. Setting them in both places is
+ * how a title ends up impossible to change from the sidebar.
+ */
+
+.ekwa-banner-title {
+	margin: 0;
+	font-family: var(--wp--preset--font-family--heading, inherit);
+	color: inherit;
+}

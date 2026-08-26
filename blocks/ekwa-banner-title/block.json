@@ -1,0 +1,42 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/banner-title",
+	"version": "1.0.0",
+	"title": "Ekwa Banner Title",
+	"category": "ekwa-dynamic",
+	"icon": "heading",
+	"description": "Smart page heading: shows the Main Menu label for the current page, or the page title when the two match. Pairs with Ekwa Page Title, which supplies the <h1> only when they differ.",
+	"textdomain": "ekwa",
+	"keywords": [ "title", "heading", "menu", "banner", "h1" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"gradients": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true
+		},
+		"typography": {
+			"fontSize": true,
+			"fontWeight": true,
+			"lineHeight": true,
+			"letterSpacing": true,
+			"textTransform": true
+		}
+	},
+	"attributes": {
+		"source":           { "type": "string", "default": "auto" },
+		"tagName":          { "type": "string", "default": "auto" },
+		"menuLocation":     { "type": "string", "default": "main_menu" },
+		"fallback":         { "type": "string", "default": "" },
+		"inlineStyle":      { "type": "string", "default": "" },
+		"customAttributes": { "type": "object", "default": {} }
+	},
+	"editorScript": "ekwa-banner-title-editor"
+}

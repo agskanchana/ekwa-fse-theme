@@ -52,6 +52,18 @@ function ekwa_tpl_supported_blocks() {
 			'label'        => __( 'Copyright', 'ekwa' ),
 			'placeholders' => '{{year}} {{name}}',
 		),
+		'ekwa/breadcrumb' => array(
+			'label'        => __( 'Breadcrumb', 'ekwa' ),
+			'placeholders' => '{{#items}} {{url}} {{label}} {{position}} {{sep}} {{/items}} {{separator}} {{current}}',
+		),
+		'ekwa/banner-title' => array(
+			'label'        => __( 'Banner Title', 'ekwa' ),
+			'placeholders' => '{{title}} {{menu_name}} {{page_title}} {{breadcrumb_title}}',
+		),
+		'ekwa/field' => array(
+			'label'        => __( 'Custom Field', 'ekwa' ),
+			'placeholders' => '{{value}} {{key}}',
+		),
 	);
 }
 
@@ -82,10 +94,15 @@ function ekwa_tpl_sanitize( $template ) {
 	$common = array(
 		'class' => true, 'id' => true, 'style' => true, 'title' => true,
 		'aria-label' => true, 'aria-hidden' => true, 'role' => true,
+		'aria-current' => true,
 		'data-*' => true,
 	);
 	$allowed = array(
 		'div'    => $common,
+		// nav/section: a breadcrumb template's outermost element is usually a
+		// <nav>, and stripping it would silently drop the landmark.
+		'nav'     => $common,
+		'section' => $common,
 		'span'   => $common,
 		'p'      => $common,
 		'a'      => array_merge( $common, array( 'href' => true, 'target' => true, 'rel' => true ) ),
@@ -293,6 +310,80 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 				'vars'  => array(
 					'year' => esc_html( wp_date( 'Y' ) ),
 					'name' => esc_html( $practice ),
+				),
+				'loops' => array(),
+			);
+
+		// The banner family. Unlike the settings-driven blocks above, these read
+		// the current post — so outside a singular view there is nothing to fill
+		// a template with and the block renders nothing, same as its canonical
+		// output would.
+		case 'ekwa/breadcrumb':
+			if ( ! is_singular() || ! function_exists( 'ekwa_breadcrumb_items' ) ) {
+				return null;
+			}
+			$items = ekwa_breadcrumb_items( $attrs );
+			if ( count( $items ) < 2 ) {
+				return null;
+			}
+			$sep  = ekwa_breadcrumb_separator_html( $attrs );
+			$rows = array();
+			foreach ( $items as $i => $item ) {
+				$rows[] = array(
+					'url'      => esc_url( $item['url'] ),
+					'label'    => esc_html( $item['label'] ),
+					'position' => (string) ( $i + 1 ),
+					// Empty on the first row so a template can put {{sep}} in
+					// front of every crumb without a stray leading separator.
+					'sep'      => $i > 0 ? $sep : '',
+				);
+			}
+			$last = end( $items );
+			return array(
+				'vars'  => array(
+					'separator' => $sep,
+					'current'   => esc_html( $last['label'] ),
+				),
+				'loops' => array( 'items' => $rows ),
+			);
+
+		case 'ekwa/banner-title':
+			if ( ! is_singular() || ! function_exists( 'ekwa_banner_title_data' ) ) {
+				return null;
+			}
+			$data = ekwa_banner_title_data( $attrs );
+			if ( '' === trim( $data['text'] ) ) {
+				return null;
+			}
+			$post_id = (int) get_the_ID();
+			return array(
+				'vars'  => array(
+					'title'            => esc_html( $data['text'] ),
+					'menu_name'        => esc_html( ekwa_banner_menu_name( $post_id ) ),
+					'page_title'       => esc_html( get_the_title( $post_id ) ),
+					'breadcrumb_title' => esc_html( ekwa_banner_breadcrumb_label( $post_id ) ),
+				),
+				'loops' => array(),
+			);
+
+		case 'ekwa/field':
+			if ( ! function_exists( 'ekwa_field_value' ) ) {
+				return null;
+			}
+			$key = trim( (string) ( $attrs['fieldKey'] ?? '' ) );
+			$pid = 'specific' === ( $attrs['postSource'] ?? 'current' )
+				? (int) ( $attrs['postId'] ?? 0 )
+				: (int) get_the_ID();
+			$value = '' !== $key ? ekwa_field_value( $key, $pid, (string) ( $attrs['source'] ?? 'auto' ) ) : '';
+			// Empty field → null → the render filter emits nothing, which is the
+			// whole contract of this block and must survive a custom template.
+			if ( '' === trim( $value ) ) {
+				return null;
+			}
+			return array(
+				'vars'  => array(
+					'value' => esc_html( $value ),
+					'key'   => esc_html( $key ),
 				),
 				'loops' => array(),
 			);

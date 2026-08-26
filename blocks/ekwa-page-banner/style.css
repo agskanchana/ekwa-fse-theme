@@ -1,0 +1,399 @@
+/* Ekwa Page Banner.
+ *
+ * Three layers, in this order — do not reorder, the variations rely on source
+ * order to win against the defaults at equal specificity:
+ *
+ *   1. STRUCTURE  — what makes the markup *be* a banner. Always applies, even
+ *                   under "Custom".
+ *   2. DEFAULTS   — the look you get on insert. Every rule is guarded with
+ *                   :not(.is-style-custom) so the Custom variation removes it.
+ *   3. VARIATIONS — one complete look each (registered in inc/ekwa-block-styles.php).
+ *
+ * No palette is hardcoded. Every practice site sets its own colors and faces in
+ * theme.json / the Fonts tab, so these rules only ever reference preset tokens
+ * with a fallback. That constraint is the reason the variations are built out of
+ * structure, rhythm and edge treatment rather than color.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 1. STRUCTURE — survives "Custom"
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.ekwa-page-banner {
+	position: relative;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+/* Background layer — a real <img> rather than a CSS background, so it is
+   LCP-discoverable, art-directed per breakpoint, WebP-served and able to carry
+   fetchpriority="high". Kept under Custom: "background" is what the author asked
+   for when they chose a background source, and without the positioning the image
+   would render full-size and shove the content down the page. */
+.ekwa-page-banner__bg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	z-index: 0;
+}
+
+/* <picture> generates no box of its own; the <img> inside is the positioned
+   layer, so the wrapper must not become a stray flex/grid item. */
+.ekwa-page-banner > picture {
+	display: contents;
+}
+
+/* "No background under 480px". The ≤480px <source> is already a 1×1 data URI
+   (so the phone downloads nothing) — this hides the placeholder so it cannot
+   stretch as a blank layer over the banner's background color. */
+@media (max-width: 480px) {
+	.ekwa-page-banner--no-mobile-bg .ekwa-page-banner__bg {
+		display: none;
+	}
+}
+
+/* CSS-background mode: the image itself is painted by rules inlined at render
+   time (ekwa_page_banner_bg_css), keyed to the block's per-instance class. */
+.ekwa-page-banner--bg-css {
+	background-repeat: no-repeat;
+}
+
+.ekwa-page-banner__overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	pointer-events: none;
+	background: var(--wp--preset--color--foreground, #1a1a2e);
+}
+
+/* Content well — lifts the inner blocks above both layers. The max-width and
+   spacing are a default (layer 2); only the stacking is structural. */
+.ekwa-page-banner__content {
+	position: relative;
+	z-index: 2;
+	width: 100%;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 2. DEFAULTS — what you get on insert. Removed by "Custom".
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.ekwa-page-banner:not(.is-style-custom) {
+	display: flex;
+	align-items: center;
+	min-height: 220px;
+	padding-block: clamp(2.5rem, 6vw, 5rem);
+	padding-inline: clamp(1.25rem, 5vw, 2.5rem);
+}
+
+/* Brand fill when the author has set neither a background color nor an image,
+   so a freshly inserted banner reads as a banner instead of a bare strip. */
+.ekwa-page-banner:not(.is-style-custom):not(.has-background):not(.ekwa-page-banner--has-bg) {
+	background-color: var(--wp--preset--color--primary, #1a6ef5);
+}
+
+/* White text only where we know the ground is dark — a photo, or the brand fill
+   above. When the author picks their own background color they pick their own
+   text color alongside it (the two sit together in the Color panel), so forcing
+   white there would put white type on whatever pale preset they chose. */
+.ekwa-page-banner--has-bg:not(.is-style-custom):not(.has-text-color),
+.ekwa-page-banner:not(.is-style-custom):not(.has-background):not(.ekwa-page-banner--has-bg):not(.has-text-color) {
+	color: var(--wp--preset--color--white, #fff);
+}
+
+.ekwa-page-banner:not(.is-style-custom) .ekwa-page-banner__content {
+	max-width: var(--wp--style--global--content-size, 1280px);
+	margin-inline: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	text-align: center;
+	align-items: center;
+}
+
+.ekwa-page-banner:not(.is-style-custom) .ekwa-page-banner__content--full {
+	max-width: none;
+}
+
+.ekwa-page-banner:not(.is-style-custom) .ekwa-banner-title {
+	font-size: var(--wp--preset--font-size--xl, clamp(1.5rem, 1.2rem + 1.5vw, 2.5rem));
+	font-weight: 700;
+	line-height: 1.15;
+	/* Keeps a two-line practice-page title from breaking to a single orphan
+	   word, which is the most common way these banners look unfinished. */
+	text-wrap: balance;
+}
+
+/* Second line of defence for legibility, behind the overlay. Practice sites run
+   bright clinical photography, and an overlay tuned for one page can still leave
+   white type sitting on a blown-out highlight on the next. A soft shadow costs
+   nothing on a dark ground and rescues the light one. */
+.ekwa-page-banner--has-bg:not(.is-style-custom) .ekwa-banner-title,
+.ekwa-page-banner--has-bg:not(.is-style-custom) .ekwa-breadcrumb {
+	text-shadow: 0 1px 10px rgb(0 0 0 / 35%);
+}
+
+.ekwa-page-banner:not(.is-style-custom) .ekwa-breadcrumb {
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+	opacity: 0.85;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 3. VARIATIONS — one complete look each, including its alignment.
+ *
+ * WordPress allows only ONE is-style-* class at a time, so a variation cannot
+ * be combined with a separate alignment option. Centered / Left / Right are
+ * therefore the plain "no opinion" choices, and each named look owns its own
+ * alignment. Anything past that is the block's Scoped CSS.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ----- Centered (default) -------------------------------------------------
+   The quietest option, because it lands on every interior page of every site.
+   Its one accessory is a hairline above the trail, sized to the trail rather
+   than the column, which turns the breadcrumb into a deliberate footer for the
+   title instead of small grey text drifting underneath it.
+
+   The :not([class*="is-style-"]) half matters: WordPress does not serialize the
+   default variation's class, so a banner the author never touched carries no
+   is-style-* at all. Without that selector, picking "Centered" from the dropdown
+   would look different from leaving it alone — which is exactly the kind of
+   thing that reads as a bug. */
+
+.ekwa-page-banner.is-style-center .ekwa-page-banner__content,
+.ekwa-page-banner:not([class*="is-style-"]) .ekwa-page-banner__content {
+	text-align: center;
+	align-items: center;
+}
+
+.ekwa-page-banner.is-style-center .ekwa-breadcrumb,
+.ekwa-page-banner:not([class*="is-style-"]) .ekwa-breadcrumb {
+	padding-top: 0.75rem;
+	/* currentColor at full strength would out-shout the title. */
+	border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+
+/* ----- Left / Right -------------------------------------------------------
+   Plain alignment, nothing else. */
+
+.ekwa-page-banner.is-style-left .ekwa-page-banner__content {
+	text-align: left;
+	align-items: flex-start;
+}
+
+.ekwa-page-banner.is-style-right .ekwa-page-banner__content {
+	text-align: right;
+	align-items: flex-end;
+}
+
+/* ----- Wayfinding ---------------------------------------------------------
+   The trail moves ABOVE the title and becomes the eyebrow.
+
+   This inverts what a page banner usually does, on purpose. The block's actual
+   job is orientation — "you are here, and this is how you got here" — and every
+   wayfinding system that does that job well (museum walls, transit signage,
+   airport gates) states the route first and the destination second. Putting the
+   breadcrumb underneath in 0.85em grey buries the part the visitor navigates by.
+
+   Moved with `order` on the breadcrumb specifically, not column-reverse on the
+   container: the author can put any blocks inside this banner, and reversing the
+   whole column would silently flip them too. */
+
+.ekwa-page-banner.is-style-wayfinding .ekwa-page-banner__content {
+	text-align: left;
+	align-items: flex-start;
+	gap: 1rem;
+}
+
+.ekwa-page-banner.is-style-wayfinding .ekwa-breadcrumb {
+	order: -1;
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	opacity: 1;
+	display: flex;
+	align-items: center;
+	gap: 0.9rem;
+}
+
+/* The leading rule reads as the start of the route. Fixed width, not a
+   percentage, so it stays a mark rather than becoming a divider on wide
+   screens. */
+.ekwa-page-banner.is-style-wayfinding .ekwa-breadcrumb::before {
+	content: '';
+	flex: none;
+	width: 2.5rem;
+	height: 2px;
+	background: var(--wp--preset--color--accent, currentColor);
+}
+
+.ekwa-page-banner.is-style-wayfinding .ekwa-banner-title {
+	font-size: var(--wp--preset--font-size--2-xl, clamp(2rem, 1.5rem + 2.5vw, 3.5rem));
+	line-height: 1.05;
+	letter-spacing: -0.02em;
+}
+
+@media (max-width: 600px) {
+	.ekwa-page-banner.is-style-wayfinding .ekwa-breadcrumb {
+		letter-spacing: 0.1em;
+		gap: 0.6rem;
+	}
+
+	.ekwa-page-banner.is-style-wayfinding .ekwa-breadcrumb::before {
+		width: 1.25rem;
+	}
+}
+
+/* ----- Edge Stripe --------------------------------------------------------
+   A brand-color bar down the leading edge. Logical property, so it moves to the
+   right edge in RTL without a second rule. */
+
+.ekwa-page-banner.is-style-stripe {
+	border-inline-start: 6px solid var(--wp--preset--color--accent, #f5a623);
+}
+
+.ekwa-page-banner.is-style-stripe .ekwa-page-banner__content {
+	text-align: left;
+	align-items: flex-start;
+}
+
+/* ----- Label --------------------------------------------------------------
+   The content becomes a solid panel pinned to the bottom-left of the banner,
+   with hard corners and no gap — an exhibition wall label, not a card floating
+   in the middle of the photo. Reads as applied TO the image rather than
+   hovering over it, and it leaves the photo's subject visible.
+
+   Drops the banner's own padding so the panel can sit flush; a pattern that
+   sets padding inline will still win, which is why none of the shipped patterns
+   pair padding with this variation. */
+
+.ekwa-page-banner.is-style-label {
+	align-items: flex-end;
+	padding: 0;
+	min-height: 320px;
+}
+
+.ekwa-page-banner.is-style-label .ekwa-page-banner__content {
+	max-width: min(38rem, 100%);
+	margin-inline: 0;
+	text-align: left;
+	align-items: flex-start;
+	gap: 0.6rem;
+	padding: clamp(1.5rem, 3vw, 2.25rem);
+	background: var(--wp--preset--color--foreground, #1a1a2e);
+	color: var(--wp--preset--color--white, #fff);
+}
+
+.ekwa-page-banner.is-style-label .ekwa-breadcrumb {
+	order: -1;
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	opacity: 0.7;
+}
+
+/* The type sits on its own solid panel here, so the legibility shadow the other
+   photo variations need would just read as a printing error. */
+.ekwa-page-banner.is-style-label .ekwa-banner-title,
+.ekwa-page-banner.is-style-label .ekwa-breadcrumb {
+	text-shadow: none;
+}
+
+@media (max-width: 600px) {
+	.ekwa-page-banner.is-style-label .ekwa-page-banner__content {
+		max-width: none;
+	}
+}
+
+/* ----- Rule ---------------------------------------------------------------
+   Centered and text-only: a short accent rule above the title, and a hairline
+   along the banner's bottom edge that hands off to the page below. The option
+   for practices whose interior pages have no photography. */
+
+.ekwa-page-banner.is-style-rule {
+	border-bottom: 1px solid color-mix(in srgb, var(--wp--preset--color--foreground, #1a1a2e) 12%, transparent);
+}
+
+.ekwa-page-banner.is-style-rule .ekwa-page-banner__content {
+	text-align: center;
+	align-items: center;
+	gap: 0.9rem;
+}
+
+.ekwa-page-banner.is-style-rule .ekwa-banner-title::before {
+	content: '';
+	display: block;
+	width: 3.5rem;
+	height: 3px;
+	margin: 0 auto 1.25rem;
+	background: var(--wp--preset--color--accent, #f5a623);
+}
+
+/* ----- Compact Bar --------------------------------------------------------
+   A slim strip: title and trail on one line, title leading, trail trailing.
+   Structurally the opposite of every other option here — for sites where the
+   interior pages should get to their content immediately and the banner is
+   wayfinding furniture, not a hero.
+
+   Baseline alignment, not center: the two run at different sizes, and their
+   baselines are what the eye actually reads as "one line". */
+
+.ekwa-page-banner.is-style-bar {
+	min-height: 0;
+	padding-block: clamp(0.9rem, 2vw, 1.4rem);
+}
+
+.ekwa-page-banner.is-style-bar .ekwa-page-banner__content {
+	flex-direction: row;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 0.4rem 1.5rem;
+	text-align: left;
+}
+
+.ekwa-page-banner.is-style-bar .ekwa-banner-title {
+	font-size: var(--wp--preset--font-size--lg, clamp(1.25rem, 1.1rem + 0.75vw, 1.75rem));
+	line-height: 1.2;
+}
+
+.ekwa-page-banner.is-style-bar .ekwa-breadcrumb {
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+	opacity: 0.75;
+}
+
+@media (max-width: 600px) {
+	.ekwa-page-banner.is-style-bar .ekwa-page-banner__content {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+/* ----- Frame --------------------------------------------------------------
+   A hairline rectangle inset from the banner's edges, content inside it. The
+   inset is what does the work: it lets a photograph run full-bleed behind the
+   frame while the type stays in a defined field. */
+
+.ekwa-page-banner.is-style-frame {
+	padding: clamp(1rem, 2.5vw, 2rem);
+	min-height: 300px;
+}
+
+.ekwa-page-banner.is-style-frame .ekwa-page-banner__content {
+	border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+	padding: clamp(1.75rem, 4vw, 3rem);
+	text-align: center;
+	align-items: center;
+	gap: 0.85rem;
+}
+
+.ekwa-page-banner.is-style-frame .ekwa-breadcrumb {
+	font-size: var(--wp--preset--font-size--sm, 0.875rem);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	opacity: 0.8;
+}

@@ -3,14 +3,15 @@
 	"apiVersion": 3,
 	"name": "ekwa/inner-banner",
 	"version": "1.0.0",
-	"title": "Ekwa Inner Page Banner",
+	"title": "Ekwa Inner Page Banner (Legacy)",
 	"category": "ekwa-dynamic",
 	"icon": "format-image",
-	"description": "Inner page banner with smart title logic: shows menu name or page title based on whether they differ.",
+	"description": "Deprecated — use Ekwa Page Banner, which composes the same title and breadcrumb logic out of inner blocks. Kept registered so existing pages and templates keep rendering exactly as before.",
 	"textdomain": "ekwa",
 	"keywords": [ "banner", "header", "hero", "page", "inner" ],
 	"supports": {
 		"html": false,
+		"inserter": false,
 		"anchor": true,
 		"align": [ "full", "wide" ],
 		"color": {

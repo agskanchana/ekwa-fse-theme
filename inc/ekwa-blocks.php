@@ -318,7 +318,10 @@ function ekwa_register_blocks() {
 		)
 	);
 
-	// Inner page banner block.
+	// Inner page banner block — DEPRECATED, hidden from the inserter (see
+	// blocks/ekwa-inner-banner/block.json). Still registered, and still rendering
+	// exactly as before, so every existing page and template keeps working; the
+	// replacement is the ekwa/page-banner family registered below.
 	wp_register_script(
 		'ekwa-inner-banner-editor',
 		get_theme_file_uri( 'assets/js/ekwa-inner-banner-editor.js' ),
@@ -331,6 +334,69 @@ function ekwa_register_blocks() {
 		ekwa_block_dir( 'ekwa-inner-banner' ),
 		array(
 			'render_callback' => 'ekwa_render_inner_banner_block',
+		)
+	);
+
+	// Page banner family — the composable replacement for ekwa/inner-banner.
+	// Render callbacks live in inc/ekwa-page-banner.php.
+	wp_register_script(
+		'ekwa-page-banner-editor',
+		get_theme_file_uri( 'assets/js/ekwa-page-banner-editor.js' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-custom-attributes-control' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-page-banner-editor.js' ) ),
+		true
+	);
+
+	register_block_type(
+		ekwa_block_dir( 'ekwa-page-banner' ),
+		array(
+			'render_callback' => 'ekwa_render_page_banner_block',
+		)
+	);
+
+	wp_register_script(
+		'ekwa-banner-title-editor',
+		get_theme_file_uri( 'assets/js/ekwa-banner-title-editor.js' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'ekwa-custom-attributes-control' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-banner-title-editor.js' ) ),
+		true
+	);
+
+	register_block_type(
+		ekwa_block_dir( 'ekwa-banner-title' ),
+		array(
+			'render_callback' => 'ekwa_render_banner_title_block',
+		)
+	);
+
+	wp_register_script(
+		'ekwa-breadcrumb-editor',
+		get_theme_file_uri( 'assets/js/ekwa-breadcrumb-editor.js' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'ekwa-custom-attributes-control' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-breadcrumb-editor.js' ) ),
+		true
+	);
+
+	register_block_type(
+		ekwa_block_dir( 'ekwa-breadcrumb' ),
+		array(
+			'render_callback' => 'ekwa_render_breadcrumb_block',
+		)
+	);
+
+	// Custom field block (ACF / post meta). See inc/ekwa-field-block.php.
+	wp_register_script(
+		'ekwa-field-editor',
+		get_theme_file_uri( 'assets/js/ekwa-field-editor.js' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'ekwa-custom-attributes-control' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-field-editor.js' ) ),
+		true
+	);
+
+	register_block_type(
+		ekwa_block_dir( 'ekwa-field' ),
+		array(
+			'render_callback' => 'ekwa_render_field_block',
 		)
 	);
 
@@ -830,11 +896,14 @@ function ekwa_enqueue_editor_assets() {
 	// Returns false when the user disabled syntax highlighting in their
 	// profile; the block then falls back to the plain textarea.
 	$code_editor_settings = wp_enqueue_code_editor( array( 'type' => 'text/css' ) );
-	wp_add_inline_script(
-		'ekwa-div-editor',
-		'window.ekwaDivCodeEditor = ' . wp_json_encode( array( 'settings' => $code_editor_settings ) ) . ';',
-		'before'
-	);
+	$code_editor_global   = 'window.ekwaDivCodeEditor = '
+		. wp_json_encode( array( 'settings' => $code_editor_settings ) ) . ';';
+
+	// Attached to both handles that read the global: whichever of the two loads
+	// is enough, and the assignment is idempotent when both do.
+	foreach ( array( 'ekwa-div-editor', 'ekwa-page-banner-editor' ) as $handle ) {
+		wp_add_inline_script( $handle, $code_editor_global, 'before' );
+	}
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_editor_assets' );
 
@@ -2812,6 +2881,17 @@ function ekwa_render_phone_dropdown_block( $attrs ) {
  * ==================================================================== */
 
 /**
+ * 1×1 transparent GIF.
+ *
+ * Stands in for the ≤480px <source> when a banner is set to drop its background
+ * on phones (ekwa/page-banner's bgMobile="hide"). `display:none` alone would not
+ * do: a browser fetches whichever <source> its media queries select whether or
+ * not CSS ends up painting it, so hiding the layer still costs the phone the
+ * download. Pointing the breakpoint at a data URI means there is no request.
+ */
+const EKWA_BANNER_BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+/**
  * Look up the current page's menu-item title from the header menu location.
  *
  * Prefers the "main_menu" theme location (used by the Ekwa Header Menu block)
@@ -2901,11 +2981,24 @@ function ekwa_inner_banner_heading_data() {
  * wasted download competing for bandwidth, and the real LCP image discovered
  * late by the parser instead of by the preload scanner.
  *
- * @param int $thumb_id Featured image attachment id.
+ * @param int   $thumb_id Featured image attachment id.
+ * @param array $opts     Optional. {
+ *     @type string $mobile How the ≤480px rung behaves.
+ *                          'crop' (default) — the ~480w crop, i.e. the ladder as
+ *                              it has always been.
+ *                          'full' — drop the rung entirely so phones fall through
+ *                              to the next one up.
+ *                          'hide' — replace the rung with a 1×1 data URI so phones
+ *                              download nothing at all (see EKWA_BANNER_BLANK_GIF).
+ *                          Set by ekwa/page-banner; the legacy ekwa/inner-banner
+ *                          and the <head> preload pass nothing and keep the
+ *                          original ladder exactly.
+ * }
  * @return array{rungs:array<int,array{max:int,url:string}>,full:array{url:string,width:int,height:int}}|null
  *               Rungs ordered smallest-first; null when the attachment is unresolved.
  */
-function ekwa_inner_banner_bg_sources( $thumb_id ) {
+function ekwa_inner_banner_bg_sources( $thumb_id, $opts = array() ) {
+	$mobile = isset( $opts['mobile'] ) ? (string) $opts['mobile'] : 'crop';
 	$full = wp_get_attachment_image_src( $thumb_id, 'full' );
 	if ( ! $full || empty( $full[0] ) ) {
 		return null;
@@ -2932,6 +3025,13 @@ function ekwa_inner_banner_bg_sources( $thumb_id ) {
 		1600 => 'large',              // ~1024w — laptops
 	);
 
+	// "Same image everywhere on phones" — drop the 480 rung so ≤480px falls
+	// through to the next one up, which is exactly how the ladder behaved before
+	// ekwa-banner-mobile existed.
+	if ( 'full' === $mobile ) {
+		unset( $ladder[480] );
+	}
+
 	$rungs = array();
 	foreach ( $ladder as $max => $size ) {
 		$img = wp_get_attachment_image_src( $thumb_id, $size );
@@ -2944,6 +3044,22 @@ function ekwa_inner_banner_bg_sources( $thumb_id ) {
 			'max' => (int) $max,
 			'url' => (string) $swap( $img[0] ),
 		);
+	}
+
+	// "No background on phones". Hiding the layer in CSS is not enough — a browser
+	// fetches whichever <source> its media queries select whether or not CSS ends
+	// up painting it, so the phone still pays for the download. Pointing the ≤480
+	// breakpoint at a 1×1 data URI means there is no request at all. Emitted
+	// unconditionally (not only when the crop exists), or ≤480 would fall through
+	// to the 768w rung and download exactly what we're trying to avoid.
+	if ( 'hide' === $mobile ) {
+		$rungs = array_values( array_filter(
+			$rungs,
+			static function ( $rung ) {
+				return $rung['max'] > 480;
+			}
+		) );
+		array_unshift( $rungs, array( 'max' => 480, 'url' => EKWA_BANNER_BLANK_GIF ) );
 	}
 
 	return array(
@@ -2973,19 +3089,31 @@ function ekwa_inner_banner_bg_sources( $thumb_id ) {
  * when a real intermediate file exists, so a disabled/absent size falls through
  * to the next-larger source instead of pointing a small breakpoint at the full.
  *
- * @param int $thumb_id Featured image attachment id.
+ * @param int   $thumb_id Featured image attachment id.
+ * @param array $opts     Optional. Passed through to ekwa_inner_banner_bg_sources()
+ *                        ('mobile'), plus 'class' to override the <img> class —
+ *                        ekwa/page-banner uses its own BEM prefix. Defaults keep
+ *                        the legacy ekwa/inner-banner output byte-identical.
  * @return string <picture> markup, or '' when the attachment is unresolved.
  */
-function ekwa_inner_banner_bg_picture( $thumb_id ) {
-	$sources = ekwa_inner_banner_bg_sources( $thumb_id );
+function ekwa_inner_banner_bg_picture( $thumb_id, $opts = array() ) {
+	$sources = ekwa_inner_banner_bg_sources( $thumb_id, $opts );
 	if ( ! $sources ) {
 		return '';
 	}
 
+	$img_class = ! empty( $opts['class'] ) ? (string) $opts['class'] : 'ekwa-inner-banner__bg';
+
 	$out = '<picture>';
 	foreach ( $sources['rungs'] as $rung ) {
+		// esc_url() drops data: URIs (it isn't in the allowed protocol list), and
+		// the "no background on phones" rung is exactly that — so escape the two
+		// kinds of source with the escaper each one needs.
+		$src = 0 === strpos( $rung['url'], 'data:' )
+			? esc_attr( $rung['url'] )
+			: esc_url( $rung['url'] );
 		$out .= '<source media="(max-width: ' . (int) $rung['max'] . 'px)"'
-			. ' srcset="' . esc_url( $rung['url'] ) . '">';
+			. ' srcset="' . $src . '">';
 	}
 
 	// Default fallback <img> = full original, carrying the attachment's alt
@@ -3009,7 +3137,7 @@ function ekwa_inner_banner_bg_picture( $thumb_id ) {
 
 	$full = $sources['full'];
 	$alt  = trim( (string) get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) );
-	$out .= '<img class="ekwa-inner-banner__bg" src="' . esc_url( $full['url'] ) . '" alt="' . esc_attr( $alt ) . '"';
+	$out .= '<img class="' . esc_attr( $img_class ) . '" src="' . esc_url( $full['url'] ) . '" alt="' . esc_attr( $alt ) . '"';
 	if ( $full['width'] )  { $out .= ' width="' . $full['width'] . '"'; }
 	if ( $full['height'] ) { $out .= ' height="' . $full['height'] . '"'; }
 	$out .= ' loading="eager" fetchpriority="high" decoding="' . esc_attr( $decoding ) . '"';

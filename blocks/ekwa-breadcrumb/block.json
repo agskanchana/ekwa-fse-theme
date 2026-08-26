@@ -1,0 +1,47 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/breadcrumb",
+	"version": "1.0.0",
+	"title": "Ekwa Breadcrumb",
+	"category": "ekwa-dynamic",
+	"icon": "admin-links",
+	"description": "Breadcrumb trail with a configurable separator. Uses Yoast when it is active; otherwise builds the trail itself, resolving the current page's label from the Yoast breadcrumb title, then the Main Menu name, then the page title.",
+	"textdomain": "ekwa",
+	"keywords": [ "breadcrumb", "trail", "navigation", "yoast" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"color": {
+			"text": true,
+			"background": true,
+			"link": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true,
+			"letterSpacing": true,
+			"textTransform": true
+		}
+	},
+	"attributes": {
+		"provider":         { "type": "string",  "default": "auto" },
+		"separator":        { "type": "string",  "default": "»" },
+		"separatorType":    { "type": "string",  "default": "text" },
+		"separatorIcon":    { "type": "string",  "default": "fa-solid fa-angle-right" },
+		"showHome":         { "type": "boolean", "default": true },
+		"homeLabel":        { "type": "string",  "default": "" },
+		"currentSource":    { "type": "string",  "default": "auto" },
+		"linkCurrent":      { "type": "boolean", "default": false },
+		"emitSchema":       { "type": "boolean", "default": false },
+		"ariaLabel":        { "type": "string",  "default": "" },
+		"inlineStyle":      { "type": "string",  "default": "" },
+		"customAttributes": { "type": "object",  "default": {} }
+	},
+	"editorScript": "ekwa-breadcrumb-editor"
+}

@@ -1,0 +1,56 @@
+/* Ekwa Breadcrumb.
+   Inherits color from its container by default so the same block reads correctly
+   on a dark photo banner and on a light page — only the separator and the
+   current item are toned down, and by opacity rather than a fixed color, so that
+   holds whichever way round the contrast runs. */
+
+.ekwa-breadcrumb {
+	font-size: 0.85em;
+	line-height: 1.5;
+}
+
+.ekwa-breadcrumb__list {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4em;
+}
+
+.ekwa-breadcrumb__item {
+	color: inherit;
+}
+
+a.ekwa-breadcrumb__item {
+	text-decoration: none;
+	opacity: 0.8;
+	transition: opacity 0.15s ease;
+}
+
+a.ekwa-breadcrumb__item:hover,
+a.ekwa-breadcrumb__item:focus-visible {
+	opacity: 1;
+	text-decoration: underline;
+}
+
+.ekwa-breadcrumb__item.is-current {
+	opacity: 0.95;
+}
+
+.ekwa-breadcrumb__sep {
+	opacity: 0.6;
+	flex: none;
+}
+
+/* Yoast and Rank Math hand back their own markup — their crumbs are plain <a>
+   and <span> with no classes of ours, so give them the same treatment. */
+.ekwa-breadcrumb a {
+	color: inherit;
+	text-decoration: none;
+	opacity: 0.8;
+}
+
+.ekwa-breadcrumb a:hover,
+.ekwa-breadcrumb a:focus-visible {
+	opacity: 1;
+	text-decoration: underline;
+}

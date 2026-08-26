@@ -50,6 +50,9 @@ function ekwa_inline_asset_map() {
 
 		// Layout / content blocks.
 		'ekwa/inner-banner'     => array( 'css' => 'blocks/ekwa-inner-banner/style.css' ),
+		'ekwa/page-banner'      => array( 'css' => 'blocks/ekwa-page-banner/style.css' ),
+		'ekwa/banner-title'     => array( 'css' => 'blocks/ekwa-banner-title/style.css' ),
+		'ekwa/breadcrumb'       => array( 'css' => 'blocks/ekwa-breadcrumb/style.css' ),
 		'ekwa/page-title'       => array( 'css' => 'blocks/ekwa-page-title/style.css' ),
 		'ekwa/section'          => array( 'css' => 'blocks/ekwa-section/style.css' ),
 		'ekwa/grid'             => array( 'css' => 'blocks/ekwa-grid/style.css' ),

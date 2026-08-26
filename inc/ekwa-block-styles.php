@@ -172,5 +172,80 @@ function ekwa_register_block_styles() {
 		'name'  => 'split',
 		'label' => __( 'Split (Side Accent)', 'ekwa' ),
 	) );
+
+	/* ---------------------------------------------------------------
+	 * ekwa/page-banner
+	 *
+	 * WordPress allows only ONE is-style-* class at a time, so a variation
+	 * cannot be combined with a separate alignment setting. Centered / Left /
+	 * Right are therefore the plain "no opinion" choices, and each named look
+	 * owns its own alignment as part of the design.
+	 *
+	 * None of these hardcode a palette — every practice site defines its own
+	 * colors and faces, so the variations are built out of structure, rhythm
+	 * and edge treatment and only ever reference preset tokens.
+	 *
+	 * Registered WITHOUT `inline_style`, like every other variation in this
+	 * file. That argument makes WordPress append the CSS to its global
+	 * wp-block-library-inline-css bundle, which then ships on every page
+	 * whether or not the block renders — the opposite of this theme's
+	 * render-time inlining. The rules live in blocks/ekwa-page-banner/style.css.
+	 * ------------------------------------------------------------- */
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'       => 'center',
+		'label'      => __( 'Centered', 'ekwa' ),
+		'is_default' => true,
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'left',
+		'label' => __( 'Left Aligned', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'right',
+		'label' => __( 'Right Aligned', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'wayfinding',
+		'label' => __( 'Wayfinding (Trail on Top)', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'stripe',
+		'label' => __( 'Edge Stripe', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'label',
+		'label' => __( 'Label (Panel on Photo)', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'rule',
+		'label' => __( 'Rule (Text Only)', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'bar',
+		'label' => __( 'Compact Bar', 'ekwa' ),
+	) );
+
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'frame',
+		'label' => __( 'Frame', 'ekwa' ),
+	) );
+
+	// The escape hatch: strips every default the theme applies and leaves the
+	// markup, so an author can style the banner entirely from its Scoped CSS.
+	// The background/overlay LAYERING survives — without it a featured image
+	// would render full-size and push the content down the page, which is a bug
+	// rather than a blank canvas. Everything visual goes.
+	register_block_style( 'ekwa/page-banner', array(
+		'name'  => 'custom',
+		'label' => __( 'Custom (No Styles)', 'ekwa' ),
+	) );
 }
 add_action( 'init', 'ekwa_register_block_styles' );

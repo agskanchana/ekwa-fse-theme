@@ -530,6 +530,74 @@ function ekwa_ai_block_spec_registry() {
 			'examples' => array( "<!-- wp:ekwa/elfsight-review /-->" ),
 		),
 
+		// ─── Page banner family ─────────────────────────────────────────────
+		// The mockup's inner-page hero. Use these instead of an ekwa/div with a
+		// hardcoded heading: the title and trail have to come from the page, not
+		// from the mockup's copy. ekwa/inner-banner is deprecated — never emit it.
+
+		'page-banner' => array(
+			'block'    => 'ekwa/page-banner',
+			'type'     => 'container',
+			'contexts' => array( 'section' ),
+			'desc'     => "Inner-page banner. Write its layout CSS under className in the scoped stylesheet exactly as for ekwa/div — this block only adds the background/overlay layers and a content well (.ekwa-page-banner__content). Put ekwa/banner-title and ekwa/breadcrumb inside it rather than a hardcoded heading.",
+			'attrs'    => array(
+				'tagName — section|div|header|aside|article|main (default "section")',
+				'className — your semantic CSS class(es)',
+				'bgSource — featured|custom|none (default "featured": the page\'s own featured image)',
+				'bgRender — picture|css (default "picture": a real <img> layer, fetchpriority=high, art-directed. Use "css" only when the design needs background-position/attachment)',
+				'bgMobile — crop|full|hide (default "crop"; "hide" means phones under 480px download no background at all)',
+				'bgSize, bgPosition, bgAttachment — bgRender "css" only',
+				'overlayOpacity — 0-100 (default 0 = no overlay element); overlayColor — CSS color',
+				'minHeight — px number; contentWidth — CSS length or "full"',
+				'scopedCss — this section\'s stylesheet; ariaLabel; anchor',
+			),
+			'examples' => array(
+				"<!-- wp:ekwa/page-banner {\"className\":\"inner-banner\",\"minHeight\":320,\"overlayOpacity\":45} -->\n<!-- wp:ekwa/banner-title /-->\n<!-- wp:ekwa/breadcrumb {\"separator\":\"»\"} /-->\n<!-- /wp:ekwa/page-banner -->",
+			),
+		),
+
+		'banner-title' => array(
+			'block'    => 'ekwa/banner-title',
+			'type'     => 'leaf',
+			'contexts' => array( 'section' ),
+			'desc'     => "The page heading inside a banner. Default source \"auto\" prints the Main Menu label for the page, dropping to the page title (as the <h1>) when the two match. NEVER replace this with static text from the mockup.",
+			'attrs'    => array(
+				'source — auto|menu|page|breadcrumb-title (default "auto")',
+				'tagName — auto|h1..h6|p|span|div (default "auto"; leave it on auto so only one <h1> ends up on the page)',
+				'className, fallback',
+			),
+			'examples' => array( "<!-- wp:ekwa/banner-title /-->" ),
+		),
+
+		'breadcrumb' => array(
+			'block'    => 'ekwa/breadcrumb',
+			'type'     => 'leaf',
+			'contexts' => array( 'section' ),
+			'desc'     => 'Breadcrumb trail. Uses Yoast when active, otherwise builds the trail itself. Set separator to whatever character the mockup shows.',
+			'attrs'    => array(
+				'separator — the character between crumbs (default "»"); separatorType — text|icon; separatorIcon — Font Awesome class',
+				'provider — auto|yoast|rankmath|builtin (default "auto")',
+				'showHome — bool (default true); homeLabel',
+				'className',
+			),
+			'examples' => array( "<!-- wp:ekwa/breadcrumb {\"separator\":\"/\"} /-->" ),
+		),
+
+		'field' => array(
+			'block'    => 'ekwa/field',
+			'type'     => 'leaf',
+			'contexts' => array(),
+			'desc'     => "Prints an ACF field or post meta for the current page. On pages where the field is empty it renders NOTHING — wrapper included — so it is safe in a header or footer. Only emit this when the user names a specific field.",
+			'attrs'    => array(
+				'fieldKey — the field name / meta key (required)',
+				'tagName — div|span|p|h1..h6|section|… or "" for no wrapper (default "div")',
+				'source — auto|acf|meta (default "auto")',
+				'format — text|html|shortcode (default "text")',
+				'before, after, className',
+			),
+			'examples' => array( "<!-- wp:ekwa/field {\"fieldKey\":\"extra_title\",\"tagName\":\"h2\",\"className\":\"hdr-extra\"} /-->" ),
+		),
+
 	);
 
 	/**

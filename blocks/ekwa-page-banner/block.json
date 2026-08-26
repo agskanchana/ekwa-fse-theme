@@ -1,0 +1,64 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ekwa/page-banner",
+	"version": "1.0.0",
+	"title": "Ekwa Page Banner",
+	"category": "ekwa-layout",
+	"icon": "cover-image",
+	"description": "Composable page banner: put any blocks inside (Banner Title, Breadcrumb, Featured Image, buttons…). The featured image can back it as an art-directed <picture> layer or a CSS background, with its own behaviour under 480px.",
+	"textdomain": "ekwa",
+	"keywords": [ "banner", "hero", "header", "page", "inner", "cover" ],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"className": true,
+		"align": [ "wide", "full" ],
+		"color": {
+			"background": true,
+			"text": true,
+			"gradients": true,
+			"link": true
+		},
+		"spacing": {
+			"padding": true,
+			"margin": true,
+			"blockGap": true
+		},
+		"border": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true
+		}
+	},
+	"attributes": {
+		"tagName":       { "type": "string",  "default": "section" },
+
+		"bgSource":      { "type": "string",  "default": "featured" },
+		"bgImage":       { "type": "string",  "default": "" },
+		"bgImageId":     { "type": "number",  "default": 0 },
+		"bgRender":      { "type": "string",  "default": "picture" },
+		"bgMobile":      { "type": "string",  "default": "crop" },
+		"bgSize":        { "type": "string",  "default": "cover" },
+		"bgPosition":    { "type": "string",  "default": "50% 50%" },
+		"bgAttachment":  { "type": "string",  "default": "scroll" },
+
+		"overlayColor":   { "type": "string", "default": "" },
+		"overlayOpacity": { "type": "number", "default": 45 },
+
+		"minHeight":     { "type": "number",  "default": 0 },
+		"contentWidth":  { "type": "string",  "default": "" },
+		"ariaLabel":     { "type": "string",  "default": "" },
+
+		"inlineStyle":           { "type": "string",  "default": "" },
+		"scopedCss":             { "type": "string",  "default": "" },
+		"scopedCssOffInEditor":  { "type": "boolean", "default": false },
+		"customAttributes":      { "type": "object",  "default": {} }
+	},
+	"editorScript": "ekwa-page-banner-editor"
+}

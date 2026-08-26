@@ -154,6 +154,19 @@ require_once get_template_directory() . '/inc/ekwa-shortcode-blocks.php';
 require_once get_template_directory() . '/inc/ekwa-blocks.php';
 
 /**
+ * Page banner family — ekwa/page-banner, ekwa/banner-title, ekwa/breadcrumb.
+ * The composable replacement for the (now inserter-hidden) ekwa/inner-banner,
+ * which stays registered in ekwa-blocks.php so existing content is untouched.
+ */
+require_once get_template_directory() . '/inc/ekwa-page-banner.php';
+
+/**
+ * ekwa/field — print an ACF field or post meta, and render nothing at all on
+ * pages where it is empty. Safe to place in a shared header/footer template.
+ */
+require_once get_template_directory() . '/inc/ekwa-field-block.php';
+
+/**
  * Carry the mockup's inline styles onto the static core blocks the converter
  * emits (heading, paragraph, list, quote, table), which can't hold a style
  * attribute in their saved markup without failing block validation.
@@ -791,6 +804,9 @@ function ekwa_register_pattern_categories() {
 	) );
 	register_block_pattern_category( 'ekwa-headers-footers', array(
 		'label' => esc_html__( 'Ekwa Headers & Footers', 'ekwa' ),
+	) );
+	register_block_pattern_category( 'ekwa-banners', array(
+		'label' => esc_html__( 'Ekwa Page Banners', 'ekwa' ),
 	) );
 }
 add_action( 'init', 'ekwa_register_pattern_categories' );
