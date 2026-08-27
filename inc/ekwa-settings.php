@@ -478,7 +478,19 @@ function ekwa_save_settings() {
 
 	// GitHub access token for theme updates (ignored when the constant is set).
 	if ( ! defined( 'EKWA_GITHUB_TOKEN' ) && isset( $_POST['ekwa_github_token'] ) ) {
-		update_option( 'ekwa_github_token', sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) ) );
+		$new_token = sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) );
+		if ( $new_token !== get_option( 'ekwa_github_token', '' ) ) {
+			update_option( 'ekwa_github_token', $new_token );
+
+			// A cached check — including a failed one — survives 12 hours, so
+			// without this the new token appears to change nothing.
+			delete_transient( 'ekwa_github_last_error' );
+			delete_transient( 'ekwa_github_rate_limited' );
+			$ekwa_updater = function_exists( 'ekwa_theme_updater' ) ? ekwa_theme_updater() : null;
+			if ( $ekwa_updater ) {
+				$ekwa_updater->resetUpdateState();
+			}
+		}
 	}
 
 	// Mobile menu — render placeholder parent links (href="#") as spans so the
@@ -1429,6 +1441,22 @@ function ekwa_render_settings_page() {
 
 				<div class="ekwa-section" id="ekwa-theme-updates">
 						<h2><?php esc_html_e( 'Theme Updates', 'ekwa' ); ?></h2>
+						<?php
+						// Result of a "Check for updates now" round-trip.
+						$check_result = isset( $_GET['ekwa_check_result'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_check_result'] ) ) : '';
+						if ( 'update' === $check_result ) {
+							echo '<div class="notice notice-success inline"><p>' . esc_html__( 'An update is available — open Dashboard → Updates or Appearance → Themes to install it.', 'ekwa' ) . '</p></div>';
+						} elseif ( 'current' === $check_result ) {
+							echo '<div class="notice notice-success inline"><p>' . esc_html__( 'Checked GitHub successfully — this theme is up to date.', 'ekwa' ) . '</p></div>';
+						} elseif ( 'failed' === $check_result || 'nochecker' === $check_result ) {
+							echo '<div class="notice notice-error inline"><p>' . esc_html__( 'The update check failed. See the reason below.', 'ekwa' ) . '</p></div>';
+						}
+
+						$update_error = function_exists( 'ekwa_github_last_error_message' ) ? ekwa_github_last_error_message() : '';
+						if ( '' !== $update_error ) {
+							echo '<div class="notice notice-warning inline"><p>' . esc_html( $update_error ) . '</p></div>';
+						}
+						?>
 						<table class="form-table">
 							<tr>
 								<th><label for="ekwa_github_token"><?php esc_html_e( 'GitHub access token', 'ekwa' ); ?></label></th>
@@ -1438,8 +1466,29 @@ function ekwa_render_settings_page() {
 										<p class="description"><?php esc_html_e( 'A token is defined in wp-config.php (EKWA_GITHUB_TOKEN); it takes precedence over this field.', 'ekwa' ); ?></p>
 									<?php else : ?>
 										<input type="password" id="ekwa_github_token" name="ekwa_github_token" value="<?php echo esc_attr( get_option( 'ekwa_github_token', '' ) ); ?>" class="regular-text" autocomplete="off" spellcheck="false" placeholder="ghp_…" />
-										<p class="description"><?php esc_html_e( 'Theme updates are pulled from GitHub. Anonymous requests are limited to 60/hour per server, so update checks can fail. Add a Personal Access Token (read-only / public-repo access is enough) to raise the limit to 5,000/hour. Leave empty to use anonymous requests.', 'ekwa' ); ?></p>
+										<p class="description"><?php esc_html_e( 'Theme updates are pulled from GitHub. Anonymous requests are limited to 60/hour per server, so update checks can fail. Add a Personal Access Token to raise the limit to 5,000/hour. Leave empty to use anonymous requests.', 'ekwa' ); ?></p>
+										<p class="description"><?php esc_html_e( 'The repository is public, so the token needs no scopes at all: a classic token with nothing ticked is enough. A fine-grained token must list this repository under "Repository access" with Contents: Read — otherwise GitHub answers 404 and no update is ever offered.', 'ekwa' ); ?></p>
 									<?php endif; ?>
+								</td>
+							</tr>
+							<tr>
+								<th><?php esc_html_e( 'Update check', 'ekwa' ); ?></th>
+								<td>
+									<?php
+									$check_url = wp_nonce_url(
+										add_query_arg(
+											array(
+												'page'               => 'ekwa-settings',
+												'tab'                => 'general',
+												'ekwa_check_updates' => 1,
+											),
+											admin_url( 'admin.php' )
+										),
+										'ekwa_check_updates'
+									);
+									?>
+									<a href="<?php echo esc_url( $check_url ); ?>" class="button"><?php esc_html_e( 'Check for updates now', 'ekwa' ); ?></a>
+									<p class="description"><?php esc_html_e( 'Clears the cached result and asks GitHub straight away. WordPress caches an update check (including a failed one) for 12 hours, so use this after changing the token instead of waiting.', 'ekwa' ); ?></p>
 								</td>
 							</tr>
 						</table>

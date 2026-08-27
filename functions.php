@@ -15,13 +15,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once get_template_directory() . '/includes/plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
+// Definable in wp-config.php to track a fork.
+if ( ! defined( 'EKWA_GITHUB_REPO_URL' ) ) {
+	define( 'EKWA_GITHUB_REPO_URL', 'https://github.com/agskanchana/ekwa-fse-theme/' );
+}
+
 $ekwa_theme_updater = PucFactory::buildUpdateChecker(
-	'https://github.com/agskanchana/ekwa-fse-theme/',
+	EKWA_GITHUB_REPO_URL,
 	get_template_directory() . '/style.css',
 	'ekwa'
 );
 
-$ekwa_theme_updater->setBranch('live');  
+$ekwa_theme_updater->setBranch('live');
+
+/**
+ * The update checker instance, for code that runs after this file (the settings
+ * screen's "Check for updates now" button).
+ *
+ * @return \YahnisElsts\PluginUpdateChecker\v5p6\Theme\UpdateChecker|null
+ */
+function ekwa_theme_updater() {
+	return isset( $GLOBALS['ekwa_theme_updater'] ) ? $GLOBALS['ekwa_theme_updater'] : null;
+}
+
+/**
+ * The GitHub account that owns the theme repo — the username PUC pairs with the
+ * token in its Basic auth header (see ekwa_github_bearer_auth).
+ *
+ * @return string
+ */
+function ekwa_github_repo_owner() {
+	$path = wp_parse_url( EKWA_GITHUB_REPO_URL, PHP_URL_PATH );
+	$path = trim( (string) $path, '/' );
+	$bits = explode( '/', $path );
+	return isset( $bits[0] ) ? $bits[0] : '';
+}
 
 /**
  * Authenticate GitHub update checks with a Personal Access Token when one is
@@ -42,46 +70,279 @@ if ( '' !== $ekwa_github_token ) {
 }
 
 /**
- * Flag a GitHub API rate-limit (HTTP 403 with X-RateLimit-Remaining: 0) so we
- * can prompt the admin to add a token. Stored as a short-lived transient.
+ * Send the token as `Authorization: Bearer <token>` instead of PUC's Basic header.
+ *
+ * PUC authenticates as `Basic base64("<repo owner>:<token>")` — it pairs the
+ * token with the username taken from the REPOSITORY URL, which is not
+ * necessarily the account the token belongs to. GitHub rejects that pairing for
+ * fine-grained tokens (github_pat_…) and whenever the token's owner isn't the
+ * repo owner, answering 401 Bad credentials. Since an anonymous request to this
+ * public repo succeeds, adding a token made update checks fail where having no
+ * token worked — updates stopped appearing at all.
+ *
+ * Bearer is what GitHub documents for both classic and fine-grained tokens, and
+ * it carries no username to mismatch.
+ */
+function ekwa_github_bearer_auth( $options ) {
+	$token = ekwa_github_token();
+	if ( '' === $token ) {
+		return $options;
+	}
+	if ( empty( $options['headers'] ) || ! is_array( $options['headers'] ) ) {
+		$options['headers'] = array();
+	}
+	$options['headers']['Authorization'] = 'Bearer ' . $token;
+	return $options;
+}
+// Registered through PUC's own helper: it builds the hook name (which carries a
+// "_theme" suffix for theme checkers — puc_request_update_options_theme-ekwa),
+// so the filter can't quietly stop firing if that naming ever changes.
+$ekwa_theme_updater->addFilter( 'request_update_options', 'ekwa_github_bearer_auth' );
+
+/**
+ * The same swap for the update DOWNLOAD, which PUC also authenticates: the zip
+ * comes from api.github.com/repos/:user/:repo/zipball/:branch, so a rejected
+ * header there fails the install even when the check succeeded.
+ *
+ * Only the exact header PUC generated for OUR token is rewritten — never a
+ * header belonging to some other plugin that talks to the GitHub API.
+ */
+function ekwa_github_bearer_download_auth( $args, $url = '' ) {
+	if ( empty( $args['headers']['Authorization'] ) ) {
+		return $args;
+	}
+	if ( 'api.github.com' !== wp_parse_url( (string) $url, PHP_URL_HOST ) ) {
+		return $args;
+	}
+	$token = ekwa_github_token();
+	if ( '' === $token ) {
+		return $args;
+	}
+	$puc_header = 'Basic ' . base64_encode( ekwa_github_repo_owner() . ':' . $token ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+	if ( $args['headers']['Authorization'] !== $puc_header ) {
+		return $args;
+	}
+	$args['headers']['Authorization'] = 'Bearer ' . $token;
+	return $args;
+}
+add_filter( 'http_request_args', 'ekwa_github_bearer_download_auth', 20, 2 );
+
+/**
+ * Record why a GitHub update check failed.
+ *
+ * Flags a rate-limit (HTTP 403 with X-RateLimit-Remaining: 0) as before, and
+ * additionally stores the last API error so the admin sees a reason instead of
+ * updates silently never appearing — a rejected token answers 401 and used to
+ * leave no trace anywhere.
  */
 function ekwa_github_flag_rate_limit( $error, $http_response = null, $url = null, $slug = null ) {
-	if ( 'ekwa' !== $slug || ! is_array( $http_response ) ) {
+	if ( 'ekwa' !== $slug ) {
 		return;
 	}
-	$code      = wp_remote_retrieve_response_code( $http_response );
+
+	// "Could not retrieve version information" is PUC summarising a failure it
+	// already reported — recording it would bury the actual cause.
+	if ( is_wp_error( $error ) && 'puc-no-update-source' === $error->get_error_code() ) {
+		return;
+	}
+
+	// No HTTP response at all: the request never completed (DNS, firewall,
+	// timeout, TLS). Worth recording — it looks identical to "no updates" from
+	// the admin's side.
+	if ( ! is_array( $http_response ) ) {
+		if ( is_wp_error( $error ) ) {
+			set_transient(
+				'ekwa_github_last_error',
+				array(
+					'code'    => 0,
+					'message' => $error->get_error_message(),
+					'token'   => ( '' !== ekwa_github_token() ),
+					'time'    => time(),
+				),
+				DAY_IN_SECONDS
+			);
+		}
+		return;
+	}
+
+	$code      = (int) wp_remote_retrieve_response_code( $http_response );
 	$remaining = wp_remote_retrieve_header( $http_response, 'x-ratelimit-remaining' );
-	if ( 403 == $code && '0' === (string) $remaining ) { // phpcs:ignore WordPress.PHP.StrictComparisons.LooseComparison
+
+	if ( 403 === $code && '0' === (string) $remaining ) {
 		set_transient( 'ekwa_github_rate_limited', 1, HOUR_IN_SECONDS );
 	}
+
+	// GitHub puts a human-readable reason in the JSON body ("Bad credentials",
+	// "Not Found", "API rate limit exceeded…").
+	$body    = json_decode( wp_remote_retrieve_body( $http_response ) );
+	$message = ( is_object( $body ) && ! empty( $body->message ) ) ? (string) $body->message : '';
+
+	set_transient(
+		'ekwa_github_last_error',
+		array(
+			'code'    => $code,
+			'message' => $message,
+			'token'   => ( '' !== ekwa_github_token() ),
+			'time'    => time(),
+		),
+		DAY_IN_SECONDS
+	);
 }
 add_action( 'puc_api_error', 'ekwa_github_flag_rate_limit', 10, 4 );
 
 /**
- * Admin notice when update checks were rate-limited and no token is configured.
+ * Clear the recorded failure once a check succeeds, so a fixed token stops
+ * showing a stale error.
+ *
+ * A successful check is one that came back with a version: PUC reads the
+ * Version header out of style.css on the tracked branch and nulls the whole
+ * update when it can't (see Vcs\ThemeUpdateChecker::requestUpdate). "Up to
+ * date" still carries a version, so it counts as success — only a check that
+ * never reached GitHub leaves the error in place.
+ */
+function ekwa_github_clear_last_error( $update, $http_result = null ) {
+	if ( is_object( $update ) && ! empty( $update->version ) ) {
+		delete_transient( 'ekwa_github_last_error' );
+		delete_transient( 'ekwa_github_rate_limited' );
+	}
+	return $update;
+}
+$ekwa_theme_updater->addFilter( 'request_update_result', 'ekwa_github_clear_last_error', 10, 2 );
+
+/**
+ * Human-readable explanation of the last update-check failure, or '' when the
+ * last check was fine.
+ *
+ * @return string
+ */
+function ekwa_github_last_error_message() {
+	$last = get_transient( 'ekwa_github_last_error' );
+	// isset, not empty: code 0 is a real value here — it means the request never
+	// reached GitHub.
+	if ( ! is_array( $last ) || ! isset( $last['code'] ) ) {
+		return '';
+	}
+
+	$code   = (int) $last['code'];
+	$detail = ! empty( $last['message'] ) ? ' (' . $last['message'] . ')' : '';
+
+	if ( 0 === $code ) {
+		return sprintf(
+			/* translators: %s: the transport error, e.g. a cURL message. */
+			__( 'This server could not reach api.github.com%s, so the update check never completed. That is usually a firewall, DNS, or an out-of-date CA certificate bundle on the server — not a theme setting.', 'ekwa' ),
+			$detail
+		);
+	}
+	if ( 401 === $code ) {
+		return sprintf(
+			/* translators: %s: the message GitHub returned. */
+			__( 'GitHub rejected the access token%s. It is invalid, expired, or revoked — generate a new token and paste it again. Clearing the field also works: update checks fall back to anonymous requests.', 'ekwa' ),
+			$detail
+		);
+	}
+	if ( 404 === $code ) {
+		return sprintf(
+			/* translators: %s: the message GitHub returned. */
+			__( 'GitHub could not find the theme repository%s. If the token is a fine-grained one, it must list this repository under "Repository access" with Contents: Read.', 'ekwa' ),
+			$detail
+		);
+	}
+	if ( 403 === $code ) {
+		return empty( $last['token'] )
+			? __( 'GitHub\'s anonymous rate limit (60 requests/hour per server) was reached. Add an access token below to raise it to 5,000/hour.', 'ekwa' )
+			: sprintf(
+				/* translators: %s: the message GitHub returned. */
+				__( 'GitHub refused the request%s. The token may lack access to this repository.', 'ekwa' ),
+				$detail
+			);
+	}
+
+	return sprintf(
+		/* translators: 1: HTTP status code, 2: the message GitHub returned. */
+		__( 'The last update check failed — GitHub returned HTTP %1$d%2$s.', 'ekwa' ),
+		$code,
+		$detail
+	);
+}
+
+/**
+ * Admin notice when the last update check failed.
+ *
+ * This used to bail out whenever a token was configured, on the assumption that
+ * a token can only help. A REJECTED token is the one case where updates stop
+ * appearing entirely, so that early return hid the very failure worth
+ * reporting — the reason is now shown either way.
  */
 function ekwa_github_rate_limit_notice() {
 	if ( ! current_user_can( 'update_themes' ) ) {
 		return;
 	}
-	if ( '' !== ekwa_github_token() ) {
-		// A token is set — it already raises the cap; nothing to prompt.
-		delete_transient( 'ekwa_github_rate_limited' );
-		return;
-	}
-	if ( ! get_transient( 'ekwa_github_rate_limited' ) ) {
+	$message = ekwa_github_last_error_message();
+	if ( '' === $message ) {
 		return;
 	}
 	$url = admin_url( 'admin.php?page=ekwa-settings&tab=general#ekwa-theme-updates' );
 	echo '<div class="notice notice-warning is-dismissible"><p>';
 	printf(
-		/* translators: %s: settings URL. */
-		wp_kses_post( __( '<strong>Ekwa theme updates:</strong> GitHub\'s API rate limit was reached, so update checks may fail. <a href="%s">Add a GitHub Personal Access Token</a> to raise the limit.', 'ekwa' ) ),
-		esc_url( $url )
+		'<strong>%1$s</strong> %2$s <a href="%3$s">%4$s</a>',
+		esc_html__( 'Ekwa theme updates:', 'ekwa' ),
+		esc_html( $message ),
+		esc_url( $url ),
+		esc_html__( 'Theme update settings', 'ekwa' )
 	);
 	echo '</p></div>';
 }
 add_action( 'admin_notices', 'ekwa_github_rate_limit_notice' );
+
+/**
+ * "Check for updates now" — clears PUC's cached state and re-runs the check.
+ *
+ * Without this, a token change looks like it did nothing: PUC caches the result
+ * of a check (including a failed one) for 12 hours, so the Themes screen keeps
+ * reporting "up to date" long after the cause was fixed.
+ */
+function ekwa_github_handle_manual_check() {
+	if ( empty( $_GET['ekwa_check_updates'] ) ) {
+		return;
+	}
+	if ( ! current_user_can( 'update_themes' ) ) {
+		return;
+	}
+	check_admin_referer( 'ekwa_check_updates' );
+
+	$updater = ekwa_theme_updater();
+	$result  = 'nochecker';
+
+	if ( $updater ) {
+		delete_transient( 'ekwa_github_last_error' );
+		delete_transient( 'ekwa_github_rate_limited' );
+		$updater->resetUpdateState();
+
+		$update = $updater->checkForUpdates();
+		$failed = ekwa_github_last_error_message();
+
+		if ( '' !== $failed ) {
+			$result = 'failed';
+		} elseif ( $update ) {
+			$result = 'update';
+		} else {
+			$result = 'current';
+		}
+	}
+
+	wp_safe_redirect(
+		add_query_arg(
+			array(
+				'page'              => 'ekwa-settings',
+				'tab'               => 'general',
+				'ekwa_check_result' => $result,
+			),
+			admin_url( 'admin.php' )
+		) . '#ekwa-theme-updates'
+	);
+	exit;
+}
+add_action( 'admin_init', 'ekwa_github_handle_manual_check' );
 
 /**
  * Load theme settings page.
