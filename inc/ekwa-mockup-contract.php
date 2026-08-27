@@ -107,7 +107,7 @@ function ekwa_mockup_canonical_snippets() {
 			'alt_snippet' => '<a href="/" class="ekwa-svg-logo" aria-label="Practice name">
   <svg viewBox="0 0 200 48"><!-- logo paths --></svg>
 </a>',
-			'notes'      => __( 'Most logos are an image → this maps to core/site-logo (the real logo comes from the WordPress site logo / Ekwa Settings → Branding; the mockup image is a stand-in for styling — style .custom-logo). A simple <a class="logo"><img></a> is also auto-detected. Use the SVG variant below only for an inline vector logo (renders as ekwa/svg-logo).', 'ekwa' ),
+			'notes'      => __( 'Most logos are an image → this maps to core/site-logo, which renders the WordPress site logo (style .custom-logo). On conversion the mockup\'s own image becomes that site logo when the site has none yet — matched in the media library by filename, or downloaded when the src is a full URL — so upload the logo (or point src at it) and the header renders the real thing. A simple <a class="logo"><img></a> is also auto-detected. Use the SVG variant below only for an inline vector logo (renders as ekwa/svg-logo).', 'ekwa' ),
 		),
 
 		'phone' => array(
@@ -164,11 +164,12 @@ function ekwa_mockup_canonical_snippets() {
 			'signature' => 'ekwa-working-hours',
 			'snippet'   => '<div class="ekwa-working-hours">
   <div class="ekwa-working-hours__list">
-    <div class="ekwa-working-hours__row"><span>Monday – Friday</span><span>8am – 6pm</span></div>
-    <div class="ekwa-working-hours__row ekwa-working-hours__row--closed"><span>Sunday</span><span>Closed</span></div>
+    <div class="ekwa-working-hours__row"><span class="ekwa-working-hours__day">Monday – Friday</span><span class="ekwa-working-hours__time">8am – 6pm</span></div>
+    <div class="ekwa-working-hours__row ekwa-working-hours__row--note"><span class="ekwa-working-hours__day">Saturday</span><span class="ekwa-working-hours__time ekwa-working-hours__time--note">By appointment</span></div>
+    <div class="ekwa-working-hours__row ekwa-working-hours__row--closed"><span class="ekwa-working-hours__day">Sunday</span><span class="ekwa-working-hours__time">Closed</span></div>
   </div>
 </div>',
-			'notes'     => __( 'Real hours come from Ekwa Settings → Locations.', 'ekwa' ),
+			'notes'     => __( 'Real hours come from Ekwa Settings → Locations. Three row shapes render: a normal day, a note-only day (--note, e.g. "By appointment", where the note sits in the time column), and a closed day (--closed). Style all three.', 'ekwa' ),
 		),
 
 		'social' => array(
@@ -322,8 +323,9 @@ function ekwa_mockup_canonical_footer() {
         <span class="footer-label">Hours</span>
         <div class="ekwa-working-hours">
           <div class="ekwa-working-hours__list">
-            <div class="ekwa-working-hours__row"><span>Monday &ndash; Friday</span><span>8am &ndash; 6pm</span></div>
-            <div class="ekwa-working-hours__row ekwa-working-hours__row--closed"><span>Sunday</span><span>Closed</span></div>
+            <div class="ekwa-working-hours__row"><span class="ekwa-working-hours__day">Monday &ndash; Friday</span><span class="ekwa-working-hours__time">8am &ndash; 6pm</span></div>
+            <div class="ekwa-working-hours__row ekwa-working-hours__row--note"><span class="ekwa-working-hours__day">Saturday</span><span class="ekwa-working-hours__time ekwa-working-hours__time--note">By appointment</span></div>
+            <div class="ekwa-working-hours__row ekwa-working-hours__row--closed"><span class="ekwa-working-hours__day">Sunday</span><span class="ekwa-working-hours__time">Closed</span></div>
           </div>
         </div>
       </div>

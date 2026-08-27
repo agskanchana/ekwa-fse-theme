@@ -36,10 +36,28 @@
 	});
 
 	/* ============================================================
-	 *  Working-hours closed checkbox toggle
+	 *  Working-hours day state — open / closed / note only
+	 *
+	 *  Closed and Note only are mutually exclusive; either one hides the
+	 *  opening/closing selects. The Extra Note field sits outside
+	 *  .ekwa-wh-times, so it stays reachable in all three states.
 	 * ============================================================ */
-	$(document).on('change', '.ekwa-wh-closed-cb', function () {
-		$(this).closest('.ekwa-wh-item').find('.ekwa-wh-times').toggle(!this.checked);
+	function syncWorkingHourState($item) {
+		var closed   = $item.find('.ekwa-wh-closed-cb').prop('checked');
+		var noteOnly = $item.find('.ekwa-wh-note-only-cb').prop('checked');
+		$item.find('.ekwa-wh-times').toggle(!closed && !noteOnly);
+		$item.find('.ekwa-wh-note-hint').toggle(!!noteOnly);
+	}
+
+	$(document).on('change', '.ekwa-wh-closed-cb, .ekwa-wh-note-only-cb', function () {
+		var $item = $(this).closest('.ekwa-wh-item');
+		if (this.checked) {
+			var other = $(this).hasClass('ekwa-wh-closed-cb')
+				? '.ekwa-wh-note-only-cb'
+				: '.ekwa-wh-closed-cb';
+			$item.find(other).prop('checked', false);
+		}
+		syncWorkingHourState($item);
 	});
 
 	/* ============================================================
@@ -211,7 +229,8 @@
 			var isClosed = String(wh.closed) === '1';
 			$row.find('.ekwa-wh-day').val(wh.day);
 			$row.find('.ekwa-wh-closed-cb').prop('checked', isClosed);
-			$row.find('.ekwa-wh-times').toggle(!isClosed);
+			$row.find('.ekwa-wh-note-only-cb').prop('checked', false);
+			syncWorkingHourState($row);
 			if (!isClosed) {
 				$row.find('[name$="[open_hour]"]').val(wh.open_hour);
 				$row.find('[name$="[open_min]"]').val(wh.open_min);

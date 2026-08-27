@@ -169,7 +169,23 @@
 }
 
 .ekwa-wh-times {
-	padding: 12px 14px;
+	padding: 12px 14px 2px;
+}
+
+/* The Extra Note row sits outside .ekwa-wh-times so it survives a closed or
+   note-only day, which means it carries its own padding. */
+.ekwa-wh-note {
+	padding: 10px 14px 12px;
+}
+
+.ekwa-wh-note-hint {
+	flex-basis: 100%;
+	margin-left: 88px;
+}
+
+/* Only one of Closed / Note only pushes to the right edge. */
+.ekwa-wh-closed-label + .ekwa-wh-closed-label {
+	margin-left: 0 !important;
 }
 
 .ekwa-wh-time-row {

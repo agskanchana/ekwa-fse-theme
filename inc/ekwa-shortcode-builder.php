@@ -231,7 +231,7 @@ function ekwa_render_shortcode_builder_page() {
 					'label'   => __( 'Show Extra Notes', 'ekwa' ),
 					'type'    => 'toggle',
 					'default' => 'true',
-					'help'    => __( 'Append the extra_note field to each row.', 'ekwa' ),
+					'help'    => __( 'Append the extra_note field to each row. Days set to "Note only" always show their note — it stands in for the hours.', 'ekwa' ),
 				),
 				array(
 					'key'     => 'closed_label',

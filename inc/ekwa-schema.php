@@ -57,6 +57,9 @@ function ekwa_schema_format_time( $hour, $min, $period ) {
 
 /**
  * Build OpeningHoursSpecification entries from a location's working_hours array.
+ *
+ * Closed days and note-only days are both left out: the spec needs real
+ * opens/closes values, and a note-only day ("By appointment") has none.
  */
 function ekwa_schema_opening_hours( $working_hours ) {
 	$out = array();
@@ -64,7 +67,7 @@ function ekwa_schema_opening_hours( $working_hours ) {
 		return $out;
 	}
 	foreach ( $working_hours as $wh ) {
-		if ( ! empty( $wh['closed'] ) ) {
+		if ( ! empty( $wh['closed'] ) || ! empty( $wh['note_only'] ) ) {
 			continue;
 		}
 		$day = isset( $wh['day'] ) ? $wh['day'] : '';

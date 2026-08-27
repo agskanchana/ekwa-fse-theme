@@ -269,6 +269,10 @@ function ekwa_sanitize_locations( $locations ) {
 				if ( ! is_array( $wh ) ) {
 					continue;
 				}
+				// Closed wins over note-only: a day can't be both, and the two
+				// checkboxes are only kept exclusive in the browser.
+				$is_closed = ! empty( $wh['closed'] ) ? 1 : 0;
+
 				$clean_loc['working_hours'][] = array(
 					'day'            => sanitize_text_field( $wh['day'] ?? 'Monday' ),
 					'open_hour'      => sanitize_text_field( $wh['open_hour'] ?? '09' ),
@@ -277,7 +281,8 @@ function ekwa_sanitize_locations( $locations ) {
 					'close_hour'     => sanitize_text_field( $wh['close_hour'] ?? '05' ),
 					'close_min'      => sanitize_text_field( $wh['close_min'] ?? '00' ),
 					'close_period'   => sanitize_text_field( $wh['close_period'] ?? 'PM' ),
-					'closed'         => ! empty( $wh['closed'] ) ? 1 : 0,
+					'closed'         => $is_closed,
+					'note_only'      => ( ! $is_closed && ! empty( $wh['note_only'] ) ) ? 1 : 0,
 					'extra_note'     => sanitize_text_field( $wh['extra_note'] ?? '' ),
 				);
 			}
@@ -2730,6 +2735,12 @@ function ekwa_render_location_row( $index, $data, $days ) {
 
 /**
  * Render a single working hours row.
+ *
+ * A day is in exactly one of three states:
+ *   open      – opening/closing times (+ an optional extra note beside them)
+ *   closed    – the closed label
+ *   note only – the extra note stands in for the times, e.g. "By appointment".
+ *               Left out of the schema, which needs real opens/closes values.
  */
 function ekwa_render_working_hour_row( $loc_index, $wh_index, $data, $days ) {
 	$data = wp_parse_args( $data, array(
@@ -2741,11 +2752,14 @@ function ekwa_render_working_hour_row( $loc_index, $wh_index, $data, $days ) {
 		'close_min'    => '00',
 		'close_period' => 'PM',
 		'closed'       => 0,
+		'note_only'    => 0,
 		'extra_note'   => '',
 	) );
-	$prefix = "ekwa_locations[{$loc_index}][working_hours][{$wh_index}]";
-	$hours  = array( '01','02','03','04','05','06','07','08','09','10','11','12' );
-	$mins   = array( '00','15','30','45' );
+	$prefix     = "ekwa_locations[{$loc_index}][working_hours][{$wh_index}]";
+	$hours      = array( '01','02','03','04','05','06','07','08','09','10','11','12' );
+	$mins       = array( '00','15','30','45' );
+	$note_only  = ! empty( $data['note_only'] ) && empty( $data['closed'] );
+	$hide_times = $data['closed'] || $note_only;
 	?>
 	<div class="ekwa-wh-item" data-wh-index="<?php echo esc_attr( $wh_index ); ?>">
 		<div class="ekwa-wh-header">
@@ -2754,13 +2768,17 @@ function ekwa_render_working_hour_row( $loc_index, $wh_index, $data, $days ) {
 					<option value="<?php echo esc_attr( $d ); ?>" <?php selected( $data['day'], $d ); ?>><?php echo esc_html( $d ); ?></option>
 				<?php endforeach; ?>
 			</select>
+			<label class="ekwa-wh-closed-label ekwa-wh-note-only-label" title="<?php esc_attr_e( 'Show the extra note instead of opening/closing times. The day is left out of the schema.', 'ekwa' ); ?>">
+				<input type="checkbox" name="<?php echo esc_attr( $prefix ); ?>[note_only]" value="1" <?php checked( $note_only ); ?> class="ekwa-wh-note-only-cb" />
+				<?php esc_html_e( 'Note only', 'ekwa' ); ?>
+			</label>
 			<label class="ekwa-wh-closed-label">
 				<input type="checkbox" name="<?php echo esc_attr( $prefix ); ?>[closed]" value="1" <?php checked( $data['closed'], 1 ); ?> class="ekwa-wh-closed-cb" />
 				<?php esc_html_e( 'Closed', 'ekwa' ); ?>
 			</label>
 			<button type="button" class="button ekwa-remove-wh"><?php esc_html_e( 'Remove', 'ekwa' ); ?></button>
 		</div>
-		<div class="ekwa-wh-times" <?php echo $data['closed'] ? 'style="display:none;"' : ''; ?>>
+		<div class="ekwa-wh-times" <?php echo $hide_times ? 'style="display:none;"' : ''; ?>>
 			<div class="ekwa-wh-time-row">
 				<span class="ekwa-wh-label"><?php esc_html_e( 'Opening:', 'ekwa' ); ?></span>
 				<select name="<?php echo esc_attr( $prefix ); ?>[open_hour]">
@@ -2797,10 +2815,15 @@ function ekwa_render_working_hour_row( $loc_index, $wh_index, $data, $days ) {
 					<option value="PM" <?php selected( $data['close_period'], 'PM' ); ?>>PM</option>
 				</select>
 			</div>
-			<div class="ekwa-wh-time-row">
-				<span class="ekwa-wh-label"><?php esc_html_e( 'Extra Note:', 'ekwa' ); ?></span>
-				<input type="text" name="<?php echo esc_attr( $prefix ); ?>[extra_note]" value="<?php echo esc_attr( $data['extra_note'] ); ?>" placeholder="<?php esc_attr_e( 'e.g., By appointment only', 'ekwa' ); ?>" class="regular-text" />
-			</div>
+		</div>
+		<!-- The note lives outside .ekwa-wh-times: it is the only thing a
+		     note-only day has, so it must survive the times being hidden. -->
+		<div class="ekwa-wh-time-row ekwa-wh-note">
+			<span class="ekwa-wh-label"><?php esc_html_e( 'Extra Note:', 'ekwa' ); ?></span>
+			<input type="text" name="<?php echo esc_attr( $prefix ); ?>[extra_note]" value="<?php echo esc_attr( $data['extra_note'] ); ?>" placeholder="<?php esc_attr_e( 'e.g., By appointment only', 'ekwa' ); ?>" class="regular-text" />
+			<span class="description ekwa-wh-note-hint" <?php echo $note_only ? '' : 'style="display:none;"'; ?>>
+				<?php esc_html_e( 'Shown in place of the hours — this day is left out of the schema.', 'ekwa' ); ?>
+			</span>
 		</div>
 	</div>
 	<?php

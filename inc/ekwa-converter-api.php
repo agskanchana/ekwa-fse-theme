@@ -292,6 +292,9 @@ function ekwa_mc_apply_post_conversion( $request, $html, array $response ) {
 		}
 	}
 
+	// ── Give core/site-logo the mockup's own logo image. ─────────────────
+	$response = ekwa_mc_apply_logo_import( $html, $response );
+
 	// ── Normalize every icon to Font Awesome. ────────────────────────────
 	// Catches what the DOM pass can't reach: AI-generated markup, the HTML
 	// inside a dynamic block's customTemplate, and raw inner HTML.
@@ -335,6 +338,188 @@ function ekwa_mc_apply_post_conversion( $request, $html, array $response ) {
 	}
 
 	return $response;
+}
+
+/**
+ * Adopt the mockup's logo image as the site logo.
+ *
+ * core/site-logo has no image of its own — it renders whatever the site's
+ * `custom_logo` theme mod points at. So a converted header used to carry
+ * nothing from the mockup's logo but its pixel width, and rendered the site's
+ * old logo (or an empty box) instead of the one in the design.
+ *
+ * This resolves the <img> the logo detector matched to a real attachment —
+ * media manifest, then the media library by filename, then a sideload for an
+ * absolute URL — and stores it as the site logo.
+ *
+ * A logo the site already has is never overwritten: it was chosen
+ * deliberately, and converting a second template part shouldn't undo it.
+ *
+ * @param string $html     Source mockup HTML.
+ * @param array  $response Response being assembled (markup + warnings).
+ * @return array
+ */
+function ekwa_mc_apply_logo_import( $html, array $response ) {
+	// Nothing to feed if the conversion produced no site-logo block.
+	$markup = isset( $response['markup'] ) ? (string) $response['markup'] : '';
+	if ( false === stripos( $markup, 'wp:site-logo' ) ) {
+		return $response;
+	}
+	if ( ! current_user_can( 'edit_theme_options' ) ) {
+		return $response;
+	}
+
+	$logo = ekwa_mc_find_logo_image( $html );
+	if ( ! $logo ) {
+		return $response;
+	}
+
+	$existing = (int) get_theme_mod( 'custom_logo' );
+
+	// With a logo already in place, look the mockup's up without importing it —
+	// the answer only decides whether the mismatch is worth mentioning.
+	if ( $existing ) {
+		$found = ekwa_mc_resolve_logo_attachment( $logo, false );
+		if ( is_wp_error( $found ) || (int) $found !== $existing ) {
+			$response['warnings'][] = sprintf(
+				/* translators: %s: image filename from the mockup. */
+				__( 'Site logo: this site already has one, so it was kept — the site-logo block renders that image, not the mockup\'s "%s". Swap it under Appearance → Customize → Site Identity if the mockup\'s logo is the right one.', 'ekwa' ),
+				basename( $logo['src'] )
+			);
+		}
+		return $response;
+	}
+
+	$attachment_id = ekwa_mc_resolve_logo_attachment( $logo, true );
+
+	if ( is_wp_error( $attachment_id ) ) {
+		$response['warnings'][] = sprintf(
+			/* translators: 1: image filename from the mockup, 2: the reason it could not be used. */
+			__( 'Site logo: could not use the mockup\'s logo "%1$s" (%2$s). The site-logo block will render nothing until a logo is set under Appearance → Customize → Site Identity.', 'ekwa' ),
+			basename( $logo['src'] ),
+			$attachment_id->get_error_message()
+		);
+		return $response;
+	}
+
+	set_theme_mod( 'custom_logo', $attachment_id );
+
+	$response['logo_import'] = array( 'attachment_id' => $attachment_id );
+	$response['warnings'][]  = sprintf(
+		/* translators: %s: image filename from the mockup. */
+		__( 'Site logo: set the mockup\'s "%s" as this site\'s logo, so the site-logo block renders it.', 'ekwa' ),
+		basename( $logo['src'] )
+	);
+
+	return $response;
+}
+
+/**
+ * Find the mockup's logo image — the same <img> the logo detector converts to
+ * core/site-logo: one carrying "logo" in its class or alt, or wrapped in an
+ * <a class="…logo…">, and outside the footer (footer logos stay ekwa/image).
+ *
+ * @param string $html Source mockup HTML.
+ * @return array{src:string,alt:string}|null
+ */
+function ekwa_mc_find_logo_image( $html ) {
+	if ( ! function_exists( 'ekwa_mc_is_logo_context' ) ) {
+		require_once get_template_directory() . '/inc/ekwa-converter-lib.php';
+	}
+
+	$doc = new DOMDocument();
+	libxml_use_internal_errors( true );
+	$doc->loadHTML(
+		'<?xml encoding="utf-8"?><div data-ekwa-logo-root="1">' . ekwa_mc_extract_body( $html ) . '</div>',
+		LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+	);
+	libxml_clear_errors();
+
+	foreach ( $doc->getElementsByTagName( 'img' ) as $img ) {
+		$src = trim( $img->getAttribute( 'src' ) );
+		if ( '' === $src || ekwa_mc_is_inside_footer( $img ) ) {
+			continue;
+		}
+
+		$is_logo = ekwa_mc_is_logo_context( $img->getAttribute( 'class' ), $img->getAttribute( 'alt' ) );
+
+		if ( ! $is_logo ) {
+			$parent = $img->parentNode;
+			if ( $parent instanceof DOMElement && 'a' === strtolower( $parent->nodeName ) ) {
+				$is_logo = ekwa_mc_is_logo_context( $parent->getAttribute( 'class' ) );
+			}
+		}
+
+		if ( $is_logo ) {
+			return array(
+				'src' => $src,
+				'alt' => trim( $img->getAttribute( 'alt' ) ),
+			);
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Resolve a mockup logo image to an attachment ID.
+ *
+ * Mirrors how ekwa_mc_convert_image() resolves every other image — manifest
+ * first, then a basename match in the media library — and falls back to
+ * downloading an absolute URL, since a logo the converter can't resolve leaves
+ * the header blank.
+ *
+ * @param array $logo         { src, alt } from ekwa_mc_find_logo_image().
+ * @param bool  $allow_import Download the image when it isn't here yet.
+ * @return int|WP_Error Attachment ID, 0 when unresolved and no import allowed.
+ */
+function ekwa_mc_resolve_logo_attachment( $logo, $allow_import = true ) {
+	$src  = $logo['src'];
+	$path = wp_parse_url( $src, PHP_URL_PATH );
+	$file = strtolower( basename( $path ? $path : $src ) );
+
+	$ctx = function_exists( 'ekwa_mc_context' ) ? ekwa_mc_context() : array();
+	if ( ! empty( $ctx['media_by_name'][ $file ]['id'] ) ) {
+		return (int) $ctx['media_by_name'][ $file ]['id'];
+	}
+
+	if ( function_exists( 'ekwa_mc_find_attachment_by_basename' ) ) {
+		$lib = ekwa_mc_find_attachment_by_basename( $file );
+		if ( ! empty( $lib['id'] ) ) {
+			return (int) $lib['id'];
+		}
+	}
+
+	if ( ! $allow_import ) {
+		return 0;
+	}
+
+	// A relative path (assets/logo.svg) is a file on the mockup author's disk —
+	// nothing to download, so it has to be uploaded to the media library first.
+	if ( ! preg_match( '#^https?://#i', $src ) ) {
+		return new WP_Error(
+			'ekwa_mc_logo_not_found',
+			__( 'it is not in the media library — upload it there and convert again', 'ekwa' )
+		);
+	}
+
+	if ( ! current_user_can( 'upload_files' ) || ! function_exists( 'ekwa_media_import_sideload' ) ) {
+		return new WP_Error(
+			'ekwa_mc_logo_no_import',
+			__( 'it is not in the media library', 'ekwa' )
+		);
+	}
+
+	$imported = ekwa_media_import_sideload( $src, array(
+		'alt'   => $logo['alt'],
+		'title' => $logo['alt'],
+	) );
+
+	if ( is_wp_error( $imported ) ) {
+		return $imported;
+	}
+
+	return (int) $imported['attachment_id'];
 }
 
 /**

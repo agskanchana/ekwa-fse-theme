@@ -479,6 +479,8 @@ if ( ! function_exists( 'ekwa_wh_short_day' ) ) {
  *                           'all'         – all days sharing the same hours regardless
  *                                          of position, e.g. Mon, Wed, Fri: 9:00 AM – 5:00 PM
  *   show_notes   (bool)   Append extra_note text to each row. Default: true
+ *                         Note-only days always show their note — it stands in
+ *                         for the hours, so hiding it would empty the row.
  *   closed_label (string) Text displayed for closed days. Default: 'Closed'
  *
  * Usage:
@@ -521,17 +523,34 @@ function ekwa_hours_shortcode( $atts ) {
 
 	/* ------------------------------------------------------------------
 	 * Build the $rows array.
-	 * Each entry: [ 'label' => '', 'time' => '', 'note' => '', 'is_closed' => bool ]
+	 * Each entry: [ 'label' => '', 'time' => '', 'note' => '', 'is_closed' => bool, 'is_note' => bool ]
 	 * ------------------------------------------------------------------ */
 	$rows = array();
 
-	/* ---- Helper: build a formatted time range string from a raw entry ---- */
-	$fmt_time = function ( $wh ) use ( $closed_label ) {
-		return empty( $wh['closed'] )
-			? ekwa_wh_format_time( $wh['open_hour'], $wh['open_min'], $wh['open_period'] ) .
-			  ' – ' .
-			  ekwa_wh_format_time( $wh['close_hour'], $wh['close_min'], $wh['close_period'] )
-			: $closed_label;
+	/* ---- Helper: resolve one raw entry into its display mode ------------
+	 * mode 'open'   – a time range
+	 * mode 'closed' – the closed label
+	 * mode 'note'   – the extra note stands in for the times ("By appointment")
+	 * A note-only day with no note text has nothing to show, so it is skipped;
+	 * 'key' is what grouping compares, so identical notes group like identical
+	 * time ranges do.
+	 * -------------------------------------------------------------------- */
+	$entry = function ( $wh ) use ( $closed_label ) {
+		$note = isset( $wh['extra_note'] ) ? trim( (string) $wh['extra_note'] ) : '';
+
+		if ( ! empty( $wh['closed'] ) ) {
+			return array( 'mode' => 'closed', 'note' => $note, 'time' => $closed_label, 'key' => '__closed__', 'skip' => false );
+		}
+
+		if ( ! empty( $wh['note_only'] ) ) {
+			return array( 'mode' => 'note', 'note' => $note, 'time' => $note, 'key' => '__note__' . $note, 'skip' => ( '' === $note ) );
+		}
+
+		$time = ekwa_wh_format_time( $wh['open_hour'], $wh['open_min'], $wh['open_period'] ) .
+		        ' – ' .
+		        ekwa_wh_format_time( $wh['close_hour'], $wh['close_min'], $wh['close_period'] );
+
+		return array( 'mode' => 'open', 'note' => $note, 'time' => $time, 'key' => ekwa_wh_time_key( $wh ), 'skip' => false );
 	};
 
 	/* ---- Helper: pick a shared note (empty string when notes differ) ---- */
@@ -554,36 +573,32 @@ function ekwa_hours_shortcode( $atts ) {
 		$i     = 0;
 
 		while ( $i < $total ) {
-			$cur       = $raw_hours[ $i ];
-			$is_closed = ! empty( $cur['closed'] );
-			$time_key  = $is_closed ? '__closed__' : ekwa_wh_time_key( $cur );
+			$cur = $entry( $raw_hours[ $i ] );
 
-			if ( ! $show_closed && $is_closed ) {
+			if ( $cur['skip'] || ( ! $show_closed && 'closed' === $cur['mode'] ) ) {
 				$i++;
 				continue;
 			}
 
-			$start_day = $cur['day'];
-			$end_day   = $cur['day'];
-			$notes     = array( isset( $cur['extra_note'] ) ? $cur['extra_note'] : '' );
+			$start_day = $raw_hours[ $i ]['day'];
+			$end_day   = $start_day;
+			$notes     = array( $cur['note'] );
 			$j         = $i + 1;
 
 			while ( $j < $total ) {
-				$nxt          = $raw_hours[ $j ];
-				$nxt_closed   = ! empty( $nxt['closed'] );
-				$nxt_time_key = $nxt_closed ? '__closed__' : ekwa_wh_time_key( $nxt );
+				$nxt = $entry( $raw_hours[ $j ] );
 
-				// A skipped (hidden) closed day breaks a run.
-				if ( ! $show_closed && $nxt_closed ) {
+				// A skipped (hidden or empty) day breaks a run.
+				if ( $nxt['skip'] || ( ! $show_closed && 'closed' === $nxt['mode'] ) ) {
 					break;
 				}
 
-				if ( $nxt_time_key !== $time_key ) {
+				if ( $nxt['key'] !== $cur['key'] ) {
 					break;
 				}
 
-				$end_day = $nxt['day'];
-				$notes[] = isset( $nxt['extra_note'] ) ? $nxt['extra_note'] : '';
+				$end_day = $raw_hours[ $j ]['day'];
+				$notes[] = $nxt['note'];
 				$j++;
 			}
 
@@ -593,9 +608,11 @@ function ekwa_hours_shortcode( $atts ) {
 
 			$rows[] = array(
 				'label'     => $label,
-				'time'      => $fmt_time( $cur ),
-				'note'      => $shared_note( $notes ),
-				'is_closed' => $is_closed,
+				'time'      => $cur['time'],
+				// A note-only row already shows its note as the time.
+				'note'      => 'note' === $cur['mode'] ? '' : $shared_note( $notes ),
+				'is_closed' => 'closed' === $cur['mode'],
+				'is_note'   => 'note' === $cur['mode'],
 			);
 
 			$i = $j;
@@ -606,36 +623,35 @@ function ekwa_hours_shortcode( $atts ) {
 	// -----------------------------------------------------------------------
 	} elseif ( 'all' === $group ) {
 
-		$buckets = array(); // time_key => [ days, is_closed, time, notes ]
+		$buckets = array(); // key => [ days, mode, time, notes ]
 
 		foreach ( $raw_hours as $wh ) {
-			$is_closed = ! empty( $wh['closed'] );
+			$e = $entry( $wh );
 
-			if ( ! $show_closed && $is_closed ) {
+			if ( $e['skip'] || ( ! $show_closed && 'closed' === $e['mode'] ) ) {
 				continue;
 			}
 
-			$time_key = $is_closed ? '__closed__' : ekwa_wh_time_key( $wh );
-
-			if ( ! isset( $buckets[ $time_key ] ) ) {
-				$buckets[ $time_key ] = array(
-					'days'      => array(),
-					'is_closed' => $is_closed,
-					'time'      => $fmt_time( $wh ),
-					'notes'     => array(),
+			if ( ! isset( $buckets[ $e['key'] ] ) ) {
+				$buckets[ $e['key'] ] = array(
+					'days'  => array(),
+					'mode'  => $e['mode'],
+					'time'  => $e['time'],
+					'notes' => array(),
 				);
 			}
 
-			$buckets[ $time_key ]['days'][]  = $wh['day'];
-			$buckets[ $time_key ]['notes'][] = isset( $wh['extra_note'] ) ? $wh['extra_note'] : '';
+			$buckets[ $e['key'] ]['days'][]  = $wh['day'];
+			$buckets[ $e['key'] ]['notes'][] = $e['note'];
 		}
 
 		foreach ( $buckets as $bucket ) {
 			$rows[] = array(
 				'label'     => implode( ', ', array_map( $day_label, $bucket['days'] ) ),
 				'time'      => $bucket['time'],
-				'note'      => $shared_note( $bucket['notes'] ),
-				'is_closed' => $bucket['is_closed'],
+				'note'      => 'note' === $bucket['mode'] ? '' : $shared_note( $bucket['notes'] ),
+				'is_closed' => 'closed' === $bucket['mode'],
+				'is_note'   => 'note' === $bucket['mode'],
 			);
 		}
 
@@ -645,17 +661,18 @@ function ekwa_hours_shortcode( $atts ) {
 	} else {
 
 		foreach ( $raw_hours as $wh ) {
-			$is_closed = ! empty( $wh['closed'] );
+			$e = $entry( $wh );
 
-			if ( ! $show_closed && $is_closed ) {
+			if ( $e['skip'] || ( ! $show_closed && 'closed' === $e['mode'] ) ) {
 				continue;
 			}
 
 			$rows[] = array(
 				'label'     => $day_label( $wh['day'] ),
-				'time'      => $fmt_time( $wh ),
-				'note'      => isset( $wh['extra_note'] ) ? $wh['extra_note'] : '',
-				'is_closed' => $is_closed,
+				'time'      => $e['time'],
+				'note'      => 'note' === $e['mode'] ? '' : $e['note'],
+				'is_closed' => 'closed' === $e['mode'],
+				'is_note'   => 'note' === $e['mode'],
 			);
 		}
 	}
@@ -670,10 +687,21 @@ function ekwa_hours_shortcode( $atts ) {
 	?>
 	<div class="ekwa-working-hours">
 		<div class="ekwa-working-hours__list">
-			<?php foreach ( $rows as $row ) : ?>
-				<div class="ekwa-working-hours__row<?php echo $row['is_closed'] ? ' ekwa-working-hours__row--closed' : ''; ?>">
+			<?php
+			foreach ( $rows as $row ) :
+				$row_class = 'ekwa-working-hours__row';
+				if ( $row['is_closed'] ) {
+					$row_class .= ' ekwa-working-hours__row--closed';
+				} elseif ( ! empty( $row['is_note'] ) ) {
+					$row_class .= ' ekwa-working-hours__row--note';
+				}
+				// The note keeps the time column so note-only days stay aligned
+				// with the timed rows above them.
+				$time_class = 'ekwa-working-hours__time' . ( ! empty( $row['is_note'] ) ? ' ekwa-working-hours__time--note' : '' );
+				?>
+				<div class="<?php echo esc_attr( $row_class ); ?>">
 					<span class="ekwa-working-hours__day"><?php echo esc_html( $row['label'] ); ?></span>
-					<span class="ekwa-working-hours__time"><?php echo esc_html( $row['time'] ); ?></span>
+					<span class="<?php echo esc_attr( $time_class ); ?>"><?php echo esc_html( $row['time'] ); ?></span>
 					<?php if ( $show_notes && ! empty( $row['note'] ) ) : ?>
 						<span class="ekwa-working-hours__note"><?php echo esc_html( $row['note'] ); ?></span>
 					<?php endif; ?>

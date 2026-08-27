@@ -73,6 +73,7 @@
 
 						el( ToggleControl, {
 							label:    __( 'Show Extra Notes', 'ekwa' ),
+							help:     __( 'Notes shown beside the hours. Days set to "Note only" in Settings always show their note — it stands in for the hours.', 'ekwa' ),
 							checked:  attrs.showNotes,
 							onChange: function ( v ) { setAttrs( { showNotes: v } ); },
 						} ),
