@@ -350,9 +350,17 @@ function ekwa_mc_convert_node( $node, $depth ) {
 		return ekwa_mc_convert_image( $node, $depth );
 	}
 
-	// Lists → core/list.
-	if ( $tag === 'ul' || $tag === 'ol' ) {
-		return ekwa_mc_convert_list( $node, $depth );
+	// Lists → ekwa/div with tagName=ul|ol|li.
+	//
+	// core/list stores the whole list as one rich-text blob: every <li> and
+	// everything inside it (icons, links, spans, per-item classes) was written
+	// through as raw HTML that no converter ever saw and the editor can't touch
+	// — an <i class="fa-*"> in a list item never became an ekwa/icon, and a
+	// mockup image in one never resolved through the media manifest. Routing
+	// the list and each item through ekwa/div makes every item a real block
+	// whose children dispatch normally, and keeps the exact tag + classes.
+	if ( $tag === 'ul' || $tag === 'ol' || $tag === 'li' ) {
+		return ekwa_mc_convert_div_block( $node, $depth, $tag );
 	}
 
 	// Separator.
@@ -406,16 +414,16 @@ function ekwa_mc_convert_node( $node, $depth ) {
 			}
 			// Empty inline element (no text, no element children). Routing it to
 			// the raw-HTML fallback produced a needless "<b> has no block mapping"
-			// warning and a non-editable blob. Instead: if it carries attributes
-			// it's almost always a CSS-decorated marker (an icon drawn via
-			// ::before, a divider, a screen-reader label) — keep it as a
-			// block-editable ekwa/div with its tagName + class/style intact so the
-			// styling hook survives. A bare, attribute-less <b></b> is pure noise —
-			// drop it silently.
-			if ( $node->hasAttributes() ) {
-				return ekwa_mc_convert_div_block( $node, $depth, $tag );
-			}
-			return '';
+			// warning and a non-editable blob. Keep it as a block-editable
+			// ekwa/div with its tagName + class/style intact instead.
+			//
+			// This holds even with no attributes of its own: an empty inline
+			// element in a mockup is drawn by its PARENT's CSS —
+			// `.rule span { flex:1; height:1px; background:… }` for a divider,
+			// `.stars i` for rating pips, `.bar span` for a gauge. Dropping those
+			// as "noise" silently deleted half the design; an extra empty
+			// wrapper is the cheaper mistake.
+			return ekwa_mc_convert_div_block( $node, $depth, $tag );
 		}
 		return ekwa_mc_convert_div_block( $node, $depth, $tag );
 	}
@@ -1178,7 +1186,10 @@ function ekwa_mc_extract_custom_attributes( $node ) {
 	if ( ! $node || ! $node->hasAttributes() ) {
 		return $out;
 	}
-	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir' );
+	// start/reversed/value carry an ordered list's numbering — they became
+	// reachable when <ol>/<li> started converting to ekwa/div, and losing them
+	// silently renumbers the list from 1.
+	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir', 'start', 'reversed', 'value' );
 	foreach ( $node->attributes as $attr ) {
 		$name = strtolower( $attr->nodeName );
 		$ok   = preg_match( '/^(?:data|aria)-[a-z0-9_-]+$/', $name )
@@ -1192,6 +1203,11 @@ function ekwa_mc_extract_custom_attributes( $node ) {
 
 /**
  * Convert to core/list.
+ *
+ * No longer reached by the dispatcher — <ul>/<ol>/<li> go through
+ * ekwa_mc_convert_div_block() so list items are real, editable blocks. Kept so
+ * anything calling it directly keeps working, and as the way back to core/list
+ * if a list ever needs core's list UX.
  */
 function ekwa_mc_convert_list( $node, $depth ) {
 	$indent  = str_repeat( '  ', $depth );

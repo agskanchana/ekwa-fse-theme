@@ -39,6 +39,7 @@
 		{ label: 'aside',       value: 'aside' },
 		{ label: 'article',     value: 'article' },
 		{ label: 'ul',          value: 'ul' },
+		{ label: 'ol',          value: 'ol' },
 		{ label: 'li',          value: 'li' },
 		{ label: 'a',           value: 'a' },
 		// A <p> that wraps an image can't be a core/paragraph (its src would

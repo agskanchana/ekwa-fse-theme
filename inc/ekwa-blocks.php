@@ -4169,7 +4169,10 @@ function ekwa_render_custom_attributes( $attrs ) {
 		return '';
 	}
 
-	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir' );
+	// Mirrors ekwa_mc_extract_custom_attributes()'s allowlist — start/reversed/
+	// value are an ordered list's numbering, which ekwa/div now renders since
+	// <ol>/<li> convert to it.
+	$static_allowed = array( 'role', 'title', 'tabindex', 'lang', 'dir', 'start', 'reversed', 'value' );
 	$out = '';
 
 	foreach ( $attrs['customAttributes'] as $name => $value ) {
@@ -4514,7 +4517,7 @@ function ekwa_render_div_block( $attrs, $content ) {
 	$rel           = isset( $attrs['rel'] )    ? sanitize_text_field( $attrs['rel'] ) : '';
 
 	$allowed = array(
-		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'ul', 'li', 'a', 'p',
+		'div', 'section', 'header', 'footer', 'nav', 'main', 'aside', 'article', 'ul', 'ol', 'li', 'a', 'p',
 		'span', 'small', 'strong', 'b', 'em', 'i', 'u', 'mark', 'time', 'label', 'sup', 'sub',
 		'figcaption', 'button',
 	);
