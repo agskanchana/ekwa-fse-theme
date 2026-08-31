@@ -433,8 +433,31 @@ function ekwa_design_vocabulary_build( $limit = 20 ) {
 			return;
 		}
 		$css = isset( $block['attrs']['scopedCss'] ) ? (string) $block['attrs']['scopedCss'] : '';
+
+		// On an ordinary page we need SOME signal that a top-level block is a
+		// deliberate section rather than incidental markup. Carrying its own
+		// CSS is the strongest, but it is not the only one — requiring it meant
+		// a page built by hand in the editor contributed nothing at all, which
+		// makes "build one good page and the rest improve" simply untrue.
+		//
+		// Also accepted: a block the author NAMED in the List View (naming it is
+		// an explicit "this is a section"), and a block with its own className
+		// that actually holds content. Both are things a person did on purpose.
 		if ( $require_css && '' === trim( $css ) ) {
-			return;
+			$named     = ! empty( $block['attrs']['metadata']['name'] );
+			$has_class = '' !== trim( (string) ( $block['attrs']['className'] ?? '' ) );
+
+			if ( ! $named && ! $has_class ) {
+				return;
+			}
+
+			$shape = ekwa_inner_template_census( $block );
+			// A section worth reusing has a shape: a heading, or a couple of
+			// blocks of content. A lone wrapper around one paragraph is not a
+			// design, it is a paragraph.
+			if ( ! $named && ! ( $shape['headings'] > 0 || $shape['text'] >= 2 || $shape['media'] > 0 ) ) {
+				return;
+			}
 		}
 
 		$fingerprint = md5( $css . '|' . ( $block['attrs']['className'] ?? '' ) );
