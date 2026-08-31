@@ -388,6 +388,66 @@ function ekwa_mc_detect_token( $node, $depth, $token ) {
 			}
 			ekwa_mc_warn( 'data-ekwa="carousel" needs at least two slide elements inside — converted normally.', 'dynamic' );
 			return null;
+
+		case 'video':
+			// Emitted by the content importer (inc/ekwa-import-content.php) when
+			// it recognises a video player in imported markup. Every field the
+			// exported player carries has an exact counterpart on the block, so
+			// nothing is approximated here — the importer has already pulled the
+			// values out of the source's schema.org metas and put them on this
+			// element, with the long-form description and transcript travelling
+			// as data-ekwa-part children rather than attributes.
+			$provider = strtolower( trim( $node->getAttribute( 'data-ekwa-provider' ) ) );
+			$video_id = trim( $node->getAttribute( 'data-ekwa-video-id' ) );
+
+			if ( '' === $video_id || ! in_array( $provider, array( 'youtube', 'vimeo' ), true ) ) {
+				ekwa_mc_warn( 'data-ekwa="video" needs data-ekwa-video-id and a youtube/vimeo data-ekwa-provider — converted normally.', 'dynamic' );
+				return null;
+			}
+
+			$attrs = array( 'videoId' => $video_id );
+
+			foreach ( array(
+				'data-ekwa-embed-url' => 'embedUrl',
+				'data-ekwa-title'     => 'videoTitle',
+				'data-ekwa-duration'  => 'videoDuration',
+				'data-ekwa-upload'    => 'uploadDate',
+				'data-ekwa-thumbnail' => 'thumbnailUrl',
+			) as $attr => $key ) {
+				$value = trim( $node->getAttribute( $attr ) );
+				if ( '' !== $value ) {
+					$attrs[ $key ] = $value;
+				}
+			}
+
+			// Description and transcript: paragraphs joined with blank lines, so
+			// the block's textarea shows them the way they were written.
+			foreach ( $node->childNodes as $child ) {
+				if ( $child->nodeType !== XML_ELEMENT_NODE || ! $child->hasAttribute( 'data-ekwa-part' ) ) {
+					continue;
+				}
+				$part  = $child->getAttribute( 'data-ekwa-part' );
+				$lines = array();
+				foreach ( $child->getElementsByTagName( 'p' ) as $p ) {
+					$line = trim( $p->textContent );
+					if ( '' !== $line ) {
+						$lines[] = $line;
+					}
+				}
+				$value = $lines ? implode( "\n\n", $lines ) : trim( $child->textContent );
+				if ( '' === $value ) {
+					continue;
+				}
+				if ( 'description' === $part ) {
+					$attrs['videoDescription'] = $value;
+					$attrs['showDescription']  = true;
+				} elseif ( 'transcript' === $part ) {
+					$attrs['transcript']     = $value;
+					$attrs['showTranscript'] = true;
+				}
+			}
+
+			return $leaf( 'youtube' === $provider ? 'ekwa/youtube-video' : 'ekwa/vimeo-video', $attrs );
 	}
 
 	ekwa_mc_warn( "Unknown data-ekwa token \"$token\" — element converted normally." );

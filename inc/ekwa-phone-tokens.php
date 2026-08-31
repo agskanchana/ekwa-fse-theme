@@ -121,6 +121,70 @@ function ekwa_phone_token_map() {
  * ------------------------------------------------------------------ */
 
 /**
+ * The regex that recognises a phone number however it is written.
+ *
+ * Optional country code, an area code that may be wrapped in (), [] or {},
+ * then 3 + 4 digits, with spaces / dots / slashes / hyphens / typographic
+ * dashes between them, e.g.
+ *   (813) 734-7102   [813] 734 7102   813.734.7102   +1 813-734-7102
+ *   8137347102       813–734–7102
+ *
+ * Kept in step with PHONE_RE in assets/js/ekwa-paste-phone.js, which does the
+ * same swap for content pasted into the editor.
+ *
+ * The lookarounds stop the match starting or ending part-way through a longer
+ * run of digits. Nothing depends on them today — a partial match normalises to
+ * the wrong length and misses the map lookup — but they keep that safety in the
+ * pattern itself rather than resting it entirely on the lookup.
+ *
+ * Lives in one function so the swap below and the "which numbers are NOT in
+ * settings" report used by the content importer can never drift apart.
+ *
+ * @return string PCRE pattern with the /u modifier.
+ */
+function ekwa_phone_pattern() {
+	$sep = '[\s.\x{00B7}\x{2010}-\x{2015}\/-]*';
+
+	return '/(?<!\d)(?:\+?\d{1,3}' . $sep . ')?[(\[{]?\d{3}[)\]}]?' . $sep . '\d{3}' . $sep . '\d{4}(?!\d)/u';
+}
+
+/**
+ * Find phone numbers in a text blob that Ekwa Settings does NOT know about.
+ *
+ * The importer converts configured numbers to [ekwa_phone] and deliberately
+ * leaves everything else as literal text — a referral office, a lab, a fax.
+ * That silence is the bug: the author cannot tell "left alone on purpose" from
+ * "missed". This returns the leftovers so they can be surfaced for a decision.
+ *
+ * @param string     $text      Text to scan.
+ * @param array|null $phone_map Map from ekwa_phone_token_map(); built when null.
+ * @return string[] Unconfigured numbers as written, de-duplicated by digits.
+ */
+function ekwa_phone_find_unconfigured( $text, $phone_map = null ) {
+	if ( ! is_string( $text ) || '' === $text ) {
+		return array();
+	}
+	if ( null === $phone_map ) {
+		$phone_map = ekwa_phone_token_map();
+	}
+
+	if ( ! preg_match_all( ekwa_phone_pattern(), $text, $matches ) ) {
+		return array();
+	}
+
+	$found = array();
+	foreach ( (array) $matches[0] as $raw ) {
+		$digits = ekwa_phone_normalize_digits( $raw );
+		if ( '' === $digits || isset( $phone_map[ $digits ] ) || isset( $found[ $digits ] ) ) {
+			continue;
+		}
+		$found[ $digits ] = trim( $raw );
+	}
+
+	return array_values( $found );
+}
+
+/**
  * Replace configured phone numbers in a text blob with their [ekwa_phone] tag.
  *
  * Only numbers that match a saved location phone are swapped — unrelated digit
@@ -141,22 +205,7 @@ function ekwa_phone_replace_in_text( $text, $phone_map = null ) {
 		return $text;
 	}
 
-	// Matches a phone number however it is written: optional country code, an
-	// area code that may be wrapped in (), [] or {}, then 3 + 4 digits, with
-	// spaces / dots / slashes / hyphens / typographic dashes between them, e.g.
-	//   (813) 734-7102   [813] 734 7102   813.734.7102   +1 813-734-7102
-	//   8137347102       813–734–7102
-	//
-	// Kept in step with PHONE_RE in assets/js/ekwa-paste-phone.js, which does the
-	// same swap for content pasted into the editor.
-	//
-	// The lookarounds stop the match starting or ending part-way through a
-	// longer run of digits. Nothing depends on them today — a partial match
-	// normalises to the wrong length and misses the map lookup below — but
-	// they keep that safety in the pattern itself rather than resting it
-	// entirely on the lookup.
-	$sep     = '[\s.\x{00B7}\x{2010}-\x{2015}\/-]*';
-	$pattern = '/(?<!\d)(?:\+?\d{1,3}' . $sep . ')?[(\[{]?\d{3}[)\]}]?' . $sep . '\d{3}' . $sep . '\d{4}(?!\d)/u';
+	$pattern = ekwa_phone_pattern();
 
 	$replaced = preg_replace_callback(
 		$pattern,

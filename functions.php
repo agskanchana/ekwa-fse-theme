@@ -498,6 +498,21 @@ require_once get_template_directory() . '/inc/ekwa-converter-menu.php';
 require_once get_template_directory() . '/inc/ekwa-converter-icons.php';
 
 /**
+ * Imported page content — parks the Bulk Page Creator CSV's `content` column on
+ * each page and normalises that HTML (lazy images, phone shortcodes, internal
+ * links, FAQ and video players) before the converter turns it into blocks.
+ */
+require_once get_template_directory() . '/inc/ekwa-import-content.php';
+
+/**
+ * Inner Page Template — the page holding one example of each section design an
+ * inner page can use. Its sections are the vocabulary imported content is
+ * rebuilt from, which is what makes an imported page look like it belongs here.
+ * Loaded after the importer, whose conversion route calls its design pass.
+ */
+require_once get_template_directory() . '/inc/ekwa-inner-template.php';
+
+/**
  * Gemini model catalog — reads the models the configured key can actually call
  * and supplies every feature's default. Loaded before the AI modules, which
  * all resolve their model through it.
@@ -928,6 +943,39 @@ function ekwa_enqueue_converter_editor_script() {
 			// preview gets — without them the preview iframe can't resolve the
 			// var() and component rules the rendered blocks are built on.
 			'previewCss'         => function_exists( 'ekwa_ai_generate_preview_head_css' )
+				? ekwa_ai_generate_preview_head_css()
+				: '',
+		)
+	);
+
+	// "Create page (with imported content)" — converts the HTML the Bulk Page
+	// Creator parked on a page into blocks. Registers its own ⋮ menu item and
+	// hides itself on pages with nothing imported, so it costs nothing
+	// elsewhere.
+	wp_enqueue_script(
+		'ekwa-import-editor',
+		get_template_directory_uri() . '/assets/js/ekwa-import-editor.js',
+		array(
+			'wp-plugins',
+			'wp-editor',
+			'wp-blocks',
+			'wp-block-editor',
+			'wp-components',
+			'wp-element',
+			'wp-data',
+			'wp-i18n',
+			'wp-api-fetch',
+		),
+		filemtime( get_template_directory() . '/assets/js/ekwa-import-editor.js' ),
+		true
+	);
+	wp_localize_script(
+		'ekwa-import-editor',
+		'ekwaImportContent',
+		array(
+			// The same design tokens the AI previews get, so the preview iframe
+			// resolves the site's var() tokens instead of rendering unstyled.
+			'previewCss' => function_exists( 'ekwa_ai_generate_preview_head_css' )
 				? ekwa_ai_generate_preview_head_css()
 				: '',
 		)

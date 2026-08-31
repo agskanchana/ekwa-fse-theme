@@ -11,6 +11,8 @@
 	var registerBlockType  = wp.blocks.registerBlockType;
 	var el                 = wp.element.createElement;
 	var Fragment           = wp.element.Fragment;
+	var useEffect          = wp.element.useEffect;
+	var useRef             = wp.element.useRef;
 	var InnerBlocks        = wp.blockEditor.InnerBlocks;
 	var InspectorControls  = wp.blockEditor.InspectorControls;
 	var PanelColorSettings = wp.blockEditor.PanelColorSettings;
@@ -34,6 +36,29 @@
 		var aColor      = attrs.answerColor   || '';
 		var itemBg      = attrs.itemBg        || '';
 
+		// "Custom (No Styles)" strips the theme CSS down to the collapse
+		// essentials, so the block only reads as an accordion if it behaves
+		// like one. Switching *into* that style therefore turns Accordion mode
+		// and Open-first on — once, at the moment of the switch, so the author
+		// can still uncheck either afterwards and have it stick.
+		//
+		// This is deliberately an editor-side reaction to a click and NOT a
+		// change of the block.json defaults: those defaults are what every
+		// already-saved FAQ block on every live site falls back to, and
+		// flipping them would silently turn accordion mode on across the board.
+		var isCustom     = -1 !== ( attrs.className || '' ).indexOf( 'is-style-custom' );
+		var wasCustomRef = useRef( isCustom );
+
+		useEffect( function () {
+			if ( isCustom && ! wasCustomRef.current ) {
+				var next = {};
+				if ( ! attrs.accordion ) { next.accordion = true; }
+				if ( ! attrs.firstOpen ) { next.firstOpen = true; }
+				if ( Object.keys( next ).length ) { setAttrs( next ); }
+			}
+			wasCustomRef.current = isCustom;
+		}, [ isCustom ] );
+
 		var styleVars = {};
 		if ( accent ) { styleVars[ '--ekwa-faq-accent' ]   = accent; }
 		if ( qColor ) { styleVars[ '--ekwa-faq-q-color' ]  = qColor; }
@@ -50,6 +75,11 @@
 			el( InspectorControls, null,
 
 				el( PanelBody, { title: __( 'Behaviour', 'ekwa' ), initialOpen: true },
+					isCustom
+						? el( 'p', { style: { fontSize: '12px', color: '#757575', marginTop: 0 } },
+							__( 'This FAQ is set to "Custom (No Styles)" — the theme applies no spacing, colors or borders, so every rule is yours to write and none of it needs !important. Only the collapse behaviour is kept.', 'ekwa' )
+						)
+						: null,
 					el( ToggleControl, {
 						label:    __( 'Accordion mode (only one open)', 'ekwa' ),
 						checked:  !! attrs.accordion,

@@ -817,6 +817,11 @@ function ekwa_tokens_save_settings() {
 	if ( function_exists( 'ekwa_js_editor_save' ) ) {
 		ekwa_js_editor_save();
 	}
+
+	// Inner Page Template — the section vocabulary imported pages are built from.
+	if ( function_exists( 'ekwa_inner_template_save_settings' ) ) {
+		ekwa_inner_template_save_settings();
+	}
 }
 
 /**
@@ -829,6 +834,12 @@ function ekwa_tokens_render_tab() {
 	$bp         = ekwa_fonts_conditional_bp();
 
 	$mockup_prompts = ekwa_mockup_ai_prompts();
+
+	// The section vocabulary imported pages are rebuilt from. First on the tab
+	// because it is the one thing here that shapes how new pages come out.
+	if ( function_exists( 'ekwa_inner_template_render_section' ) ) {
+		ekwa_inner_template_render_section();
+	}
 	?>
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Mockup authoring kit', 'ekwa' ); ?></h2>

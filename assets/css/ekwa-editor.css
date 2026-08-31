@@ -1174,17 +1174,22 @@
    Ekwa FAQ block — editor preview (mirrors frontend base styles)
    In the editor each item is an open <div>, not <details>, so the
    answer InnerBlocks remain editable.
+
+   Guarded with :where(.ekwa-faq:not(.is-style-custom)) exactly as the frontend
+   base section is (blocks/ekwa-faq/style.css), so the "Custom (No Styles)"
+   variation previews as bare markup here too. :where() adds no specificity,
+   so every selector keeps the weight it had.
    -------------------------------------------------------------------------- */
-.ekwa-faq {
+.ekwa-faq:where(:not(.is-style-custom)) {
 	--ekwa-faq-accent: #1a6ef5;
 	--ekwa-faq-q-color: inherit;
 	--ekwa-faq-a-color: inherit;
 	--ekwa-faq-item-bg: transparent;
 }
-.ekwa-faq__item {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item {
 	background: var(--ekwa-faq-item-bg);
 }
-.ekwa-faq__q {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__q {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -1193,11 +1198,11 @@
 	font-weight: 600;
 	color: var(--ekwa-faq-q-color);
 }
-.ekwa-faq__q-text {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__q-text {
 	flex: 1;
 	min-width: 0;
 }
-.ekwa-faq__icon {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -1206,10 +1211,10 @@
 	flex-shrink: 0;
 	color: var(--ekwa-faq-accent);
 }
-.ekwa-faq__item.is-default-open .ekwa-faq__icon {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item.is-default-open .ekwa-faq__icon {
 	transform: rotate(180deg);
 }
-.ekwa-faq__a {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__a {
 	padding: 0 0 16px;
 	color: var(--ekwa-faq-a-color);
 }

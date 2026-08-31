@@ -1,7 +1,16 @@
 /* ================================================================
    FAQ block — base styles
+
+   Every rule in this section is opted out of by the "Custom (No Styles)"
+   variation, via the guard `:where(.ekwa-faq:not(.is-style-custom))`.
+   The guard sits inside :where(), which contributes ZERO specificity, so
+   each selector below keeps exactly the weight it had before the guard
+   existed (.ekwa-faq__q is still 0,1,0, not 0,3,0). That matters: these
+   styles are inlined next to the block in the body, i.e. *after* a child
+   theme's stylesheet, so child CSS already depends on the current weights
+   to win the cascade. Raising them would silently break existing sites.
    ================================================================ */
-.ekwa-faq {
+.ekwa-faq:where(:not(.is-style-custom)) {
 	--ekwa-faq-accent: #1a6ef5;
 	--ekwa-faq-q-color: inherit;
 	--ekwa-faq-a-color: inherit;
@@ -10,22 +19,22 @@
 }
 
 /* Each FAQ item is a native <details>; reset default marker. */
-.ekwa-faq__item {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item {
 	background: var(--ekwa-faq-item-bg);
 }
-.ekwa-faq__item > summary {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item > summary {
 	list-style: none;
 	cursor: pointer;
 }
-.ekwa-faq__item > summary::-webkit-details-marker {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item > summary::-webkit-details-marker {
 	display: none;
 }
-.ekwa-faq__item > summary::marker {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item > summary::marker {
 	display: none;
 	content: "";
 }
 
-.ekwa-faq__q {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__q {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -35,11 +44,11 @@
 	color: var(--ekwa-faq-q-color);
 	transition: color 0.2s ease;
 }
-.ekwa-faq__q-text {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__q-text {
 	flex: 1;
 	min-width: 0;
 }
-.ekwa-faq__icon {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -49,24 +58,24 @@
 	color: var(--ekwa-faq-accent);
 	transition: transform 0.25s ease;
 }
-.ekwa-faq__item[open] > .ekwa-faq__q .ekwa-faq__icon,
-.ekwa-faq__item.is-default-open > .ekwa-faq__q .ekwa-faq__icon {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item[open] > .ekwa-faq__q .ekwa-faq__icon,
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item.is-default-open > .ekwa-faq__q .ekwa-faq__icon {
 	transform: rotate(180deg);
 }
-.ekwa-faq__item[open] > .ekwa-faq__q {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item[open] > .ekwa-faq__q {
 	color: var(--ekwa-faq-accent);
 }
 
-.ekwa-faq__a {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__a {
 	padding: 0 0 16px;
 	color: var(--ekwa-faq-a-color);
 	line-height: 1.65;
 }
-.ekwa-faq__a > *:first-child { margin-top: 0; }
-.ekwa-faq__a > *:last-child  { margin-bottom: 0; }
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__a > *:first-child { margin-top: 0; }
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__a > *:last-child  { margin-bottom: 0; }
 
 /* Focus ring for keyboard users. */
-.ekwa-faq__item > summary:focus-visible {
+:where(.ekwa-faq:not(.is-style-custom)) .ekwa-faq__item > summary:focus-visible {
 	outline: 2px solid var(--ekwa-faq-accent);
 	outline-offset: 2px;
 	border-radius: 4px;
@@ -477,4 +486,42 @@
 }
 .ekwa-faq.is-style-elevated .ekwa-faq__a {
 	padding: 0 28px 22px;
+}
+
+/* ==========================================================================
+   ekwa/faq — Custom (No Styles)
+
+   The escape hatch. The base section above is guarded so none of it applies
+   here, and no variation rules match, so the theme contributes nothing but
+   the three declarations below — the minimum that keeps a <details>/<summary>
+   usable as a collapse:
+
+     - cursor: pointer   — the summary is the click target
+     - list-style: none  — hides the browser's own disclosure triangle, which
+       would otherwise sit next to the chevron the block already renders
+     - the ::marker resets — same thing for engines that ignore list-style
+
+   Everything is wrapped in :where(), so these carry ZERO specificity. Any
+   child-theme rule beats them, however it is written — `.ekwa-faq__q { … }`
+   is enough, no `.is-style-custom` scoping and no !important needed.
+
+   Nothing else is emitted: no padding, colors, borders, transitions, icon
+   rotation or focus ring. Keyboard focus falls back to the browser default
+   outline, so the block stays accessible with no CSS at all.
+
+   The block's color controls still write --ekwa-faq-accent and friends to
+   the wrapper's style attribute, but nothing here reads them; they are inert
+   under this variation and come back if the style is switched away.
+   ========================================================================== */
+
+:where(.ekwa-faq.is-style-custom .ekwa-faq__item > summary) {
+	list-style: none;
+	cursor: pointer;
+}
+:where(.ekwa-faq.is-style-custom .ekwa-faq__item > summary)::-webkit-details-marker {
+	display: none;
+}
+:where(.ekwa-faq.is-style-custom .ekwa-faq__item > summary)::marker {
+	display: none;
+	content: "";
 }

@@ -186,7 +186,8 @@ function ekwa_interlink_rest_rebuild() {
 function ekwa_interlink_page_targets() {
 	$cached = get_transient( EKWA_INTERLINK_INDEX_TRANSIENT );
 	if ( is_array( $cached ) ) {
-		return $cached;
+		/** This filter is documented at the end of this function. */
+		return apply_filters( 'ekwa_interlink_page_targets', $cached );
 	}
 
 	$ids = get_posts( array(
@@ -228,7 +229,16 @@ function ekwa_interlink_page_targets() {
 	}
 
 	set_transient( EKWA_INTERLINK_INDEX_TRANSIENT, $targets, DAY_IN_SECONDS );
-	return $targets;
+
+	/**
+	 * Filter the page link-target index.
+	 *
+	 * Applied to the cached result as well, so a target removed here disappears
+	 * immediately rather than after the day-long transient expires.
+	 *
+	 * @param array $targets List of [postId, title, url, keywords].
+	 */
+	return apply_filters( 'ekwa_interlink_page_targets', $targets );
 }
 
 /**

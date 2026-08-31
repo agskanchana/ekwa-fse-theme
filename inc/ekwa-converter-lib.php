@@ -251,6 +251,33 @@ function ekwa_mc_convert_html( $html, $manifest_data = null, $options = array() 
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * A stable identity for a DOM node, for the "already consumed" map.
+ *
+ * NOT spl_object_hash(). PHP's DOM extension does not keep one PHP object per
+ * node: it creates a wrapper on each access and frees it when the last
+ * reference goes, and spl_object_hash() reuses the storage address of a freed
+ * object. Four sibling <p> elements walked one at a time yield only two or
+ * three distinct hashes — so a hash recorded for a consumed node can later
+ * match a completely unrelated one, and that node is then silently dropped
+ * from the output along with its whole subtree.
+ *
+ * That mis-fires exactly when a <details> run is followed by more content: the
+ * accordion converts, and a later section vanishes with no warning. Rare in
+ * hand-written mockups; routine in imported pages, where a FAQ is normally
+ * followed by the rest of the page.
+ *
+ * getNodePath() returns an absolute XPath ("/div/div[2]/p[3]"), unique per node
+ * and stable for as long as the tree is not restructured — which it is not
+ * during conversion.
+ *
+ * @param DOMNode $node
+ * @return string
+ */
+function ekwa_mc_node_key( $node ) {
+	return $node->getNodePath();
+}
+
+/**
  * Convert all child nodes of a parent element.
  */
 function ekwa_mc_convert_children( $parent, $depth ) {
@@ -292,7 +319,7 @@ function ekwa_mc_convert_node( $node, $depth ) {
 	// accordion leader) emit nothing — checked BEFORE detection so their
 	// content can't double-emit as a dynamic block.
 	$ctx_consumed = ekwa_mc_context();
-	if ( ! empty( $ctx_consumed['consumed'][ spl_object_hash( $node ) ] ) ) {
+	if ( ! empty( $ctx_consumed['consumed'][ ekwa_mc_node_key( $node ) ] ) ) {
 		return '';
 	}
 
@@ -1399,7 +1426,7 @@ function ekwa_mc_convert_details_run( $node, $depth ) {
 
 	$ctx = ekwa_mc_context();
 	foreach ( array_slice( $items, 1 ) as $consumed_node ) {
-		$ctx['consumed'][ spl_object_hash( $consumed_node ) ] = true;
+		$ctx['consumed'][ ekwa_mc_node_key( $consumed_node ) ] = true;
 	}
 	ekwa_mc_context( $ctx );
 

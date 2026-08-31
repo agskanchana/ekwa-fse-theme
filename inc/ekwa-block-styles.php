@@ -123,6 +123,17 @@ function ekwa_register_block_styles() {
 		'label' => __( 'Elevated Soft', 'ekwa' ),
 	) );
 
+	// The escape hatch: the base FAQ styles are guarded with
+	// :not(.is-style-custom), so picking this leaves the <details>/<summary>
+	// markup with nothing but `cursor: pointer` and the disclosure-triangle
+	// reset — at zero specificity, so child CSS wins without !important.
+	// Selecting it in the editor also switches Accordion mode and Open-first
+	// on (see assets/js/ekwa-faq-editor.js); both stay editable afterwards.
+	register_block_style( 'ekwa/faq', array(
+		'name'  => 'custom',
+		'label' => __( 'Custom (No Styles)', 'ekwa' ),
+	) );
+
 	/* ---------------------------------------------------------------
 	 * ekwa/inner-banner design variations
 	 * ------------------------------------------------------------- */

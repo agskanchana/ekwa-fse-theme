@@ -735,7 +735,10 @@ function ekwa_bulk_pages_parse_csv( $tmp_path ) {
 		$header[0] = preg_replace( '/^\xEF\xBB\xBF/', '', (string) $header[0] );
 	}
 
-	$expected = array( 'url', 'slug', 'title', 'description', 'h1', 'breadcrumb', 'image', 'image_alt' );
+	// 'content' is the newest column (the sitemap-to-csv exporter's "with
+	// content" option). Every column is optional and missing ones yield '',
+	// so a CSV exported before it existed imports exactly as it always did.
+	$expected = array( 'url', 'slug', 'title', 'description', 'h1', 'breadcrumb', 'image', 'image_alt', 'content' );
 	$index    = array_fill_keys( $expected, -1 );
 	foreach ( $header as $i => $name ) {
 		$key = strtolower( trim( (string) $name ) );
@@ -798,6 +801,16 @@ function ekwa_handle_bulk_create_pages() {
 	$updated = array();
 	$skipped = array();
 	$errors  = array();
+
+	// The imported site's domain, used to re-point internal links in imported
+	// content. Saved before the rows are processed so the first import already
+	// has it. Only ever set from this explicit submission.
+	if ( isset( $_POST['ekwa_import_source_hosts'] ) ) {
+		update_option(
+			'ekwa_import_source_hosts',
+			sanitize_text_field( wp_unslash( $_POST['ekwa_import_source_hosts'] ) )
+		);
+	}
 
 	$has_csv = isset( $_FILES['ekwa_bulk_pages_csv'] )
 		&& is_array( $_FILES['ekwa_bulk_pages_csv'] )
@@ -959,6 +972,14 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
 				ekwa_bulk_pages_apply_featured_image( $existing_id, $image_url, $image_alt, $label_for_log, $errors );
 			}
 
+			// Park the source HTML for later conversion. Same rule again: an
+			// existing stored value is kept, so re-running the CSV after an
+			// author has converted and revised a page changes nothing. The
+			// page's own post_content is never touched from here.
+			if ( function_exists( 'ekwa_import_store_content' ) ) {
+				ekwa_import_store_content( $existing_id, $row['content'], $row['url'] );
+			}
+
 			$updated[] = array(
 				'id'    => $existing_id,
 				'title' => $existing->post_title ?: $label_for_log,
@@ -1004,6 +1025,14 @@ function ekwa_handle_bulk_create_pages_csv( &$created, &$updated, &$skipped, &$e
 		}
 		if ( '' !== $image_url ) {
 			ekwa_bulk_pages_apply_featured_image( $page_id, $image_url, $image_alt, $label_for_log, $errors );
+		}
+
+		// Park the source HTML on the new page. It is deliberately NOT written
+		// to post_content: the page is created with its metadata as it always
+		// was, and an author converts the content later from the AI Block
+		// Builder, with a preview and as many revisions as they want.
+		if ( function_exists( 'ekwa_import_store_content' ) ) {
+			ekwa_import_store_content( $page_id, $row['content'], $row['url'] );
 		}
 
 		$created[] = array(
@@ -2543,10 +2572,34 @@ function ekwa_render_settings_page() {
 								<p class="description">
 									<?php
 									echo wp_kses(
-										__( 'Expected columns (header row required): <code>url</code>, <code>slug</code>, <code>title</code>, <code>description</code>, <code>h1</code>, <code>breadcrumb</code>, <code>image</code>, <code>image_alt</code>. The <code>url</code> column is ignored. Pages are matched by <code>slug</code> — if a page already exists, only empty fields are filled in (the slug itself is never changed). Any phone number in <code>title</code> or <code>description</code> that matches a configured location is replaced with the <code>[ekwa_phone]</code> shortcode. <code>image</code> is downloaded into the Media Library and set as the featured image, with <code>image_alt</code> stored as its alt text; the same image URL is only downloaded once, and a page that already has a featured image keeps it.', 'ekwa' ),
+										__( 'Expected columns (header row required): <code>url</code>, <code>slug</code>, <code>title</code>, <code>description</code>, <code>h1</code>, <code>breadcrumb</code>, <code>image</code>, <code>image_alt</code>, <code>content</code>. Pages are matched by <code>slug</code> — if a page already exists, only empty fields are filled in (the slug itself is never changed). Any phone number in <code>title</code> or <code>description</code> that matches a configured location is replaced with the <code>[ekwa_phone]</code> shortcode. <code>image</code> is downloaded into the Media Library and set as the featured image, with <code>image_alt</code> stored as its alt text; the same image URL is only downloaded once, and a page that already has a featured image keeps it.', 'ekwa' ),
 										array( 'code' => array() )
 									);
 									?>
+								</p>
+								<p class="description">
+									<?php
+									echo wp_kses(
+										__( '<strong>The <code>content</code> column is stored, not published.</strong> Each page is created with its metadata exactly as before and the source HTML is parked on the page. To turn it into blocks, open the page and choose <em>Create page (with imported content)</em> in the AI Block Builder — you get a preview and can redo it as often as you like. Re-running this import never overwrites content you have already converted.', 'ekwa' ),
+										array( 'code' => array(), 'strong' => array(), 'em' => array() )
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th><label for="ekwa_import_source_hosts"><?php esc_html_e( 'Imported site domain', 'ekwa' ); ?></label></th>
+							<td>
+								<input
+									type="text"
+									id="ekwa_import_source_hosts"
+									name="ekwa_import_source_hosts"
+									class="regular-text code"
+									value="<?php echo esc_attr( get_option( 'ekwa_import_source_hosts', '' ) ); ?>"
+									placeholder="https://www.example.com/"
+								/>
+								<p class="description">
+									<?php esc_html_e( 'The site this content came from. Links in the imported content that point at this domain are re-pointed at the matching page here; every other link is left exactly as written. Both the www and non-www forms are matched. Separate several domains with commas. Leave blank to use the domain from the CSV\'s url column.', 'ekwa' ); ?>
 								</p>
 							</td>
 						</tr>
@@ -2615,6 +2668,73 @@ function ekwa_render_settings_page() {
 							location.hash = slug;
 						}
 					} );
+				} );
+
+				// ── Save must never silently do nothing ─────────────────────
+				// Inactive panes are display:none, and a field that fails HTML5
+				// validation inside a hidden pane cannot be focused — so the
+				// browser refuses to submit, cannot show its message, and gives
+				// up without a word. The click looks dead. It bites whenever a
+				// url/email/number field on ANOTHER tab holds something invalid
+				// (typing "example.com" with no https:// is the usual one), which
+				// is why it only happens sometimes.
+				//
+				// Switch to the offending field's tab first, then let the browser
+				// report it against a visible control.
+				function paneOf( node ) {
+					var pane = node && node.closest ? node.closest( '.ekwa-tab-pane' ) : null;
+					return pane ? pane.getAttribute( 'data-tab' ) : '';
+				}
+
+				// This hooks `invalid`, NOT `submit`. When constraint validation
+				// fails the browser never fires a submit event at all, so a
+				// submit handler is exactly the thing that cannot help here.
+				// `invalid` fires on each failing control; it does not bubble,
+				// hence the capture phase.
+				//
+				// Switching the tab synchronously inside the handler means the
+				// control is already visible by the time the browser decides
+				// whether it can focus it, so its own message appears where the
+				// user can read it — instead of the submit being abandoned.
+				// A validation pass fires `invalid` on every failing control, one
+				// after another in the same tick. Only the first matters — it is
+				// the one the browser will report against — so the rest of the
+				// pass is ignored and the flag clears before the next one. The
+				// flag is per-PASS, not per-element: keyed on the element it
+				// would also swallow a later, genuine pass on the same field.
+				var handlingPass = false;
+
+				[ mainForm, bulkForm ].forEach( function ( f ) {
+					if ( ! f ) { return; }
+
+					f.addEventListener( 'invalid', function ( e ) {
+						var bad = e.target;
+						if ( ! bad || handlingPass ) { return; }
+
+						handlingPass = true;
+						window.setTimeout( function () { handlingPass = false; }, 0 );
+
+						var slug = paneOf( bad );
+						if ( slug ) {
+							activate( slug );
+							if ( history.replaceState ) {
+								history.replaceState( null, '', '#' + slug );
+							}
+						}
+
+						// A control hidden by something other than the tab — a
+						// collapsed row, a conditional field — still cannot be
+						// focused, and would still look like a dead click. Say
+						// so rather than leaving the user with nothing.
+						window.setTimeout( function () {
+							if ( bad.offsetParent === null ) {
+								window.alert(
+									<?php echo wp_json_encode( __( 'Nothing was saved: one of the settings is not valid yet. Check this field: ', 'ekwa' ) ); ?>
+									+ ( bad.name || bad.id || bad.type )
+								);
+							}
+						}, 0 );
+					}, true );
 				} );
 
 				// Honor URL hash on load (overrides server-side default).
