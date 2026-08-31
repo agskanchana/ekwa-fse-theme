@@ -112,13 +112,11 @@
 		var s9  = useState( false );         var designed = s9[0];  var setDesigned = s9[1];
 		var s10 = useState( DEFAULT_MODEL ); var model    = s10[0]; var setModel    = s10[1];
 
-		// Building with AI needs a key, nothing else. Section designs make the
-		// result look like this site, but their absence is no longer a blocker:
-		// with none, the theme's own blocks are used.
+		// Building needs a key, nothing else. Section designs already on the site
+		// are used as reference when they exist, but are not required.
 		var canDesign = !! status.has_api_key;
-		var designCount = status.pattern_count || 0;
 
-		function convert( useDesign ) {
+		function build() {
 			setBusy( true );
 			setError( '' );
 			setInserted( false );
@@ -129,8 +127,7 @@
 				data:   {
 					post_id:  postId,
 					sideload: sideload,
-					design:   !! useDesign,
-					model:    useDesign ? model : ''
+					model:    model
 				}
 			} ).then( function ( res ) {
 				setMarkup( res.markup || '' );
@@ -140,15 +137,14 @@
 				setDesigned( !! res.designed );
 				setBusy( false );
 			} ).catch( function ( e ) {
-				setError( ( e && e.message ) || __( 'Could not convert the imported content.', 'ekwa' ) );
+				setError( ( e && e.message ) || __( 'Could not build the page.', 'ekwa' ) );
 				setBusy( false );
 			} );
 		}
 
-		// Open on the faithful conversion: it is instant, free and repeatable,
-		// so the author sees their content immediately and chooses whether to
-		// spend a model call restyling it.
-		useEffect( function () { convert( false ); }, [] );
+		// Deliberately NOT run on open. Building costs a model call and takes
+		// about a minute, so it happens when the author asks for it — the same
+		// bargain as the AI Block Builder, which waits for you to press Generate.
 
 		function insert() {
 			if ( ! markup ) { return; }
@@ -214,7 +210,7 @@
 				: null,
 
 			el( 'p', { style: { marginTop: 0 } },
-				__( 'The original page content is converted into Ekwa blocks. Nothing is saved until you insert it, and the imported HTML is kept either way — run this as many times as you like.', 'ekwa' )
+				__( 'Builds a page from this page\'s imported content, the same way “Build with AI (Blocks)” builds a section — and on the way it copies the images into your Media Library, swaps phone numbers for [ekwa_phone], and re-points the old site\'s internal links at your pages. Nothing is saved until you insert it, and the imported content is kept, so you can build again as often as you like.', 'ekwa' )
 			),
 
 			el( ToggleControl, {
@@ -225,88 +221,53 @@
 				__nextHasNoMarginBottom: true
 			} ),
 
-			// The design step. Explained rather than just offered, because
-			// "faithful" vs "rebuilt in our designs" is the whole decision here.
-			el( 'div', {
-				style: {
-					margin: '14px 0',
-					padding: '12px',
-					border: '1px solid #ddd',
-					borderRadius: '4px',
-					background: designed ? '#f0f6fc' : '#fff'
-				}
-			},
-				el( 'strong', { style: { display: 'block', marginBottom: '4px' } },
-					__( 'Build the page with AI', 'ekwa' ) ),
+			canDesign
+				? el( 'div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap', margin: '14px 0' } },
+					el( 'div', { style: { minWidth: '280px' } },
+						el( SelectControl, {
+							label: __( 'Model', 'ekwa' ),
+							value: model,
+							options: MODELS,
+							onChange: setModel,
+							disabled: busy,
+							help: ( model && DEFAULT_MODEL && model !== DEFAULT_MODEL )
+								? __( 'Not the default. Building a full page is demanding — a smaller model usually shows up as thinner layout.', 'ekwa' )
+								: __( 'The most capable model available. Building a whole page is the heaviest job here.', 'ekwa' ),
+							__nextHasNoMarginBottom: true,
+							__next40pxDefaultSize: true
+						} )
+					),
 
-				canDesign
-					? el( Fragment, null,
-						el( 'p', { style: { margin: '0 0 8px', fontSize: '12px', color: '#555' } },
-							designCount
-								? sprintf(
-									/* translators: %d: number of section designs */
-									__( 'Lays this content out using the theme\'s blocks, reusing %d section design(s) already on this site. FAQs, videos and images keep exactly what the import worked out — only the layout changes.', 'ekwa' ),
-									designCount
-								)
-								: __( 'Lays this content out using the theme\'s blocks and your site\'s colors and fonts. FAQs, videos and images keep exactly what the import worked out — only the layout changes.', 'ekwa' )
-						),
-						designCount
-							? el( 'p', { style: { margin: '0 0 8px', fontSize: '11px', color: '#757575' } },
-								__( 'Designs it can reuse: ', 'ekwa' ) + status.pattern_labels.join( ' · ' ) )
-							: el( 'p', { style: { margin: '0 0 8px', fontSize: '11px', color: '#757575' } },
-								__( 'No saved section designs yet. After you build a page, select a section you like and use “Create pattern” — it will be reused on every page you build after that.', 'ekwa' ) ),
-						el( 'div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' } },
-							el( 'div', { style: { minWidth: '260px' } },
-								el( SelectControl, {
-									label: __( 'Model', 'ekwa' ),
-									value: model,
-									options: MODELS,
-									onChange: setModel,
-									disabled: busy,
-									help: ( model && DEFAULT_MODEL && model !== DEFAULT_MODEL )
-										? __( 'Not the default. Building a full page is demanding — a smaller model usually shows up as thinner layout.', 'ekwa' )
-										: __( 'The most capable model available. Building a whole page is the heaviest job here.', 'ekwa' ),
-									__nextHasNoMarginBottom: true,
-									__next40pxDefaultSize: true
-								} )
-							),
-							el( Button, {
-								variant: designed ? 'secondary' : 'primary',
-								onClick: function () { convert( true ); },
-								disabled: busy
-							}, designed
-								? __( 'Build again', 'ekwa' )
-								: __( 'Build with AI', 'ekwa' ) ),
-							designed
-								? el( 'span', { style: { fontSize: '12px', color: '#1e7e34', paddingBottom: '8px' } },
-									__( 'Built with AI.', 'ekwa' ) )
-								: null
-						)
-					)
-					: el( 'p', { style: { margin: 0, fontSize: '12px', color: '#757575' } },
-						__( 'Add a Gemini API key in Ekwa Settings → AI to build pages with AI. Faithful conversion works without one.', 'ekwa' )
-					)
-			),
+					el( Button, {
+						variant: 'primary',
+						onClick: build,
+						disabled: busy,
+						style: { marginBottom: '8px' }
+					}, busy
+						? __( 'Building…', 'ekwa' )
+						: ( markup ? __( 'Build again', 'ekwa' ) : __( 'Build page with AI', 'ekwa' ) ) ),
 
-			el( 'div', { style: { display: 'flex', gap: '8px', alignItems: 'center', margin: '12px 0' } },
-				el( Button, {
-					variant: 'secondary',
-					onClick: function () { convert( false ); },
-					disabled: busy
-				}, busy ? __( 'Working…', 'ekwa' ) : __( 'Faithful conversion', 'ekwa' ) ),
+					el( Button, {
+						variant: 'secondary',
+						onClick: insert,
+						disabled: busy || ! markup,
+						style: { marginBottom: '8px' }
+					}, __( 'Insert into page', 'ekwa' ) ),
 
-				el( Button, {
-					variant: 'primary',
-					onClick: insert,
-					disabled: busy || ! markup
-				}, __( 'Insert into page', 'ekwa' ) ),
+					busy ? el( Spinner, null ) : null,
 
-				busy ? el( Spinner, null ) : null,
+					stats && ! busy
+						? el( 'span', { style: { color: '#757575', fontSize: '12px', paddingBottom: '14px' } }, StatLine( stats ) )
+						: null
+				)
+				: el( Notice, { status: 'warning', isDismissible: false },
+					__( 'Add a Gemini API key in Ekwa Settings → AI to build pages from imported content.', 'ekwa' )
+				),
 
-				stats && ! busy
-					? el( 'span', { style: { color: '#757575', fontSize: '12px' } }, StatLine( stats ) )
-					: null
-			),
+			busy
+				? el( 'p', { style: { fontSize: '12px', color: '#757575', margin: '0 0 12px' } },
+					__( 'This usually takes about a minute — it is laying out the whole page.', 'ekwa' ) )
+				: null,
 
 			attention.length
 				? el( 'div', { style: { marginBottom: '12px' } },

@@ -1072,22 +1072,131 @@ function ekwa_import_prepare_html( $html, $args = array() ) {
 	$stats['phones_converted'] = ekwa_import_rewrite_phones( $doc, $warnings );
 	$stats['links_remapped']   = ekwa_import_rewrite_links( $doc, $args['source_url'], (int) $args['post_id'], $warnings );
 
-	// Serialize the wrapper's children, not the wrapper itself.
-	$root = $doc->documentElement;
-	$out  = '';
-	if ( $root && $root->hasAttribute( 'data-ekwa-import-root' ) ) {
-		foreach ( $root->childNodes as $child ) {
-			$out .= $doc->saveHTML( $child );
-		}
-	} else {
-		$out = $doc->saveHTML();
-	}
-
+	// The caller may want to keep working on the tree (the AI path lifts the
+	// already-correct subtrees out of it before handing the rest to the model),
+	// so the document goes back alongside the serialized HTML.
 	return array(
-		'html'     => $out,
+		'html'     => ekwa_import_serialize_root( $doc ),
+		'doc'      => $doc,
 		'warnings' => $warnings,
 		'stats'    => $stats,
 	);
+}
+
+/**
+ * Serialize the synthetic wrapper's children, not the wrapper itself.
+ *
+ * @param DOMDocument $doc
+ * @return string
+ */
+function ekwa_import_serialize_root( $doc ) {
+	$root = $doc->documentElement;
+
+	if ( ! $root || ! $root->hasAttribute( 'data-ekwa-import-root' ) ) {
+		return (string) $doc->saveHTML();
+	}
+
+	$out = '';
+	foreach ( $root->childNodes as $child ) {
+		$out .= $doc->saveHTML( $child );
+	}
+
+	return $out;
+}
+
+/**
+ * Replace the parts that are already correct with placeholder tokens, in HTML.
+ *
+ * The model is handed HTML, not block markup — the same shape a person gets by
+ * pasting a page into "Build with AI (Blocks)", which is the version that
+ * produces good pages. Feeding it the converted blocks instead meant handing it
+ * seven-deep ekwa/div scaffolding and asking it to design around that, and it
+ * mostly just preserved the scaffolding.
+ *
+ * The exception is the handful of things the deterministic import got exactly
+ * right and a language model cannot reproduce: an FAQ's question/answer
+ * pairing, a video's transcript and upload date, an image's Media Library id.
+ * Those subtrees are converted to blocks HERE, lifted out, and replaced with
+ * [[EKWA_KEEP_n]] text. The model arranges around the tokens; they are swapped
+ * back afterwards, so its output can never damage them.
+ *
+ * @param DOMDocument $doc Prepared document (mutated).
+ * @return array<int,string> Block markup for each token, indexed by token number.
+ */
+function ekwa_import_protect_dom( $doc ) {
+	$kept  = array();
+	$xpath = new DOMXPath( $doc );
+
+	// Convert one node (or a run of them) to block markup via the converter.
+	$to_blocks = static function ( array $nodes ) use ( $doc ) {
+		$html = '';
+		foreach ( $nodes as $n ) {
+			$html .= $doc->saveHTML( $n );
+		}
+		if ( '' === trim( $html ) ) {
+			return '';
+		}
+		$res = ekwa_mc_convert_html( $html );
+		return trim( $res['markup'] );
+	};
+
+	// Swap a run of sibling nodes for a single token.
+	$swap = static function ( array $nodes ) use ( $doc, &$kept, $to_blocks ) {
+		$markup = $to_blocks( $nodes );
+		if ( '' === $markup ) {
+			return;
+		}
+		$kept[] = $markup;
+		$token  = $doc->createTextNode( "\n[[EKWA_KEEP_" . ( count( $kept ) - 1 ) . "]]\n" );
+		$nodes[0]->parentNode->replaceChild( $token, $nodes[0] );
+		foreach ( array_slice( $nodes, 1 ) as $extra ) {
+			if ( $extra->parentNode ) {
+				$extra->parentNode->removeChild( $extra );
+			}
+		}
+	};
+
+	// ── FAQ: consecutive <details> siblings are ONE accordion ──────
+	// Converting them one at a time would produce a separate single-item
+	// ekwa/faq per question instead of one accordion, which is why the run is
+	// gathered before conversion (ekwa_mc_convert_details_run does the same).
+	foreach ( iterator_to_array( $doc->getElementsByTagName( 'details' ) ) as $details ) {
+		if ( ! $details->parentNode ) {
+			continue; // Already consumed as part of an earlier run.
+		}
+		$run  = array( $details );
+		$next = $details->nextSibling;
+		while ( $next ) {
+			if ( XML_TEXT_NODE === $next->nodeType && '' === trim( $next->textContent ) ) {
+				$next = $next->nextSibling;
+				continue;
+			}
+			if ( XML_ELEMENT_NODE !== $next->nodeType || 'details' !== strtolower( $next->nodeName ) ) {
+				break;
+			}
+			$run[] = $next;
+			$next  = $next->nextSibling;
+		}
+		$swap( $run );
+	}
+
+	// ── Videos, then figures, then bare images ─────────────────────
+	// Figures before images so a <figure><img></figure> is taken whole rather
+	// than having its image pulled out from under it.
+	foreach ( array(
+		'//*[@data-ekwa="video"]',
+		'//figure',
+		'//img',
+	) as $query ) {
+		foreach ( iterator_to_array( $xpath->query( $query ) ) as $node ) {
+			if ( ! $node->parentNode ) {
+				continue;
+			}
+			$swap( array( $node ) );
+		}
+	}
+
+	return $kept;
 }
 
 /* ------------------------------------------------------------------
@@ -1248,34 +1357,40 @@ function ekwa_import_rest_convert( $request ) {
 	// page with nothing to go on.
 	require_once get_template_directory() . '/inc/ekwa-converter-lib.php';
 
-	$converted = ekwa_mc_convert_html( $prepared['html'] );
-	$markup    = $converted['markup'];
-
-	// Merge the two reports. The importer's warnings and the converter's loss
-	// report answer the same question for the author — "what needs a look?" —
-	// so they arrive as one list rather than two.
 	$warnings = $prepared['warnings'];
-	foreach ( (array) $converted['report'] as $entry ) {
-		if ( is_array( $entry ) ) {
-			$warnings[] = array(
-				'category' => isset( $entry['category'] ) ? $entry['category'] : 'general',
-				'message'  => isset( $entry['message'] ) ? $entry['message'] : '',
-			);
-		} elseif ( is_string( $entry ) && '' !== $entry ) {
-			$warnings[] = array( 'category' => 'general', 'message' => $entry );
-		}
+
+	// Lift the already-correct parts out as tokens, leaving HTML for the model.
+	$kept      = ekwa_import_protect_dom( $prepared['doc'] );
+	$body_html = ekwa_import_serialize_root( $prepared['doc'] );
+
+	$designed = false;
+	if ( function_exists( 'ekwa_inner_template_design_pass' ) ) {
+		$markup = ekwa_inner_template_design_pass( $body_html, $warnings, array(
+			'model'   => (string) $request->get_param( 'model' ),
+			'post_id' => $post_id,
+			'kept'    => $kept,
+		) );
+		$designed = ( '' !== trim( $markup ) );
 	}
 
-	// The design pass rehouses the converted content in the site's own section
-	// designs. It runs AFTER conversion, on the finished blocks, so a failure
-	// anywhere in it falls back to the faithful page rather than losing it.
-	$designed = false;
-	if ( $request->get_param( 'design' ) && function_exists( 'ekwa_inner_template_design_pass' ) ) {
-		$before   = $markup;
-		$markup   = ekwa_inner_template_design_pass( $markup, $warnings, array(
-			'model' => (string) $request->get_param( 'model' ),
-		) );
-		$designed = ( $markup !== $before );
+	// Fallback — no API key, a model error, or an unusable answer. Still a
+	// complete page with every image, link, phone number, FAQ and video in
+	// place; just laid out as the source had it rather than designed. Better
+	// than handing back nothing.
+	if ( ! $designed ) {
+		$converted = ekwa_mc_convert_html( $prepared['html'] );
+		$markup    = $converted['markup'];
+
+		foreach ( (array) $converted['report'] as $entry ) {
+			if ( is_array( $entry ) ) {
+				$warnings[] = array(
+					'category' => isset( $entry['category'] ) ? $entry['category'] : 'general',
+					'message'  => isset( $entry['message'] ) ? $entry['message'] : '',
+				);
+			} elseif ( is_string( $entry ) && '' !== $entry ) {
+				$warnings[] = array( 'category' => 'general', 'message' => $entry );
+			}
+		}
 	}
 
 	return rest_ensure_response( array(

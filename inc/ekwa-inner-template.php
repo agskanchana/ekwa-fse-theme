@@ -907,7 +907,7 @@ function ekwa_inner_template_design_prompt( $patterns = array() ) {
 	// model is free to design around them however it likes.
 	$prompt .= "\n\n"
 		. "IMPORTED PAGE CONTENT — additional rules for this job:\n"
-		. "You are not writing a new page. The block markup in the user message is a real page's real content, already converted. Lay it out as a well-designed page — sections, spacing, hierarchy, CSS, all of it your call — but the content itself is fixed:\n"
+		. "You are not writing a new page. The user message is a real page's real content as HTML. Build it into a well-designed page — sections, spacing, hierarchy, CSS, all of it your call — but the content itself is fixed:\n"
 		. "- Use the supplied text VERBATIM. Do not rewrite, summarise, shorten, expand or reorder it, and do not invent headings, copy or calls to action that are not in it. Every sentence must appear in your output.\n"
 		. "- [[EKWA_KEEP_n]] tokens stand for blocks that are already correct — FAQ accordions, videos with their transcripts, images already in the Media Library. Place each token EXACTLY ONCE, on its own line, where that content belongs. Never delete, duplicate, reword or write inside a token, and never change the token text itself. They are swapped back for the real blocks after you answer.\n"
 		. "- Reproduce every [ekwa_phone] shortcode and every href EXACTLY as given. They were resolved against this site's settings and pages, and retyping them breaks that.\n"
@@ -931,7 +931,7 @@ function ekwa_inner_template_design_prompt( $patterns = array() ) {
  */
 function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() ) {
 	if ( '' === trim( $markup ) ) {
-		return $markup;
+		return '';
 	}
 
 	// Section designs from everywhere the site has them. An empty list is NOT a
@@ -943,9 +943,9 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 	if ( ! function_exists( 'ekwa_get_ai_api_key' ) || ! ekwa_get_ai_api_key() ) {
 		$warnings[] = array(
 			'category' => 'general',
-			'message'  => __( 'No Gemini API key is configured, so the page was built as a faithful conversion instead of being restyled.', 'ekwa' ),
+			'message'  => __( 'No Gemini API key is configured, so the page was laid out as the source had it. Add a key in Ekwa Settings → AI to have pages built with AI.', 'ekwa' ),
 		);
-		return $markup;
+		return '';
 	}
 
 	// Label the call so its tokens land under their own line in the AI usage
@@ -954,7 +954,14 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 		ekwa_ai_current_feature( 'import-design' );
 	}
 
-	$protected = ekwa_inner_template_protect( $markup );
+	// The caller normally hands over HTML plus the tokens it already lifted out
+	// (ekwa_import_protect_dom). The block-markup path is kept for any caller
+	// that still passes serialized blocks.
+	if ( isset( $args['kept'] ) ) {
+		$protected = array( 'markup' => $markup, 'kept' => (array) $args['kept'] );
+	} else {
+		$protected = ekwa_inner_template_protect( $markup );
+	}
 
 	// The block spec, project memory and design-token context all come inside
 	// this prompt already — appending them again here would send each of them
@@ -962,13 +969,13 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 	$system = ekwa_inner_template_design_prompt( $patterns );
 
 	$contents = ekwa_ai_generate_build_contents(
-		"Lay out this imported page content:\n\n" . $protected['markup'],
+		"Build a page from this content:\n\n" . $protected['markup'],
 		array(),
 		array()
 	);
 	if ( is_wp_error( $contents ) ) {
 		$warnings[] = array( 'category' => 'general', 'message' => $contents->get_error_message() );
-		return $markup;
+		return '';
 	}
 
 	$model = ekwa_ai_resolve_model( isset( $args['model'] ) ? (string) $args['model'] : '', 'pro' );
@@ -991,7 +998,7 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 				$response->get_error_message()
 			),
 		);
-		return $markup;
+		return '';
 	}
 
 	// ekwa_ai_generate_call_gemini() returns [content, tokens, finish_reason].
@@ -1051,9 +1058,9 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 	if ( '' === $designed || false === strpos( $designed, '<!-- wp:' ) ) {
 		$warnings[] = array(
 			'category' => 'general',
-			'message'  => __( 'The design pass did not return usable block markup, so the page was built as a faithful conversion. Try running it again.', 'ekwa' ),
+			'message'  => __( 'The AI did not return usable block markup, so the page was laid out as the source had it. Try building again.', 'ekwa' ),
 		);
-		return $markup;
+		return '';
 	}
 
 	$restored = ekwa_inner_template_restore( $designed, $protected['kept'], $warnings );
