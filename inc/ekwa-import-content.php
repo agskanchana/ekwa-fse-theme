@@ -54,7 +54,13 @@ const EKWA_IMPORT_META_CONTENT = '_ekwa_import_content';
 /** The source URL the row came from — the key for internal-link remapping. */
 const EKWA_IMPORT_META_SOURCE_URL = '_ekwa_import_source_url';
 
-/** Timestamp of the last time the stored content was applied to the page. */
+/**
+ * LEGACY. Written by the earlier "Create page (with imported content)" modal,
+ * which has been removed in favour of the "Insert imported page content" button
+ * in Generate with AI. Nothing reads it any more; the name is kept so rows found
+ * in the database can be identified, and so a site that has some is not left
+ * with an orphan key nobody can explain. Safe to delete manually.
+ */
 const EKWA_IMPORT_META_APPLIED = '_ekwa_import_applied_at';
 
 /** Option: newline/comma separated hosts treated as "the site we imported from". */
@@ -1156,100 +1162,6 @@ function ekwa_import_rest_prepared( $request ) {
 	) );
 }
 
-/**
- * Replace the parts that are already correct with placeholder tokens, in HTML.
- *
- * The model is handed HTML, not block markup — the same shape a person gets by
- * pasting a page into "Build with AI (Blocks)", which is the version that
- * produces good pages. Feeding it the converted blocks instead meant handing it
- * seven-deep ekwa/div scaffolding and asking it to design around that, and it
- * mostly just preserved the scaffolding.
- *
- * The exception is the handful of things the deterministic import got exactly
- * right and a language model cannot reproduce: an FAQ's question/answer
- * pairing, a video's transcript and upload date, an image's Media Library id.
- * Those subtrees are converted to blocks HERE, lifted out, and replaced with
- * [[EKWA_KEEP_n]] text. The model arranges around the tokens; they are swapped
- * back afterwards, so its output can never damage them.
- *
- * @param DOMDocument $doc Prepared document (mutated).
- * @return array<int,string> Block markup for each token, indexed by token number.
- */
-function ekwa_import_protect_dom( $doc ) {
-	$kept  = array();
-	$xpath = new DOMXPath( $doc );
-
-	// Convert one node (or a run of them) to block markup via the converter.
-	$to_blocks = static function ( array $nodes ) use ( $doc ) {
-		$html = '';
-		foreach ( $nodes as $n ) {
-			$html .= $doc->saveHTML( $n );
-		}
-		if ( '' === trim( $html ) ) {
-			return '';
-		}
-		$res = ekwa_mc_convert_html( $html );
-		return trim( $res['markup'] );
-	};
-
-	// Swap a run of sibling nodes for a single token.
-	$swap = static function ( array $nodes ) use ( $doc, &$kept, $to_blocks ) {
-		$markup = $to_blocks( $nodes );
-		if ( '' === $markup ) {
-			return;
-		}
-		$kept[] = $markup;
-		$token  = $doc->createTextNode( "\n[[EKWA_KEEP_" . ( count( $kept ) - 1 ) . "]]\n" );
-		$nodes[0]->parentNode->replaceChild( $token, $nodes[0] );
-		foreach ( array_slice( $nodes, 1 ) as $extra ) {
-			if ( $extra->parentNode ) {
-				$extra->parentNode->removeChild( $extra );
-			}
-		}
-	};
-
-	// ── FAQ: consecutive <details> siblings are ONE accordion ──────
-	// Converting them one at a time would produce a separate single-item
-	// ekwa/faq per question instead of one accordion, which is why the run is
-	// gathered before conversion (ekwa_mc_convert_details_run does the same).
-	foreach ( iterator_to_array( $doc->getElementsByTagName( 'details' ) ) as $details ) {
-		if ( ! $details->parentNode ) {
-			continue; // Already consumed as part of an earlier run.
-		}
-		$run  = array( $details );
-		$next = $details->nextSibling;
-		while ( $next ) {
-			if ( XML_TEXT_NODE === $next->nodeType && '' === trim( $next->textContent ) ) {
-				$next = $next->nextSibling;
-				continue;
-			}
-			if ( XML_ELEMENT_NODE !== $next->nodeType || 'details' !== strtolower( $next->nodeName ) ) {
-				break;
-			}
-			$run[] = $next;
-			$next  = $next->nextSibling;
-		}
-		$swap( $run );
-	}
-
-	// ── Videos, then figures, then bare images ─────────────────────
-	// Figures before images so a <figure><img></figure> is taken whole rather
-	// than having its image pulled out from under it.
-	foreach ( array(
-		'//*[@data-ekwa="video"]',
-		'//figure',
-		'//img',
-	) as $query ) {
-		foreach ( iterator_to_array( $xpath->query( $query ) ) as $node ) {
-			if ( ! $node->parentNode ) {
-				continue;
-			}
-			$swap( array( $node ) );
-		}
-	}
-
-	return $kept;
-}
 
 /* ------------------------------------------------------------------
  * REST: convert the stored content into blocks, with a preview.
@@ -1264,10 +1176,11 @@ add_action( 'rest_api_init', 'ekwa_import_register_routes' );
  * calls them lives in the AI Block Builder):
  *
  *   GET  /ekwa/v1/import-status?post_id=…  — does this page have content parked?
- *   POST /ekwa/v1/import-convert           — convert it and return a preview.
+ *   POST /ekwa/v1/import-prepared          — that content, ready to build from.
  *
- * Neither writes post_content. Converting is a pure read → the author inserts
- * the result themselves, and can run it again as many times as they like.
+ * Neither writes post_content. The page is built in "Generate with AI", which
+ * is where the good output comes from; these only supply it with content the
+ * importer has already cleaned up.
  */
 function ekwa_import_register_routes() {
 	register_rest_route( 'ekwa/v1', '/import-status', array(
@@ -1296,20 +1209,6 @@ function ekwa_import_register_routes() {
 		),
 	) );
 
-	register_rest_route( 'ekwa/v1', '/import-convert', array(
-		'methods'             => WP_REST_Server::CREATABLE,
-		'callback'            => 'ekwa_import_rest_convert',
-		'permission_callback' => 'ekwa_ai_rest_permission',
-		'args'                => array(
-			'post_id'  => array( 'required' => true, 'type' => 'integer' ),
-			'sideload' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
-			// Off by default: a faithful conversion is free, instant and
-			// repeatable, so the billable design pass is something the author
-			// asks for rather than something that happens to them.
-			'design'   => array( 'required' => false, 'type' => 'boolean', 'default' => false ),
-			'model'    => array( 'required' => false, 'type' => 'string',  'default' => '' ),
-		),
-	) );
 }
 
 /**
@@ -1338,8 +1237,9 @@ function ekwa_import_can_edit( $post_id ) {
 /**
  * GET /ekwa/v1/import-status — is there imported content on this page?
  *
- * Drives whether the button appears at all, so it stays cheap: no conversion,
- * just the presence of the stored HTML and whether it has been applied before.
+ * Runs every time the "Generate with AI" modal opens, on every page, so it does
+ * the least possible work: two meta reads and nothing else. It decides only
+ * whether the "Insert imported page content" button is shown.
  *
  * @param WP_REST_Request $request
  * @return WP_REST_Response|WP_Error
@@ -1354,161 +1254,11 @@ function ekwa_import_rest_status( $request ) {
 
 	$html = ekwa_import_get_content( $post_id );
 
-	// The section designs available to build with. Collected from saved
-	// patterns, the Inner Page Template and the site's own pages — so this is
-	// normally non-empty even on a site that has never configured anything.
-	$patterns    = function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $post_id ) : array();
-	$template_id = function_exists( 'ekwa_inner_template_id' ) ? ekwa_inner_template_id() : 0;
-
-	// Where each design came from, so the modal can say so rather than implying
-	// everything came from a template the practice may not have set up.
-	$by_source = array();
-	foreach ( $patterns as $p ) {
-		$src               = isset( $p['source'] ) ? $p['source'] : 'page';
-		$by_source[ $src ] = ( isset( $by_source[ $src ] ) ? $by_source[ $src ] : 0 ) + 1;
-	}
-
 	return rest_ensure_response( array(
-		'has_content'    => '' !== trim( $html ),
-		'size'           => strlen( $html ),
-		'source_url'     => (string) get_post_meta( $post_id, EKWA_IMPORT_META_SOURCE_URL, true ),
-		'applied_at'     => (string) get_post_meta( $post_id, EKWA_IMPORT_META_APPLIED, true ),
-		'template_id'    => $template_id,
-		'template_title' => $template_id ? get_the_title( $template_id ) : '',
-		'template_edit'  => $template_id ? (string) get_edit_post_link( $template_id, 'raw' ) : '',
-		'pattern_count'  => count( $patterns ),
-		'pattern_labels' => wp_list_pluck( $patterns, 'label' ),
-		'pattern_sources' => $by_source,
-		'has_api_key'    => function_exists( 'ekwa_get_ai_api_key' ) && (bool) ekwa_get_ai_api_key(),
+		'has_content' => '' !== trim( $html ),
+		'size'        => strlen( $html ),
+		'source_url'  => (string) get_post_meta( $post_id, EKWA_IMPORT_META_SOURCE_URL, true ),
 	) );
 }
 
-/**
- * POST /ekwa/v1/import-convert — imported HTML → block markup + preview.
- *
- * Deliberately does NOT save anything to the page. The author sees the preview,
- * decides, and inserts from the editor; running this again just produces a
- * fresh result from the same stored HTML, which is what makes "revise as many
- * times as you like" work without any undo machinery.
- *
- * @param WP_REST_Request $request
- * @return WP_REST_Response|WP_Error
- */
-function ekwa_import_rest_convert( $request ) {
-	$post_id = (int) $request->get_param( 'post_id' );
 
-	$allowed = ekwa_import_can_edit( $post_id );
-	if ( is_wp_error( $allowed ) ) {
-		return $allowed;
-	}
-
-	$html = ekwa_import_get_content( $post_id );
-	if ( '' === trim( $html ) ) {
-		return new WP_Error(
-			'ekwa_import_empty',
-			__( 'This page has no imported content stored on it.', 'ekwa' ),
-			array( 'status' => 404 )
-		);
-	}
-
-	$prepared = ekwa_import_prepare_html( $html, array(
-		'source_url' => (string) get_post_meta( $post_id, EKWA_IMPORT_META_SOURCE_URL, true ),
-		'page_title' => get_the_title( $post_id ),
-		'post_id'    => $post_id,
-		'sideload'   => (bool) $request->get_param( 'sideload' ),
-	) );
-
-	// The converter library is NOT loaded on every request — functions.php
-	// leaves it out and each caller pulls it in on demand (see
-	// ekwa-converter-api.php, ekwa-converter-menu.php, ekwa-mockup-contract.php,
-	// which all do exactly this). Calling ekwa_mc_convert_html() without it is
-	// a fatal, which reaches the browser as WordPress's generic "critical error"
-	// page with nothing to go on.
-	require_once get_template_directory() . '/inc/ekwa-converter-lib.php';
-
-	$warnings = $prepared['warnings'];
-
-	// Lift the already-correct parts out as tokens, leaving HTML for the model.
-	$kept      = ekwa_import_protect_dom( $prepared['doc'] );
-	$body_html = ekwa_import_serialize_root( $prepared['doc'] );
-
-	$designed = false;
-	if ( function_exists( 'ekwa_inner_template_design_pass' ) ) {
-		$markup = ekwa_inner_template_design_pass( $body_html, $warnings, array(
-			'model'   => (string) $request->get_param( 'model' ),
-			'post_id' => $post_id,
-			'kept'    => $kept,
-		) );
-		$designed = ( '' !== trim( $markup ) );
-	}
-
-	// Fallback — no API key, a model error, or an unusable answer. Still a
-	// complete page with every image, link, phone number, FAQ and video in
-	// place; just laid out as the source had it rather than designed. Better
-	// than handing back nothing.
-	if ( ! $designed ) {
-		$converted = ekwa_mc_convert_html( $prepared['html'] );
-		$markup    = $converted['markup'];
-
-		foreach ( (array) $converted['report'] as $entry ) {
-			if ( is_array( $entry ) ) {
-				$warnings[] = array(
-					'category' => isset( $entry['category'] ) ? $entry['category'] : 'general',
-					'message'  => isset( $entry['message'] ) ? $entry['message'] : '',
-				);
-			} elseif ( is_string( $entry ) && '' !== $entry ) {
-				$warnings[] = array( 'category' => 'general', 'message' => $entry );
-			}
-		}
-	}
-
-	return rest_ensure_response( array(
-		'markup'   => $markup,
-		'designed' => $designed,
-		'preview'  => function_exists( 'ekwa_ai_generate_blocks_render_preview' )
-			? ekwa_ai_generate_blocks_render_preview( $markup )
-			: '',
-		'stats'    => $prepared['stats'],
-		'warnings' => array_values( array_filter( $warnings, static function ( $w ) {
-			return '' !== trim( (string) $w['message'] );
-		} ) ),
-	) );
-}
-
-/**
- * Record that a page's imported content has been turned into blocks.
- *
- * The stored HTML is deliberately KEPT — clearing it would make the conversion
- * a one-shot, and the whole point is that an author can come back and redo it.
- * This marker only drives the "you have already done this once" hint in the UI.
- *
- * @param int $post_id
- * @return void
- */
-function ekwa_import_mark_applied( $post_id ) {
-	update_post_meta( (int) $post_id, EKWA_IMPORT_META_APPLIED, current_time( 'mysql' ) );
-}
-
-add_action( 'rest_api_init', 'ekwa_import_register_applied_route' );
-
-/**
- * Register the "mark as applied" route, called after the author inserts.
- */
-function ekwa_import_register_applied_route() {
-	register_rest_route( 'ekwa/v1', '/import-applied', array(
-		'methods'             => WP_REST_Server::CREATABLE,
-		'callback'            => static function ( $request ) {
-			$post_id = (int) $request->get_param( 'post_id' );
-			$allowed = ekwa_import_can_edit( $post_id );
-			if ( is_wp_error( $allowed ) ) {
-				return $allowed;
-			}
-			ekwa_import_mark_applied( $post_id );
-			return rest_ensure_response( array( 'ok' => true ) );
-		},
-		'permission_callback' => 'ekwa_ai_rest_permission',
-		'args'                => array(
-			'post_id' => array( 'required' => true, 'type' => 'integer' ),
-		),
-	) );
-}

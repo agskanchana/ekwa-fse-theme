@@ -13,6 +13,7 @@
 	var el                 = wp.element.createElement;
 	var Fragment           = wp.element.Fragment;
 	var useState           = wp.element.useState;
+	var useEffect          = wp.element.useEffect;
 	var useRef             = wp.element.useRef;
 	var createPortal       = wp.element.createPortal;
 	var registerPlugin     = wp.plugins.registerPlugin;
@@ -119,6 +120,10 @@
 		var onClose = props.onClose;
 
 		var s1 = useState( '' );    var prompt        = s1[0]; var setPrompt        = s1[1];
+		// Imported-content handoff (pages created by the Bulk Page Creator).
+		var si1 = useState( null );  var importStatus = si1[0]; var setImportStatus = si1[1];
+		var si2 = useState( false ); var importBusy   = si2[0]; var setImportBusy   = si2[1];
+		var si3 = useState( '' );    var importStats  = si3[0]; var setImportStats  = si3[1];
 		var s2 = useState( [] );    var images        = s2[0]; var setImages        = s2[1];
 		var s3 = useState( false ); var generating    = s3[0]; var setGenerating    = s3[1];
 		var s4 = useState( null );  var error         = s4[0]; var setError         = s4[1];
@@ -207,6 +212,65 @@
 				try { URL.revokeObjectURL( removed.previewUrl ); } catch ( e ) { /* noop */ }
 			}
 			setImages( next );
+		}
+
+		// ── Imported content ───────────────────────────────────────────
+
+		// Ask once, on open, whether this page has content parked on it. On
+		// every other page the panel never renders and the modal is unchanged.
+		useEffect( function () {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			var id  = ( sel && sel.getCurrentPostId ) ? sel.getCurrentPostId() : 0;
+			if ( ! id ) { return; }
+			apiFetch( { path: '/ekwa/v1/import-status?post_id=' + id } )
+				.then( setImportStatus )
+				.catch( function () { setImportStatus( null ); } );
+		}, [] );
+
+		function insertImported() {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			var id  = ( sel && sel.getCurrentPostId ) ? sel.getCurrentPostId() : 0;
+			if ( ! id ) { return; }
+
+			setImportBusy( true );
+			setError( null );
+
+			apiFetch( {
+				path:   '/ekwa/v1/import-prepared',
+				method: 'POST',
+				data:   { post_id: id, sideload: true },
+			} ).then( function ( res ) {
+				// Appended, not replaced: an author who has already typed the
+				// layout they want must not lose it by pressing this.
+				var body = res.html || '';
+				setPrompt( function ( current ) {
+					return ( current && current.trim() )
+						? current.replace( /\s*$/, '' ) + '\n\n' + body
+						: __( 'Build a page from this content. Use the text exactly as given — do not rewrite, summarise or add to it.', 'ekwa' ) + '\n\n' + body;
+				} );
+
+				var s = res.stats || {};
+				var bits = [];
+				if ( s.images_imported )  { bits.push( s.images_imported + ' ' + __( 'images copied in', 'ekwa' ) ); }
+				if ( s.phones_converted ) { bits.push( s.phones_converted + ' ' + __( 'phone numbers', 'ekwa' ) ); }
+				if ( s.links_remapped )   { bits.push( s.links_remapped + ' ' + __( 'links re-pointed', 'ekwa' ) ); }
+				setImportStats( bits.length ? bits.join( ' · ' ) : __( 'Content inserted.', 'ekwa' ) );
+
+				// Anything needing a human decision — a phone number that is not
+				// in Settings, a link with no matching page, an image that would
+				// not copy — is surfaced rather than left silent.
+				var notes = ( res.warnings || [] )
+					.filter( function ( w ) {
+						return 'phone' === w.category || 'link' === w.category || 'media' === w.category;
+					} )
+					.map( function ( w ) { return w.message; } );
+				if ( notes.length ) { setError( notes.join( '\n' ) ); }
+
+				setImportBusy( false );
+			} ).catch( function ( e ) {
+				setError( ( e && e.message ) || __( 'Could not prepare the imported content.', 'ekwa' ) );
+				setImportBusy( false );
+			} );
 		}
 
 		// ── Generate ───────────────────────────────────────────────────
@@ -317,6 +381,48 @@
 					__( 'Describe the section you want, paste in real content, and optionally attach reference screenshots. The AI will generate clean HTML you can preview before sending it to the Mockup Converter.', 'ekwa' )
 				)
 			);
+
+			// ── Imported content ───────────────────────────────────────
+			// Only appears on pages the Bulk Page Creator parked source HTML on.
+			// It drops that content into the prompt below, having first done the
+			// parts this tool cannot do for itself: resolve lazy-loaded images
+			// and copy them into the Media Library, swap configured phone
+			// numbers for [ekwa_phone], and re-point the old site's internal
+			// links. From there it is an ordinary generate.
+			if ( importStatus && importStatus.has_content ) {
+				children.push(
+					el( 'div', {
+						key: 'imported',
+						className: 'ekwa-ai-imported',
+						style: {
+							margin: '0 0 12px',
+							padding: '10px 12px',
+							border: '1px solid #c3c4c7',
+							borderRadius: '4px',
+							background: '#f6f7f7',
+						},
+					},
+						el( 'div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
+							el( Button, {
+								variant: 'secondary',
+								onClick: insertImported,
+								disabled: importBusy || generating,
+							}, importBusy
+								? __( 'Preparing…', 'ekwa' )
+								: __( 'Insert imported page content', 'ekwa' ) ),
+							importBusy ? el( Spinner, null ) : null,
+							el( 'span', { style: { fontSize: '12px', color: '#646970' } },
+								importStats
+									? importStats
+									: __( 'This page has content imported from the old site.', 'ekwa' )
+							)
+						),
+						el( 'p', { style: { margin: '6px 0 0', fontSize: '11px', color: '#757575' } },
+							__( 'Images are copied into the Media Library, phone numbers become [ekwa_phone], and links to the old site are re-pointed at your pages. Add your layout instructions above the content, then Generate.', 'ekwa' )
+						)
+					)
+				);
+			}
 
 			children.push(
 				el( TextareaControl, {

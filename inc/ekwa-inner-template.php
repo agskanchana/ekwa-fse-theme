@@ -954,9 +954,8 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 		ekwa_ai_current_feature( 'import-design' );
 	}
 
-	// The caller normally hands over HTML plus the tokens it already lifted out
-	// (ekwa_import_protect_dom). The block-markup path is kept for any caller
-	// that still passes serialized blocks.
+	// A caller may hand over HTML plus tokens it lifted out itself, or plain
+	// serialized block markup for this to protect.
 	if ( isset( $args['kept'] ) ) {
 		$protected = array( 'markup' => $markup, 'kept' => (array) $args['kept'] );
 	} else {

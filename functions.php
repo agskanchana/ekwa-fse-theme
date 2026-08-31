@@ -948,43 +948,6 @@ function ekwa_enqueue_converter_editor_script() {
 		)
 	);
 
-	// "Create page (with imported content)" — converts the HTML the Bulk Page
-	// Creator parked on a page into blocks. Registers its own ⋮ menu item and
-	// hides itself on pages with nothing imported, so it costs nothing
-	// elsewhere.
-	wp_enqueue_script(
-		'ekwa-import-editor',
-		get_template_directory_uri() . '/assets/js/ekwa-import-editor.js',
-		array(
-			'wp-plugins',
-			'wp-editor',
-			'wp-blocks',
-			'wp-block-editor',
-			'wp-components',
-			'wp-element',
-			'wp-data',
-			'wp-i18n',
-			'wp-api-fetch',
-		),
-		filemtime( get_template_directory() . '/assets/js/ekwa-import-editor.js' ),
-		true
-	);
-	wp_localize_script(
-		'ekwa-import-editor',
-		'ekwaImportContent',
-		array(
-			// The same design tokens the AI previews get, so the preview iframe
-			// resolves the site's var() tokens instead of rendering unstyled.
-			'previewCss'   => function_exists( 'ekwa_ai_generate_preview_head_css' )
-				? ekwa_ai_generate_preview_head_css()
-				: '',
-			// Same catalog the AI Block Builder offers. Building a whole page is
-			// the most demanding job either tool does, so the default is the
-			// theme-wide most-capable model rather than a cheaper tier.
-			'models'       => $ai_model_list,
-			'defaultModel' => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
-		)
-	);
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );
 
