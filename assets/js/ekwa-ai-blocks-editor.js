@@ -206,6 +206,10 @@
 		var onClose = props.onClose;
 
 		var s1  = useState( '' );            var prompt       = s1[0];  var setPrompt       = s1[1];
+		// Imported-content handoff (pages created by the Bulk Page Creator).
+		var si1 = useState( null );  var importStatus = si1[0]; var setImportStatus = si1[1];
+		var si2 = useState( false ); var importBusy   = si2[0]; var setImportBusy   = si2[1];
+		var si3 = useState( '' );    var importStats  = si3[0]; var setImportStats  = si3[1];
 		var s2  = useState( [] );            var images       = s2[0];  var setImages       = s2[1];
 		var s3  = useState( false );         var generating   = s3[0];  var setGenerating   = s3[1];
 		var s4  = useState( null );          var error        = s4[0];  var setError        = s4[1];
@@ -392,6 +396,66 @@
 				try { URL.revokeObjectURL( removed.previewUrl ); } catch ( e ) { /* noop */ }
 			}
 			setImages( next );
+		}
+
+		// ── Imported content ───────────────────────────────────────────
+
+		// Ask once per open whether this page has content parked on it. On every
+		// other page the block above never renders and the modal is unchanged.
+		useEffect( function () {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			var id  = ( sel && sel.getCurrentPostId ) ? sel.getCurrentPostId() : 0;
+			if ( ! id ) { return; }
+			apiFetch( { path: '/ekwa/v1/import-status?post_id=' + id } )
+				.then( setImportStatus )
+				.catch( function () { setImportStatus( null ); } );
+		}, [] );
+
+		function insertImported() {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			var id  = ( sel && sel.getCurrentPostId ) ? sel.getCurrentPostId() : 0;
+			if ( ! id ) { return; }
+
+			setImportBusy( true );
+			setError( '' );
+
+			apiFetch( {
+				path:   '/ekwa/v1/import-prepared',
+				method: 'POST',
+				data:   { post_id: id, sideload: true },
+			} ).then( function ( res ) {
+				// Append rather than replace: an author who already typed the
+				// layout they want should not lose it by pressing this.
+				var body = res.html || '';
+				setPrompt( function ( current ) {
+					var lead = __( 'Build a page from this content. Use the text exactly as given — do not rewrite, summarise or add to it.', 'ekwa' );
+					return ( current && current.trim() )
+						? current.replace( /\s*$/, '' ) + '\n\n' + body
+						: lead + '\n\n' + body;
+				} );
+
+				var s = res.stats || {};
+				var bits = [];
+				if ( s.images_imported ) { bits.push( s.images_imported + ' ' + __( 'images copied in', 'ekwa' ) ); }
+				if ( s.phones_converted ) { bits.push( s.phones_converted + ' ' + __( 'phone numbers', 'ekwa' ) ); }
+				if ( s.links_remapped ) { bits.push( s.links_remapped + ' ' + __( 'links re-pointed', 'ekwa' ) ); }
+				setImportStats( bits.length ? bits.join( ' · ' ) : __( 'Content inserted.', 'ekwa' ) );
+
+				// Surface anything that needs a human — an unconfigured phone
+				// number, a link with no matching page, an image that failed.
+				( res.warnings || [] ).forEach( function ( w ) {
+					if ( 'phone' === w.category || 'link' === w.category || 'media' === w.category ) {
+						setError( function ( prev ) {
+							return prev ? prev + '\n' + w.message : w.message;
+						} );
+					}
+				} );
+
+				setImportBusy( false );
+			} ).catch( function ( e ) {
+				setError( ( e && e.message ) || __( 'Could not prepare the imported content.', 'ekwa' ) );
+				setImportBusy( false );
+			} );
 		}
 
 		// ── Generate ───────────────────────────────────────────────────
@@ -587,6 +651,48 @@
 					__( 'Describe what you want. The AI builds it with real Ekwa blocks (no HTML conversion needed) and returns the CSS to paste into your stylesheet.', 'ekwa' )
 				)
 			);
+
+			// ── Imported content ───────────────────────────────────────
+			// Only on pages the Bulk Page Creator parked source HTML on. It
+			// drops that content straight into the prompt, having first done
+			// the things this tool cannot do for itself: resolve lazy-loaded
+			// images and copy them into the Media Library, swap configured
+			// phone numbers for [ekwa_phone], and re-point the old site's
+			// internal links. Everything after that is a normal build.
+			if ( importStatus && importStatus.has_content ) {
+				children.push(
+					el( 'div', {
+						key: 'imported',
+						className: 'ekwa-ai-imported',
+						style: {
+							margin: '0 0 10px',
+							padding: '10px 12px',
+							border: '1px solid #c3c4c7',
+							borderRadius: '4px',
+							background: '#f6f7f7',
+						},
+					},
+						el( 'div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
+							el( Button, {
+								variant: 'secondary',
+								onClick: insertImported,
+								disabled: importBusy || generating,
+							}, importBusy
+								? __( 'Preparing…', 'ekwa' )
+								: __( 'Insert imported page content', 'ekwa' ) ),
+							importBusy ? el( Spinner, null ) : null,
+							el( 'span', { style: { fontSize: '12px', color: '#646970' } },
+								importStats
+									? importStats
+									: __( 'This page has content imported from the old site.', 'ekwa' )
+							)
+						),
+						el( 'p', { style: { margin: '6px 0 0', fontSize: '11px', color: '#757575' } },
+							__( 'Images are copied into the Media Library, phone numbers become [ekwa_phone], and links to the old site are re-pointed at your pages — then describe the layout you want below and Generate.', 'ekwa' )
+						)
+					)
+				);
+			}
 
 			children.push(
 				el( TextareaControl, {

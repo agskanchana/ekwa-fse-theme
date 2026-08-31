@@ -1105,6 +1105,58 @@ function ekwa_import_serialize_root( $doc ) {
 }
 
 /**
+ * POST /ekwa/v1/import-prepared — the page's imported content, ready to build from.
+ *
+ * Returns HTML for the AI Block Builder's prompt field, with the work done that
+ * a language model cannot do for itself:
+ *
+ *   - lazy-loaded images resolved (the sample export had NO src on any image,
+ *     only data-src — paste that in raw and every image is silently lost)
+ *   - those images COPIED INTO THE MEDIA LIBRARY and rewritten to local URLs,
+ *     so whatever the model builds points at this site, not the old one
+ *   - phone numbers that match Ekwa Settings swapped for [ekwa_phone]
+ *   - the old site's internal links re-pointed at the matching pages here
+ *
+ * The media copy is the one part that writes to the site, and it only happens
+ * because someone pressed the button that calls this.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_import_rest_prepared( $request ) {
+	$post_id = (int) $request->get_param( 'post_id' );
+
+	$allowed = ekwa_import_can_edit( $post_id );
+	if ( is_wp_error( $allowed ) ) {
+		return $allowed;
+	}
+
+	$html = ekwa_import_get_content( $post_id );
+	if ( '' === trim( $html ) ) {
+		return new WP_Error(
+			'ekwa_import_empty',
+			__( 'This page has no imported content stored on it.', 'ekwa' ),
+			array( 'status' => 404 )
+		);
+	}
+
+	$prepared = ekwa_import_prepare_html( $html, array(
+		'source_url' => (string) get_post_meta( $post_id, EKWA_IMPORT_META_SOURCE_URL, true ),
+		'page_title' => get_the_title( $post_id ),
+		'post_id'    => $post_id,
+		'sideload'   => (bool) $request->get_param( 'sideload' ),
+	) );
+
+	return rest_ensure_response( array(
+		'html'     => $prepared['html'],
+		'stats'    => $prepared['stats'],
+		'warnings' => array_values( array_filter( $prepared['warnings'], static function ( $w ) {
+			return '' !== trim( (string) $w['message'] );
+		} ) ),
+	) );
+}
+
+/**
  * Replace the parts that are already correct with placeholder tokens, in HTML.
  *
  * The model is handed HTML, not block markup — the same shape a person gets by
@@ -1224,6 +1276,23 @@ function ekwa_import_register_routes() {
 		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args'                => array(
 			'post_id' => array( 'required' => true, 'type' => 'integer' ),
+		),
+	) );
+
+	// Hand the page's imported content over to "Build with AI (Blocks)" as
+	// prompt text. This is the path that produces good pages: the AI Block
+	// Builder already designs well from pasted content, so rather than
+	// reimplementing that, the importer does the part it cannot do — resolve
+	// lazy-loaded images and copy them into the Media Library, swap configured
+	// phone numbers for [ekwa_phone], and re-point the old site's internal
+	// links — and hands over content that is ready to build from.
+	register_rest_route( 'ekwa/v1', '/import-prepared', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_import_rest_prepared',
+		'permission_callback' => 'ekwa_ai_rest_permission',
+		'args'                => array(
+			'post_id'  => array( 'required' => true, 'type' => 'integer' ),
+			'sideload' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
 		),
 	) );
 
