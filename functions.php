@@ -975,9 +975,14 @@ function ekwa_enqueue_converter_editor_script() {
 		array(
 			// The same design tokens the AI previews get, so the preview iframe
 			// resolves the site's var() tokens instead of rendering unstyled.
-			'previewCss' => function_exists( 'ekwa_ai_generate_preview_head_css' )
+			'previewCss'   => function_exists( 'ekwa_ai_generate_preview_head_css' )
 				? ekwa_ai_generate_preview_head_css()
 				: '',
+			// Same catalog the AI Block Builder offers. Building a whole page is
+			// the most demanding job either tool does, so the default is the
+			// theme-wide most-capable model rather than a cheaper tier.
+			'models'       => $ai_model_list,
+			'defaultModel' => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
 		)
 	);
 }

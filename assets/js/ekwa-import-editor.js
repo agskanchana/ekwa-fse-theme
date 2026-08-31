@@ -32,6 +32,7 @@
 	var Notice         = wp.components.Notice;
 	var Spinner        = wp.components.Spinner;
 	var ToggleControl  = wp.components.ToggleControl;
+	var SelectControl  = wp.components.SelectControl;
 	var apiFetch       = wp.apiFetch;
 	var __             = wp.i18n.__;
 	var sprintf        = wp.i18n.sprintf;
@@ -42,9 +43,21 @@
 			? wp.editPost.PluginMoreMenuItem
 			: null );
 
+	var cfg = window.ekwaImportContent || {};
+
 	// The site's design tokens + stylesheet, so the preview resolves the same
 	// var() tokens the real page will. Raw CSS — the caller wraps it.
-	var previewCss = ( window.ekwaImportContent && window.ekwaImportContent.previewCss ) || '';
+	var previewCss = cfg.previewCss || '';
+
+	// Model catalog, sorted most-capable-first by ekwa_ai_model_catalog().
+	// DEFAULT_MODEL is the theme-wide "pro" pick (ekwa_ai_default_model()) —
+	// laying out a whole page is the heaviest job here, so it is not somewhere
+	// to economise. An empty value means "let the server choose", which lands on
+	// the same model; the option is listed so the choice is visible.
+	var MODELS = ( cfg.models && cfg.models.length )
+		? cfg.models
+		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
+	var DEFAULT_MODEL = cfg.defaultModel || '';
 
 	/** Current post id, or 0 outside a post context. */
 	function currentPostId() {
@@ -96,7 +109,8 @@
 		var s6 = useState( '' );    var error    = s6[0]; var setError    = s6[1];
 		var s7 = useState( true );  var sideload = s7[0]; var setSideload = s7[1];
 		var s8 = useState( false ); var inserted = s8[0]; var setInserted = s8[1];
-		var s9 = useState( false ); var designed = s9[0]; var setDesigned = s9[1];
+		var s9  = useState( false );         var designed = s9[0];  var setDesigned = s9[1];
+		var s10 = useState( DEFAULT_MODEL ); var model    = s10[0]; var setModel    = s10[1];
 
 		// Building with AI needs a key, nothing else. Section designs make the
 		// result look like this site, but their absence is no longer a blocker:
@@ -112,7 +126,12 @@
 			apiFetch( {
 				path:   '/ekwa/v1/import-convert',
 				method: 'POST',
-				data:   { post_id: postId, sideload: sideload, design: !! useDesign }
+				data:   {
+					post_id:  postId,
+					sideload: sideload,
+					design:   !! useDesign,
+					model:    useDesign ? model : ''
+				}
 			} ).then( function ( res ) {
 				setMarkup( res.markup || '' );
 				setPreview( res.preview || '' );
@@ -236,17 +255,33 @@
 								__( 'Designs it can reuse: ', 'ekwa' ) + status.pattern_labels.join( ' · ' ) )
 							: el( 'p', { style: { margin: '0 0 8px', fontSize: '11px', color: '#757575' } },
 								__( 'No saved section designs yet. After you build a page, select a section you like and use “Create pattern” — it will be reused on every page you build after that.', 'ekwa' ) ),
-						el( Button, {
-							variant: designed ? 'secondary' : 'primary',
-							onClick: function () { convert( true ); },
-							disabled: busy
-						}, designed
-							? __( 'Build again', 'ekwa' )
-							: __( 'Build with AI', 'ekwa' ) ),
-						designed
-							? el( 'span', { style: { marginLeft: '8px', fontSize: '12px', color: '#1e7e34' } },
-								__( 'Built with AI.', 'ekwa' ) )
-							: null
+						el( 'div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' } },
+							el( 'div', { style: { minWidth: '260px' } },
+								el( SelectControl, {
+									label: __( 'Model', 'ekwa' ),
+									value: model,
+									options: MODELS,
+									onChange: setModel,
+									disabled: busy,
+									help: ( model && DEFAULT_MODEL && model !== DEFAULT_MODEL )
+										? __( 'Not the default. Building a full page is demanding — a smaller model usually shows up as thinner layout.', 'ekwa' )
+										: __( 'The most capable model available. Building a whole page is the heaviest job here.', 'ekwa' ),
+									__nextHasNoMarginBottom: true,
+									__next40pxDefaultSize: true
+								} )
+							),
+							el( Button, {
+								variant: designed ? 'secondary' : 'primary',
+								onClick: function () { convert( true ); },
+								disabled: busy
+							}, designed
+								? __( 'Build again', 'ekwa' )
+								: __( 'Build with AI', 'ekwa' ) ),
+							designed
+								? el( 'span', { style: { fontSize: '12px', color: '#1e7e34', paddingBottom: '8px' } },
+									__( 'Built with AI.', 'ekwa' ) )
+								: null
+						)
 					)
 					: el( 'p', { style: { margin: 0, fontSize: '12px', color: '#757575' } },
 						__( 'Add a Gemini API key in Ekwa Settings → AI to build pages with AI. Faithful conversion works without one.', 'ekwa' )

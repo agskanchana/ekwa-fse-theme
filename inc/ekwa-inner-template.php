@@ -886,45 +886,32 @@ function ekwa_inner_template_restore( $markup, $kept, &$warnings ) {
  * @param array $patterns From ekwa_inner_template_patterns().
  * @return string
  */
-function ekwa_inner_template_design_prompt( $patterns ) {
-	$prompt = "You are rebuilding an existing page so that it looks like it belongs on THIS site.\n\n"
-		. "WHAT YOU ARE GIVEN:\n"
-		. ( $patterns
-			? "1. SECTION DESIGNS — real sections from this site. Each is a complete top-level block whose CSS travels with it in the wrapper's scopedCss attribute.\n"
-			: "" )
-		. ( $patterns ? "2. " : "1. " ) . "PAGE CONTENT — the page's real content, already converted to blocks.\n\n"
-		. "YOUR JOB: return the page's content, laid out as a well-built page using this theme's blocks"
-		. ( $patterns ? ", reusing the section designs wherever they fit.\n\n" : ".\n\n" )
-		. "HARD RULES — breaking any of these makes the result unusable:\n"
-		. "- DO NOT rewrite, summarise, shorten, reorder or 'improve' any text. Every sentence of the supplied content must appear in your output, with the same wording, in the same order.\n"
-		. "- [[EKWA_KEEP_n]] tokens are already-converted blocks (FAQ accordions, videos, images) that are already correct. Place each token EXACTLY ONCE, on its own line, where that content belongs in the flow. Never delete one, never duplicate one, never write anything inside one, and never alter the token text.\n"
-		. "- Preserve every [ekwa_phone] shortcode and every href EXACTLY as written. They were resolved deliberately against this site's settings and pages.\n"
-		. "- Output ONLY block markup. No prose, no explanation, no Markdown fences.\n\n";
+function ekwa_inner_template_design_prompt( $patterns = array() ) {
+	// Build on the AI Block Builder's own system prompt — the same one behind
+	// "Build with AI (Blocks)". It already carries the block spec, the project
+	// memory, the site's design tokens and every styling and scoping rule, and
+	// it is the version that has actually been tuned against real output.
+	//
+	// It replaced a bespoke prompt that told the model to copy existing sections
+	// and forbade it from writing any CSS. That was the mistake: with no CSS to
+	// write, the model could only re-stack the markup it was given, so an
+	// imported page came out as flat as it went in. Pasting the same content
+	// into the Block Builder by hand produced visibly better pages, which is the
+	// evidence this is built on.
+	$prompt = function_exists( 'ekwa_ai_generate_blocks_system_prompt' )
+		? ekwa_ai_generate_blocks_system_prompt( 'section', 'create' )
+		: '';
 
-	if ( $patterns ) {
-		$vocab = array();
-		foreach ( $patterns as $p ) {
-			$vocab[] = "### " . $p['key'] . ' — "' . $p['label'] . "\"\n" . $p['markup'];
-		}
-
-		$prompt .= "USING THE SECTION DESIGNS:\n"
-			. "- COPY them. Take a design's markup and replace the text inside it with the real content. Keep its className values and its scopedCss EXACTLY as given — that attribute IS the design, and retyping or 'tidying' it breaks the styling.\n"
-			. "- Reuse a design as many times as the content calls for. That is the point of having them.\n"
-			. "- Match content to the design whose shape fits: a heading plus body copy belongs in a body section; a list of points belongs in a list section; a closing prompt belongs in a call-to-action.\n"
-			. "- Where nothing fits, build the section yourself from the blocks in the spec below rather than forcing content into the wrong design.\n\n"
-			. "SECTION DESIGNS AVAILABLE:\n\n"
-			. implode( "\n\n", $vocab ) . "\n\n";
-	} else {
-		// No designs anywhere yet — first import on a fresh site. Build from the
-		// theme's blocks, and keep the CSS on the wrapper so whatever the model
-		// produces is itself a self-contained section the practice can save as a
-		// pattern afterwards, which is how the library starts.
-		$prompt .= "THIS SITE HAS NO SAVED SECTION DESIGNS YET, so build the sections yourself:\n"
-			. "- Group the content into sections, each one a top-level ekwa/div.\n"
-			. "- Give each section a className and put ALL of its CSS in that wrapper's scopedCss attribute, scoped under that className. Do not emit a <style> block and do not style anything globally.\n"
-			. "- Reuse the site's existing design tokens (the CSS custom properties listed in the site stylesheet below) for colors, spacing and fonts. Do not hardcode a hex value that an existing token already represents.\n"
-			. "- Keep it restrained and readable: generous spacing, a clear heading hierarchy, no decoration the content does not ask for.\n\n";
-	}
+	// The only thing imported content needs on top of a normal AI build: the
+	// words, links and already-converted blocks are REAL and must survive. The
+	// model is free to design around them however it likes.
+	$prompt .= "\n\n"
+		. "IMPORTED PAGE CONTENT — additional rules for this job:\n"
+		. "You are not writing a new page. The block markup in the user message is a real page's real content, already converted. Lay it out as a well-designed page — sections, spacing, hierarchy, CSS, all of it your call — but the content itself is fixed:\n"
+		. "- Use the supplied text VERBATIM. Do not rewrite, summarise, shorten, expand or reorder it, and do not invent headings, copy or calls to action that are not in it. Every sentence must appear in your output.\n"
+		. "- [[EKWA_KEEP_n]] tokens stand for blocks that are already correct — FAQ accordions, videos with their transcripts, images already in the Media Library. Place each token EXACTLY ONCE, on its own line, where that content belongs. Never delete, duplicate, reword or write inside a token, and never change the token text itself. They are swapped back for the real blocks after you answer.\n"
+		. "- Reproduce every [ekwa_phone] shortcode and every href EXACTLY as given. They were resolved against this site's settings and pages, and retyping them breaks that.\n"
+		. "- Where the content is thin, let the layout be simple. Do not pad it out.\n";
 
 	return $prompt;
 }
@@ -969,22 +956,13 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 
 	$protected = ekwa_inner_template_protect( $markup );
 
+	// The block spec, project memory and design-token context all come inside
+	// this prompt already — appending them again here would send each of them
+	// twice.
 	$system = ekwa_inner_template_design_prompt( $patterns );
 
-	// The block spec is what lets this work with no saved designs at all: it is
-	// the theme's own block vocabulary, the same one the AI Block Builder uses.
-	if ( function_exists( 'ekwa_ai_build_block_spec_section' ) ) {
-		$system .= ekwa_ai_build_block_spec_section( 'section' );
-	}
-
-	// The site's colors, tokens and stylesheet, so anything the model builds
-	// itself uses this practice's design language rather than inventing one.
-	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
-		$system .= ekwa_tokens_ai_context();
-	}
-
 	$contents = ekwa_ai_generate_build_contents(
-		"PAGE CONTENT to rehouse in the section patterns:\n\n" . $protected['markup'],
+		"Lay out this imported page content:\n\n" . $protected['markup'],
 		array(),
 		array()
 	);
@@ -1021,6 +999,52 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 		is_array( $response ) && isset( $response['content'] ) ? (string) $response['content'] : ''
 	);
 	$designed = trim( (string) $designed );
+
+	// The Block Builder's prompt asks for a <style> block plus markup carrying
+	// an EKWA_SCOPE sentinel, so its answer needs the same three post-processing
+	// steps the Block Builder route runs. Skipping any of them leaves a raw
+	// <style> element sitting in the block markup and a literal "EKWA_SCOPE"
+	// class on the page — which is exactly what "it outputs a bunch of code"
+	// looks like.
+	$extracted = ekwa_ai_generate_extract_css_js( $designed );
+	$designed  = trim( $extracted['html'] );
+	$css       = isset( $extracted['css'] ) ? (string) $extracted['css'] : '';
+
+	// 1. Repair the almost-valid JSON models tend to emit in block attributes.
+	if ( function_exists( 'ekwa_ai_repair_block_markup' ) ) {
+		$repair   = ekwa_ai_repair_block_markup( $designed );
+		$designed = $repair['markup'];
+		if ( ! empty( $repair['repaired'] ) ) {
+			$warnings[] = array(
+				'category' => 'general',
+				'message'  => sprintf(
+					/* translators: %d: number of blocks */
+					_n( 'Auto-corrected the attributes on %d block.', 'Auto-corrected the attributes on %d blocks.', (int) $repair['repaired'], 'ekwa' ),
+					(int) $repair['repaired']
+				),
+			);
+		}
+	}
+
+	// 2. Swap the scoping sentinel for a real unique section id, in both the CSS
+	//    and the markup, so two imported pages can never collide.
+	$scope = '';
+	if ( false !== strpos( $designed, 'EKWA_SCOPE' ) || false !== strpos( $css, 'EKWA_SCOPE' ) ) {
+		$scope    = 'eai-sec-' . substr( md5( uniqid( '', true ) ), 0, 6 );
+		$css      = str_replace( 'EKWA_SCOPE', $scope, $css );
+		$designed = str_replace( 'EKWA_SCOPE', $scope, $designed );
+	}
+
+	// 3. Move the CSS onto the wrapper's scopedCss attribute, which is what makes
+	//    the section self-contained — and what makes it reusable later, since a
+	//    section saved as a pattern carries its design with it.
+	if ( '' !== trim( $css ) && function_exists( 'ekwa_ai_blocks_embed_scoped_css' ) ) {
+		$embed    = ekwa_ai_blocks_embed_scoped_css( $designed, $css, $scope );
+		$designed = $embed['markup'];
+		foreach ( (array) $embed['warnings'] as $w ) {
+			$warnings[] = array( 'category' => 'general', 'message' => (string) $w );
+		}
+	}
 
 	// A response with no block markup in it means the model answered in prose;
 	// keeping the faithful conversion beats shipping that.
