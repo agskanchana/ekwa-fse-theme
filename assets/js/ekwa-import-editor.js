@@ -42,6 +42,10 @@
 			? wp.editPost.PluginMoreMenuItem
 			: null );
 
+	// The site's design tokens + stylesheet, so the preview resolves the same
+	// var() tokens the real page will. Raw CSS — the caller wraps it.
+	var previewCss = ( window.ekwaImportContent && window.ekwaImportContent.previewCss ) || '';
+
 	/** Current post id, or 0 outside a post context. */
 	function currentPostId() {
 		var sel = wp.data && wp.data.select( 'core/editor' );
@@ -94,7 +98,11 @@
 		var s8 = useState( false ); var inserted = s8[0]; var setInserted = s8[1];
 		var s9 = useState( false ); var designed = s9[0]; var setDesigned = s9[1];
 
-		var canDesign = ( status.pattern_count || 0 ) > 0;
+		// Building with AI needs a key, nothing else. Section designs make the
+		// result look like this site, but their absence is no longer a blocker:
+		// with none, the theme's own blocks are used.
+		var canDesign = !! status.has_api_key;
+		var designCount = status.pattern_count || 0;
 
 		function convert( useDesign ) {
 			setBusy( true );
@@ -210,38 +218,38 @@
 				}
 			},
 				el( 'strong', { style: { display: 'block', marginBottom: '4px' } },
-					__( 'Build it with the site\'s own designs', 'ekwa' ) ),
+					__( 'Build the page with AI', 'ekwa' ) ),
 
 				canDesign
 					? el( Fragment, null,
 						el( 'p', { style: { margin: '0 0 8px', fontSize: '12px', color: '#555' } },
-							sprintf(
-								/* translators: 1: template page title, 2: number of section designs */
-								__( 'Rebuilds this content using the %1$s (%2$d section designs). FAQs, videos and images keep exactly what the import worked out — only the layout changes.', 'ekwa' ),
-								status.template_title || __( 'Inner Page Template', 'ekwa' ),
-								status.pattern_count
-							)
+							designCount
+								? sprintf(
+									/* translators: %d: number of section designs */
+									__( 'Lays this content out using the theme\'s blocks, reusing %d section design(s) already on this site. FAQs, videos and images keep exactly what the import worked out — only the layout changes.', 'ekwa' ),
+									designCount
+								)
+								: __( 'Lays this content out using the theme\'s blocks and your site\'s colors and fonts. FAQs, videos and images keep exactly what the import worked out — only the layout changes.', 'ekwa' )
 						),
-						( status.pattern_labels && status.pattern_labels.length )
+						designCount
 							? el( 'p', { style: { margin: '0 0 8px', fontSize: '11px', color: '#757575' } },
-								__( 'Sections available: ', 'ekwa' ) + status.pattern_labels.join( ' · ' ) )
-							: null,
+								__( 'Designs it can reuse: ', 'ekwa' ) + status.pattern_labels.join( ' · ' ) )
+							: el( 'p', { style: { margin: '0 0 8px', fontSize: '11px', color: '#757575' } },
+								__( 'No saved section designs yet. After you build a page, select a section you like and use “Create pattern” — it will be reused on every page you build after that.', 'ekwa' ) ),
 						el( Button, {
 							variant: designed ? 'secondary' : 'primary',
 							onClick: function () { convert( true ); },
 							disabled: busy
 						}, designed
-							? __( 'Rebuild again', 'ekwa' )
-							: __( 'Rebuild with the template', 'ekwa' ) ),
+							? __( 'Build again', 'ekwa' )
+							: __( 'Build with AI', 'ekwa' ) ),
 						designed
 							? el( 'span', { style: { marginLeft: '8px', fontSize: '12px', color: '#1e7e34' } },
-								__( 'Built from the template.', 'ekwa' ) )
+								__( 'Built with AI.', 'ekwa' ) )
 							: null
 					)
 					: el( 'p', { style: { margin: 0, fontSize: '12px', color: '#757575' } },
-						status.template_id
-							? __( 'The Inner Page Template has no sections on it yet. Add some section designs to it and they become available here.', 'ekwa' )
-							: __( 'No Inner Page Template is set yet. Create one in Ekwa Settings → Design Setup, then every imported page can be rebuilt in your own section designs.', 'ekwa' )
+						__( 'Add a Gemini API key in Ekwa Settings → AI to build pages with AI. Faithful conversion works without one.', 'ekwa' )
 					)
 			),
 
@@ -284,9 +292,14 @@
 			el( 'h3', { style: { margin: '0 0 6px', fontSize: '13px' } }, __( 'Preview', 'ekwa' ) ),
 			el( 'iframe', {
 				title: __( 'Imported content preview', 'ekwa' ),
+				// previewCss is RAW css, not a <style> element — it has to be
+				// wrapped. Injected bare it is text, not markup: the parser
+				// moves it out of <head> and the stylesheet renders as visible
+				// text on top of the preview. Matches how the AI Block Builder
+				// builds its own iframe (assets/js/ekwa-ai-blocks-editor.js).
 				srcDoc: '<!doctype html><html><head><meta charset="utf-8">'
-					+ '<style>body{margin:0;padding:16px;font-family:system-ui,sans-serif}img{max-width:100%;height:auto}</style>'
-					+ ( ( window.ekwaImportContent && window.ekwaImportContent.previewCss ) || '' )
+					+ ( previewCss ? '<style>' + previewCss + '</style>' : '' )
+					+ '<style>body{margin:0;padding:16px}img{max-width:100%;height:auto}</style>'
 					+ '</head><body>' + ( preview || '' ) + '</body></html>',
 				style: {
 					width: '100%',

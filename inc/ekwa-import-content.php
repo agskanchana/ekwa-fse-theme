@@ -1176,10 +1176,19 @@ function ekwa_import_rest_status( $request ) {
 
 	$html = ekwa_import_get_content( $post_id );
 
-	// Whether a design pass is even offerable, so the modal can explain what is
-	// missing instead of presenting a toggle that silently does nothing.
-	$patterns      = function_exists( 'ekwa_inner_template_patterns' ) ? ekwa_inner_template_patterns() : array();
-	$template_id   = function_exists( 'ekwa_inner_template_id' ) ? ekwa_inner_template_id() : 0;
+	// The section designs available to build with. Collected from saved
+	// patterns, the Inner Page Template and the site's own pages — so this is
+	// normally non-empty even on a site that has never configured anything.
+	$patterns    = function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $post_id ) : array();
+	$template_id = function_exists( 'ekwa_inner_template_id' ) ? ekwa_inner_template_id() : 0;
+
+	// Where each design came from, so the modal can say so rather than implying
+	// everything came from a template the practice may not have set up.
+	$by_source = array();
+	foreach ( $patterns as $p ) {
+		$src               = isset( $p['source'] ) ? $p['source'] : 'page';
+		$by_source[ $src ] = ( isset( $by_source[ $src ] ) ? $by_source[ $src ] : 0 ) + 1;
+	}
 
 	return rest_ensure_response( array(
 		'has_content'    => '' !== trim( $html ),
@@ -1191,6 +1200,8 @@ function ekwa_import_rest_status( $request ) {
 		'template_edit'  => $template_id ? (string) get_edit_post_link( $template_id, 'raw' ) : '',
 		'pattern_count'  => count( $patterns ),
 		'pattern_labels' => wp_list_pluck( $patterns, 'label' ),
+		'pattern_sources' => $by_source,
+		'has_api_key'    => function_exists( 'ekwa_get_ai_api_key' ) && (bool) ekwa_get_ai_api_key(),
 	) );
 }
 
@@ -1228,6 +1239,14 @@ function ekwa_import_rest_convert( $request ) {
 		'post_id'    => $post_id,
 		'sideload'   => (bool) $request->get_param( 'sideload' ),
 	) );
+
+	// The converter library is NOT loaded on every request — functions.php
+	// leaves it out and each caller pulls it in on demand (see
+	// ekwa-converter-api.php, ekwa-converter-menu.php, ekwa-mockup-contract.php,
+	// which all do exactly this). Calling ekwa_mc_convert_html() without it is
+	// a fatal, which reaches the browser as WordPress's generic "critical error"
+	// page with nothing to go on.
+	require_once get_template_directory() . '/inc/ekwa-converter-lib.php';
 
 	$converted = ekwa_mc_convert_html( $prepared['html'] );
 	$markup    = $converted['markup'];

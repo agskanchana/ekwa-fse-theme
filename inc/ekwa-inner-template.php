@@ -309,6 +309,239 @@ function ekwa_inner_template_starter_content() {
 }
 
 /* ------------------------------------------------------------------
+ * The design vocabulary.
+ *
+ * The Inner Page Template is ONE source of section designs, not the only one.
+ * A practice that has never opened that page still has designs worth reusing —
+ * on its home page, in patterns it saved while building, in the theme's own
+ * blocks. Requiring the template before anything could be built made the
+ * feature useless until someone did homework first.
+ *
+ * Sources, in priority order (first wins on a tie):
+ *   1. Patterns the practice saved themselves (wp_block posts — what the editor
+ *      calls "Patterns"). This is the library that GROWS: build a page, see a
+ *      section worth keeping, save it, and every later page can use it.
+ *   2. Sections on the Inner Page Template, when one is set.
+ *   3. Sections already on the site's own pages — the home page first. This is
+ *      what makes the very first import look right with no setup at all.
+ *
+ * Everything here is READ-ONLY. Nothing in this file writes to a page, and a
+ * site that never turns the design pass on is not affected by any of it.
+ * ------------------------------------------------------------------ */
+
+/** Cache key for the assembled vocabulary. */
+const EKWA_DESIGN_VOCAB_TRANSIENT = 'ekwa_design_vocabulary';
+
+/**
+ * Every section design available to build a page from.
+ *
+ * A "design" is one top-level block that carries its own CSS in the wrapper's
+ * `scopedCss` attribute, so its markup and its look travel together — copy it
+ * and the styling comes along. That is what lets the model assemble a page by
+ * choosing and filling sections rather than inventing CSS.
+ *
+ * Sections with no scopedCss are still collected from the template page (the
+ * practice put them there on purpose) but NOT harvested from ordinary pages,
+ * where an unstyled div is far more likely to be incidental markup than a
+ * design worth reusing.
+ *
+ * @param int $exclude_post_id Page being built — never harvest from itself.
+ * @param int $limit           Cap, so the prompt cannot grow without bound.
+ * @return array<int,array{key:string,label:string,source:string,markup:string,
+ *                         has_heading:bool,text_slots:int,media_slots:int}>
+ */
+function ekwa_design_vocabulary( $exclude_post_id = 0, $limit = 20 ) {
+	$cached = get_transient( EKWA_DESIGN_VOCAB_TRANSIENT );
+	if ( ! is_array( $cached ) ) {
+		$cached = ekwa_design_vocabulary_build( $limit );
+		set_transient( EKWA_DESIGN_VOCAB_TRANSIENT, $cached, HOUR_IN_SECONDS );
+	}
+
+	if ( $exclude_post_id ) {
+		$cached = array_values( array_filter( $cached, static function ( $p ) use ( $exclude_post_id ) {
+			return (int) $p['post_id'] !== (int) $exclude_post_id;
+		} ) );
+	}
+
+	return $cached;
+}
+
+/**
+ * Work out what to call a harvested section.
+ *
+ * The label is the only thing telling the model what a section is FOR, so it is
+ * worth getting right. In order:
+ *
+ *   1. The block's name in the editor (List View → Rename) — the deliberate answer.
+ *   2. Its wrapper classes: a practice that wrote class="section list-section"
+ *      has already said what it is. Machine-generated scope classes are dropped
+ *      first — the AI Block Builder stamps each section with something like
+ *      `eai-sec-444a3d`, and "Eai sec 444a3d" is worse than no label at all.
+ *   3. Its first heading, which at least says what the section is about.
+ *   4. The caller's fallback.
+ *
+ * @param array  $block    Parsed block.
+ * @param string $fallback Used when nothing better can be derived.
+ * @return string
+ */
+function ekwa_design_label_for_block( $block, $fallback = '' ) {
+	if ( ! empty( $block['attrs']['metadata']['name'] ) ) {
+		return (string) $block['attrs']['metadata']['name'];
+	}
+
+	$class = isset( $block['attrs']['className'] ) ? trim( (string) $block['attrs']['className'] ) : '';
+	if ( '' !== $class ) {
+		$keep = array();
+		foreach ( preg_split( '/\s+/', $class ) as $token ) {
+			// Generated scope classes (eai-sec-1a2b3c, ekwa-sec-…, wp-block-…)
+			// and the bare word "section" describe nothing.
+			if ( '' === $token
+				|| preg_match( '/^(e(kwa|ai)?-?sec|sec)-[0-9a-f]{4,}$/i', $token )
+				|| preg_match( '/^(wp-block|is-layout|has)-/i', $token )
+				|| preg_match( '/^sections?$/i', $token ) ) {
+				continue;
+			}
+			$keep[] = $token;
+		}
+
+		$words = trim( preg_replace( '/\s+/', ' ', preg_replace( '/[-_]+/', ' ', implode( ' ', $keep ) ) ) );
+		// A one-or-two character remnant is noise, not a name.
+		if ( strlen( $words ) > 2 ) {
+			return ucfirst( $words );
+		}
+	}
+
+	$heading = ekwa_inner_template_first_heading( $block );
+
+	return '' !== $heading ? $heading : $fallback;
+}
+
+/**
+ * Assemble the vocabulary from every source. @see ekwa_design_vocabulary().
+ *
+ * @param int $limit
+ * @return array
+ */
+function ekwa_design_vocabulary_build( $limit = 20 ) {
+	$out  = array();
+	$seen = array();
+
+	// A design is identified by its CSS + wrapper classes, so the same section
+	// repeated across ten pages is offered once.
+	$add = static function ( $block, $label, $source, $post_id, $require_css ) use ( &$out, &$seen ) {
+		if ( empty( $block['blockName'] ) ) {
+			return;
+		}
+		$css = isset( $block['attrs']['scopedCss'] ) ? (string) $block['attrs']['scopedCss'] : '';
+		if ( $require_css && '' === trim( $css ) ) {
+			return;
+		}
+
+		$fingerprint = md5( $css . '|' . ( $block['attrs']['className'] ?? '' ) );
+		if ( isset( $seen[ $fingerprint ] ) ) {
+			return;
+		}
+
+		$markup = trim( serialize_block( $block ) );
+		if ( '' === $markup ) {
+			return;
+		}
+
+		$seen[ $fingerprint ] = true;
+		$census               = ekwa_inner_template_census( $block );
+
+		$out[] = array(
+			'key'         => 'P' . ( count( $out ) + 1 ),
+			'label'       => $label,
+			'source'      => $source,
+			'post_id'     => (int) $post_id,
+			'markup'      => $markup,
+			'has_heading' => $census['headings'] > 0,
+			'text_slots'  => $census['text'],
+			'media_slots' => $census['media'],
+		);
+	};
+
+	$name_of = 'ekwa_design_label_for_block';
+
+	// ── 1. Patterns the practice saved themselves ──────────────────
+	foreach ( get_posts( array(
+		'post_type'   => 'wp_block',
+		'post_status' => 'publish',
+		'numberposts' => $limit,
+		'orderby'     => 'modified',
+		'order'       => 'DESC',
+	) ) as $pattern ) {
+		foreach ( parse_blocks( $pattern->post_content ) as $block ) {
+			if ( empty( $block['blockName'] ) ) {
+				continue;
+			}
+			$add( $block, $pattern->post_title, 'saved-pattern', $pattern->ID, false );
+			break; // One design per saved pattern — its first top-level block.
+		}
+	}
+
+	// ── 2. The Inner Page Template ─────────────────────────────────
+	foreach ( ekwa_inner_template_patterns() as $p ) {
+		foreach ( parse_blocks( $p['markup'] ) as $block ) {
+			if ( ! empty( $block['blockName'] ) ) {
+				$add( $block, $p['label'], 'template', ekwa_inner_template_id(), false );
+			}
+		}
+	}
+
+	// ── 3. Designs already on the site's own pages ─────────────────
+	global $wpdb;
+	$front = (int) get_option( 'page_on_front', 0 );
+
+	// Front page first: it is where a practice's best sections usually live.
+	$page_ids = $wpdb->get_col( $wpdb->prepare(
+		"SELECT ID FROM {$wpdb->posts}
+		  WHERE post_type = 'page' AND post_status = 'publish'
+		    AND post_content LIKE %s
+		  ORDER BY ID = %d DESC, post_modified DESC
+		  LIMIT 25",
+		'%scopedCss%',
+		$front
+	) );
+
+	foreach ( (array) $page_ids as $page_id ) {
+		if ( count( $out ) >= $limit ) {
+			break;
+		}
+		$page = get_post( (int) $page_id );
+		if ( ! $page ) {
+			continue;
+		}
+		$n = 0;
+		foreach ( parse_blocks( $page->post_content ) as $block ) {
+			if ( empty( $block['blockName'] ) ) {
+				continue;
+			}
+			$n++;
+			// require_css: on an ordinary page an unstyled wrapper is far more
+			// likely to be incidental markup than a design worth offering.
+			$add( $block, $name_of( $block, $page->post_title . ' section ' . $n ), 'page', $page->ID, true );
+		}
+	}
+
+	return array_slice( $out, 0, $limit );
+}
+
+/**
+ * Drop the cached vocabulary when a page or saved pattern changes.
+ *
+ * @param int $post_id
+ * @return void
+ */
+function ekwa_design_vocabulary_flush( $post_id = 0 ) {
+	delete_transient( EKWA_DESIGN_VOCAB_TRANSIENT );
+}
+add_action( 'save_post_page', 'ekwa_design_vocabulary_flush' );
+add_action( 'save_post_wp_block', 'ekwa_design_vocabulary_flush' );
+add_action( 'deleted_post', 'ekwa_design_vocabulary_flush' );
+
+/* ------------------------------------------------------------------
  * The pattern vocabulary.
  * ------------------------------------------------------------------ */
 
@@ -631,29 +864,44 @@ function ekwa_inner_template_restore( $markup, $kept, &$warnings ) {
  * @return string
  */
 function ekwa_inner_template_design_prompt( $patterns ) {
-	$vocab = array();
-	foreach ( $patterns as $p ) {
-		$vocab[] = "### " . $p['key'] . ' — "' . $p['label'] . "\"\n" . $p['markup'];
-	}
-
-	$prompt = "You are rebuilding an existing page so that it uses THIS site's own section designs.\n\n"
+	$prompt = "You are rebuilding an existing page so that it looks like it belongs on THIS site.\n\n"
 		. "WHAT YOU ARE GIVEN:\n"
-		. "1. SECTION PATTERNS — the site's Inner Page Template, one example of each section design. Each is a complete top-level ekwa/div; its CSS travels with it in the wrapper's scopedCss attribute.\n"
-		. "2. PAGE CONTENT — the page's real content, already converted to blocks.\n\n"
-		. "YOUR JOB: return the page's content, rehoused in copies of the section patterns.\n\n"
+		. ( $patterns
+			? "1. SECTION DESIGNS — real sections from this site. Each is a complete top-level block whose CSS travels with it in the wrapper's scopedCss attribute.\n"
+			: "" )
+		. ( $patterns ? "2. " : "1. " ) . "PAGE CONTENT — the page's real content, already converted to blocks.\n\n"
+		. "YOUR JOB: return the page's content, laid out as a well-built page using this theme's blocks"
+		. ( $patterns ? ", reusing the section designs wherever they fit.\n\n" : ".\n\n" )
 		. "HARD RULES — breaking any of these makes the result unusable:\n"
 		. "- DO NOT rewrite, summarise, shorten, reorder or 'improve' any text. Every sentence of the supplied content must appear in your output, with the same wording, in the same order.\n"
-		. "- COPY the patterns. Take a pattern's markup and replace the placeholder text inside it with the real content. Keep its className values and its scopedCss EXACTLY as given — that attribute is the section's design, and retyping or 'tidying' it breaks the styling.\n"
-		. "- Use a pattern more than once when the content calls for it. That is the point of a vocabulary.\n"
-		. "- [[EKWA_KEEP_n]] tokens are already-converted blocks (FAQ accordions, videos, images). Place each token EXACTLY ONCE, on its own line, where that content belongs in the flow. Never delete one, never duplicate one, never write anything inside one, and never alter the token text.\n"
+		. "- [[EKWA_KEEP_n]] tokens are already-converted blocks (FAQ accordions, videos, images) that are already correct. Place each token EXACTLY ONCE, on its own line, where that content belongs in the flow. Never delete one, never duplicate one, never write anything inside one, and never alter the token text.\n"
 		. "- Preserve every [ekwa_phone] shortcode and every href EXACTLY as written. They were resolved deliberately against this site's settings and pages.\n"
-		. "- Do NOT emit a <style> block and do NOT invent new CSS. All styling comes from the patterns you copy.\n"
-		. "- Output ONLY block markup. No prose, no explanation, no Markdown fences.\n\n"
-		. "JUDGEMENT:\n"
-		. "- Match content to the pattern whose shape fits: a heading plus body copy belongs in a body section; a closing prompt belongs in a call-to-action.\n"
-		. "- If nothing fits a piece of content, emit it as plain core/heading, core/paragraph and core/list blocks rather than forcing it into the wrong pattern or dropping it.\n\n"
-		. "SECTION PATTERNS AVAILABLE:\n\n"
-		. implode( "\n\n", $vocab );
+		. "- Output ONLY block markup. No prose, no explanation, no Markdown fences.\n\n";
+
+	if ( $patterns ) {
+		$vocab = array();
+		foreach ( $patterns as $p ) {
+			$vocab[] = "### " . $p['key'] . ' — "' . $p['label'] . "\"\n" . $p['markup'];
+		}
+
+		$prompt .= "USING THE SECTION DESIGNS:\n"
+			. "- COPY them. Take a design's markup and replace the text inside it with the real content. Keep its className values and its scopedCss EXACTLY as given — that attribute IS the design, and retyping or 'tidying' it breaks the styling.\n"
+			. "- Reuse a design as many times as the content calls for. That is the point of having them.\n"
+			. "- Match content to the design whose shape fits: a heading plus body copy belongs in a body section; a list of points belongs in a list section; a closing prompt belongs in a call-to-action.\n"
+			. "- Where nothing fits, build the section yourself from the blocks in the spec below rather than forcing content into the wrong design.\n\n"
+			. "SECTION DESIGNS AVAILABLE:\n\n"
+			. implode( "\n\n", $vocab ) . "\n\n";
+	} else {
+		// No designs anywhere yet — first import on a fresh site. Build from the
+		// theme's blocks, and keep the CSS on the wrapper so whatever the model
+		// produces is itself a self-contained section the practice can save as a
+		// pattern afterwards, which is how the library starts.
+		$prompt .= "THIS SITE HAS NO SAVED SECTION DESIGNS YET, so build the sections yourself:\n"
+			. "- Group the content into sections, each one a top-level ekwa/div.\n"
+			. "- Give each section a className and put ALL of its CSS in that wrapper's scopedCss attribute, scoped under that className. Do not emit a <style> block and do not style anything globally.\n"
+			. "- Reuse the site's existing design tokens (the CSS custom properties listed in the site stylesheet below) for colors, spacing and fonts. Do not hardcode a hex value that an existing token already represents.\n"
+			. "- Keep it restrained and readable: generous spacing, a clear heading hierarchy, no decoration the content does not ask for.\n\n";
+	}
 
 	return $prompt;
 }
@@ -676,16 +924,11 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 		return $markup;
 	}
 
-	$patterns = ekwa_inner_template_patterns();
-	if ( ! $patterns ) {
-		$warnings[] = array(
-			'category' => 'general',
-			'message'  => ekwa_inner_template_id()
-				? __( 'The Inner Page Template has no sections on it yet, so the page was built as a faithful conversion. Add section designs to that page to shape future imports.', 'ekwa' )
-				: __( 'No Inner Page Template is set, so the page was built as a faithful conversion. Set one in Ekwa Settings → Design Setup to have imported pages rebuilt in the site\'s own section designs.', 'ekwa' ),
-		);
-		return $markup;
-	}
+	// Section designs from everywhere the site has them. An empty list is NOT a
+	// blocker any more: with no designs the model still builds the page out of
+	// the theme's own blocks from the block spec, which is what "create with AI"
+	// does. Designs, when they exist, make it look like this site.
+	$patterns = ekwa_design_vocabulary( isset( $args['post_id'] ) ? (int) $args['post_id'] : 0 );
 
 	if ( ! function_exists( 'ekwa_get_ai_api_key' ) || ! ekwa_get_ai_api_key() ) {
 		$warnings[] = array(
@@ -704,8 +947,17 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 	$protected = ekwa_inner_template_protect( $markup );
 
 	$system = ekwa_inner_template_design_prompt( $patterns );
+
+	// The block spec is what lets this work with no saved designs at all: it is
+	// the theme's own block vocabulary, the same one the AI Block Builder uses.
 	if ( function_exists( 'ekwa_ai_build_block_spec_section' ) ) {
 		$system .= ekwa_ai_build_block_spec_section( 'section' );
+	}
+
+	// The site's colors, tokens and stylesheet, so anything the model builds
+	// itself uses this practice's design language rather than inventing one.
+	if ( function_exists( 'ekwa_tokens_ai_context' ) ) {
+		$system .= ekwa_tokens_ai_context();
 	}
 
 	$contents = ekwa_ai_generate_build_contents(
@@ -759,19 +1011,30 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 
 	$restored = ekwa_inner_template_restore( $designed, $protected['kept'], $warnings );
 
-	$warnings[] = array(
-		'category' => 'converted',
-		'message'  => sprintf(
-			/* translators: %d: number of section patterns */
-			_n(
-				'Rebuilt using the Inner Page Template (%d section design available).',
-				'Rebuilt using the Inner Page Template (%d section designs available).',
+	if ( $patterns ) {
+		// Name the designs that were on offer: it is the clearest way to show
+		// that saving a section as a pattern feeds straight back into this.
+		$labels = wp_list_pluck( array_slice( $patterns, 0, 8 ), 'label' );
+		$warnings[] = array(
+			'category' => 'converted',
+			'message'  => sprintf(
+				/* translators: 1: number of designs, 2: comma-separated names */
+				_n(
+					'Rebuilt with AI using %1$d section design from this site: %2$s.',
+					'Rebuilt with AI using %1$d section designs from this site: %2$s.',
+					count( $patterns ),
+					'ekwa'
+				),
 				count( $patterns ),
-				'ekwa'
+				implode( ', ', $labels ) . ( count( $patterns ) > 8 ? '…' : '' )
 			),
-			count( $patterns )
-		),
-	);
+		);
+	} else {
+		$warnings[] = array(
+			'category' => 'converted',
+			'message'  => __( 'Rebuilt with AI using the theme\'s blocks. This site has no saved section designs yet — save a section you like as a pattern (select it, then Create pattern) and it will be reused on the next page you build.', 'ekwa' ),
+		);
+	}
 
 	return $restored;
 }
