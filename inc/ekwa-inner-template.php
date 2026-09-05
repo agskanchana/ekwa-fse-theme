@@ -733,6 +733,148 @@ function ekwa_inner_template_vocabulary_text() {
 	return implode( "\n", $lines );
 }
 
+/**
+ * One design, written out for the model: its markup, and its CSS.
+ *
+ * A section keeps its CSS in the wrapper's `scopedCss` attribute, which means
+ * the markup a design travels as is one enormous JSON string with a stylesheet
+ * inside it — technically complete, practically unreadable. So the CSS is
+ * lifted back out and shown as CSS underneath, and the scope class it is
+ * written against is named, because re-scoping is the one thing that has to
+ * happen for a copied design to work under a new wrapper.
+ *
+ * @param array $pattern One entry from ekwa_design_vocabulary().
+ * @return string Empty when the entry has no usable markup.
+ */
+function ekwa_design_vocabulary_entry( $pattern ) {
+	$markup = isset( $pattern['markup'] ) ? trim( (string) $pattern['markup'] ) : '';
+	if ( '' === $markup ) {
+		return '';
+	}
+
+	$css   = '';
+	$scope = '';
+
+	$blocks = parse_blocks( $markup );
+	foreach ( $blocks as $i => $block ) {
+		if ( empty( $block['blockName'] ) ) {
+			continue;
+		}
+
+		if ( ! empty( $block['attrs']['scopedCss'] ) ) {
+			$css = (string) $block['attrs']['scopedCss'];
+			unset( $blocks[ $i ]['attrs']['scopedCss'] );
+			$markup = trim( serialize_blocks( $blocks ) );
+		}
+
+		$class = isset( $block['attrs']['className'] ) ? (string) $block['attrs']['className'] : '';
+		if ( preg_match( '/\b((?:eai|ekwa)-sec-[0-9a-z]+)\b/i', $class, $m ) ) {
+			$scope = $m[1];
+		}
+
+		break; // The design IS its top-level block.
+	}
+
+	$sources = array(
+		'saved-pattern' => __( 'a pattern saved on this site', 'ekwa' ),
+		'template'      => __( 'the Inner Page Template', 'ekwa' ),
+		'page'          => __( 'a page already on this site', 'ekwa' ),
+	);
+	$source  = isset( $pattern['source'], $sources[ $pattern['source'] ] ) ? $sources[ $pattern['source'] ] : '';
+
+	$out = sprintf(
+		"\n--- DESIGN %s: \"%s\"%s ---\nBLOCK MARKUP:\n%s\n",
+		isset( $pattern['key'] ) ? (string) $pattern['key'] : '?',
+		isset( $pattern['label'] ) ? (string) $pattern['label'] : '',
+		'' !== $source ? '  (from ' . $source . ')' : '',
+		$markup
+	);
+
+	if ( '' !== trim( $css ) ) {
+		$out .= sprintf(
+			"ITS CSS%s:\n%s\n",
+			'' !== $scope ? ' (every selector is scoped under .' . $scope . ' — rewrite that prefix to .EKWA_SCOPE when you reuse it)' : '',
+			trim( $css )
+		);
+	}
+
+	return $out;
+}
+
+/**
+ * The site's section designs, written into the prompt.
+ *
+ * Shared by both builders: the import design pass, and the "Build with AI
+ * (Blocks)" modal via ekwa_ai_blocks_site_designs_context(). It is what makes
+ * generated output look like it belongs here — the model is shown real sections
+ * from this site and asked to build out of them. Without it the model has only
+ * the block spec, so it invents a layout from nothing and the result is
+ * generic: correct, but plainly not this site.
+ *
+ * Framed as a vocabulary rather than a template on purpose. An earlier version
+ * of this feature forbade the model from writing any CSS and told it to copy
+ * sections only; with nothing to write it could just re-stack what it was given
+ * and pages came out as flat as they went in. So: reuse when a design fits,
+ * adapt it when it nearly fits, and design something new when nothing does.
+ *
+ * @param array $patterns From ekwa_design_vocabulary().
+ * @param int   $budget   Character cap on the markup+CSS shipped, so a site
+ *                        with twenty rich sections cannot blow up the request.
+ * @return string Empty when there are no designs.
+ */
+function ekwa_design_vocabulary_prompt( $patterns, $budget = 48000 ) {
+	if ( ! is_array( $patterns ) || ! $patterns ) {
+		return '';
+	}
+
+	$entries = array();
+	$spent   = 0;
+	$omitted = 0;
+
+	foreach ( $patterns as $pattern ) {
+		$entry = ekwa_design_vocabulary_entry( $pattern );
+		if ( '' === $entry ) {
+			continue;
+		}
+		// Always ship at least one, or a single large design would silently
+		// reduce the whole vocabulary to nothing.
+		if ( $entries && $spent + strlen( $entry ) > $budget ) {
+			$omitted++;
+			continue;
+		}
+		$entries[] = $entry;
+		$spent    += strlen( $entry );
+	}
+
+	if ( ! $entries ) {
+		return '';
+	}
+
+	$out = "\n\nTHIS SITE'S SECTION DESIGNS — build out of these.\n"
+		. "Each entry below is a REAL section from this site: its block markup, and the CSS that gives it its look. They are the reason a rebuilt page looks like it belongs here instead of looking generic.\n"
+		. "- REUSE a design whenever one fits the content you are placing. Copy its markup, keep its classNames, and swap only the copy — headings, paragraphs, list items, image URLs — for the real content.\n"
+		. "- When you reuse one, copy its CSS into your single <style> block and rewrite its scope prefix to .EKWA_SCOPE (the prefix is named on each entry). Drop the old scope class from the markup; your one top-level wrapper already carries EKWA_SCOPE.\n"
+		. "- ADAPT freely: take a two-column design to three, restyle it, borrow the card from one and the header from another. This is a vocabulary, not a cage.\n"
+		. "- DESIGN SOMETHING NEW when nothing here fits the content — following every styling rule above. Never force content into a design that is the wrong shape for it.\n"
+		. "- NEVER reuse a design's WORDING. You are borrowing its layout and its CSS, never its copy.\n"
+		. implode( '', $entries );
+
+	if ( $omitted ) {
+		$out .= sprintf(
+			/* translators: %d: number of section designs. */
+			_n(
+				"\n(%d further design on this site was left out of this list for length.)\n",
+				"\n(%d further designs on this site were left out of this list for length.)\n",
+				$omitted,
+				'ekwa'
+			),
+			$omitted
+		);
+	}
+
+	return $out;
+}
+
 /* ------------------------------------------------------------------
  * The design pass.
  * ------------------------------------------------------------------ */
@@ -913,6 +1055,11 @@ function ekwa_inner_template_design_prompt( $patterns = array() ) {
 		. "- Reproduce every [ekwa_phone] shortcode and every href EXACTLY as given. They were resolved against this site's settings and pages, and retyping them breaks that.\n"
 		. "- Where the content is thin, let the layout be simple. Do not pad it out.\n";
 
+	// The designs themselves. This used to be collected, named in the success
+	// notice, and then never sent — so the notice claimed the page had been
+	// built from the site's sections while the model had never seen one of them.
+	$prompt .= ekwa_design_vocabulary_prompt( $patterns );
+
 	return $prompt;
 }
 
@@ -1060,6 +1207,21 @@ function ekwa_inner_template_design_pass( $markup, &$warnings, $args = array() )
 			'message'  => __( 'The AI did not return usable block markup, so the page was laid out as the source had it. Try building again.', 'ekwa' ),
 		);
 		return '';
+	}
+
+	// 4. The import resolved this practice's numbers to [ekwa_phone] before the
+	//    model ever saw them, and the prompt asks for those to be reproduced
+	//    verbatim — but a model that retypes one as digits turns a dynamic
+	//    number back into a frozen one, silently. Swap them back. Run before
+	//    the restore so the protected blocks, which were already correct, are
+	//    never walked at all.
+	if ( function_exists( 'ekwa_phone_replace_in_blocks' ) ) {
+		$designed = ekwa_phone_replace_in_blocks( $designed, $phones );
+		if ( function_exists( 'ekwa_ai_blocks_phone_warnings' ) ) {
+			foreach ( ekwa_ai_blocks_phone_warnings( $phones ) as $message ) {
+				$warnings[] = array( 'category' => 'converted', 'message' => $message );
+			}
+		}
 	}
 
 	$restored = ekwa_inner_template_restore( $designed, $protected['kept'], $warnings );

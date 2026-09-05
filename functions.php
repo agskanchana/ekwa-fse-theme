@@ -505,6 +505,16 @@ require_once get_template_directory() . '/inc/ekwa-converter-icons.php';
 require_once get_template_directory() . '/inc/ekwa-import-content.php';
 
 /**
+ * Legacy import cleanup — the repair pass for content moved in with WordPress's
+ * own export/import tools, which carries the OLD theme's vocabulary across
+ * intact: shortcodes nothing registers any more ([phone], [cta]) that render as
+ * literal text in the page and in the SEO description, and Carbon Fields blocks
+ * whose content is still in post_content with nothing left to render it.
+ * Reports everything, converts only what someone mapped and pressed Convert on.
+ */
+require_once get_template_directory() . '/inc/ekwa-import-legacy.php';
+
+/**
  * Inner Page Template — the page holding one example of each section design an
  * inner page can use. Its sections are the vocabulary imported content is
  * rebuilt from, which is what makes an imported page look like it belongs here.

@@ -229,6 +229,7 @@
 		// preview, and what "Back" returns to. Filled in by the effect below.
 		var s17 = useState( '' );            var seedRendered = s17[0]; var setSeedRendered = s17[1];
 		var s18 = useState( !! props.editMode ); var previewLoading = s18[0]; var setPreviewLoading = s18[1];
+		var s19 = useState( true );          var useDesigns   = s19[0]; var setUseDesigns   = s19[1];
 
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
@@ -493,6 +494,7 @@
 					images:        payloadImages,
 					history:       historyPayload,
 					use_child_css: useChildCss,
+					use_site_designs: useDesigns,
 					model:         model,
 					context:       context,
 					mode:          editMode ? 'edit' : 'create',
@@ -745,6 +747,14 @@
 						help: __( 'Lets the AI reuse classes and CSS variables from your child theme.', 'ekwa' ),
 						checked: useChildCss,
 						onChange: setUseChildCss,
+					} ),
+					// Header/footer generation ignores this server-side — the
+					// vocabulary is page sections — so don't offer it there.
+					context === 'section' && el( ToggleControl, {
+						label: __( 'Build from this site’s existing sections', 'ekwa' ),
+						help: __( 'Shows the AI the sections already on this site — saved patterns, the Inner Page Template, and your pages — so a new section matches them. Turn off for a design unlike anything here.', 'ekwa' ),
+						checked: useDesigns,
+						onChange: setUseDesigns,
 					} )
 				)
 			);

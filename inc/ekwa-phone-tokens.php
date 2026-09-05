@@ -221,6 +221,319 @@ function ekwa_phone_replace_in_text( $text, $phone_map = null ) {
 	return null === $replaced ? $text : $replaced;
 }
 
+/**
+ * Find phone numbers in a text blob that Ekwa Settings DOES know about.
+ *
+ * The mirror of ekwa_phone_find_unconfigured(), for the places a configured
+ * number was recognised but deliberately left as literal text — inside a link,
+ * where the shortcode's own `<a href="tel:…">` could not go. Reporting those is
+ * the difference between "left alone on purpose" and "quietly went stale".
+ *
+ * @param string     $text      Text to scan.
+ * @param array|null $phone_map Map from ekwa_phone_token_map(); built when null.
+ * @return string[] Configured numbers as written, de-duplicated by digits.
+ */
+function ekwa_phone_find_configured( $text, $phone_map = null ) {
+	if ( ! is_string( $text ) || '' === $text ) {
+		return array();
+	}
+	if ( null === $phone_map ) {
+		$phone_map = ekwa_phone_token_map();
+	}
+	if ( empty( $phone_map ) || ! preg_match_all( ekwa_phone_pattern(), $text, $matches ) ) {
+		return array();
+	}
+
+	$found = array();
+	foreach ( (array) $matches[0] as $raw ) {
+		$digits = ekwa_phone_normalize_digits( $raw );
+		if ( '' === $digits || ! isset( $phone_map[ $digits ] ) || isset( $found[ $digits ] ) ) {
+			continue;
+		}
+		$found[ $digits ] = trim( $raw );
+	}
+
+	return array_values( $found );
+}
+
+/**
+ * Replace configured phone numbers in an HTML fragment, tag-safely.
+ *
+ * Two passes, the same shape as ekwa_import_rewrite_phones():
+ *
+ *  1. A whole `<a href="tel:…">…</a>` becomes the shortcode. [ekwa_phone]
+ *     renders its own `<a href="tel:…">`, so replacing the element keeps the
+ *     label and the dialled number in step; rewriting only the label would
+ *     leave a live shortcode inside a frozen href, which is worse than not
+ *     converting at all.
+ *  2. Numbers written as plain text are swapped where they sit — but never
+ *     inside a tag, because an attribute is not prose, and never inside an
+ *     `<a>` that pass 1 left behind, because the shortcode emits an anchor of
+ *     its own and an `<a>` inside an `<a>` is invalid HTML. Numbers skipped for
+ *     that reason are collected in $blocked so the caller can say so.
+ *
+ * @param string     $html      HTML fragment.
+ * @param array|null $phone_map Map from ekwa_phone_token_map(); built when null.
+ * @param array      $blocked   By reference; numbers left as text inside a link.
+ * @return string
+ */
+function ekwa_phone_replace_in_html( $html, $phone_map = null, &$blocked = array() ) {
+	if ( ! is_string( $html ) || '' === $html ) {
+		return $html;
+	}
+	if ( null === $phone_map ) {
+		$phone_map = ekwa_phone_token_map();
+	}
+	if ( empty( $phone_map ) ) {
+		return $html;
+	}
+
+	// ── Pass 1: whole tel: anchors ─────────────────────────────────
+	$out = preg_replace_callback(
+		'#<a\b[^>]*\bhref\s*=\s*(["\'])\s*tel:([^"\']*)\1[^>]*>(.*?)</a>#is',
+		static function ( $m ) use ( $phone_map ) {
+			// The href is the authoritative number; fall back to the label only
+			// when the href carries no digits at all.
+			$digits = ekwa_phone_normalize_digits( $m[2] );
+			if ( '' === $digits ) {
+				$digits = ekwa_phone_normalize_digits( wp_strip_all_tags( $m[3] ) );
+			}
+			return ( '' !== $digits && isset( $phone_map[ $digits ] ) ) ? $phone_map[ $digits ] : $m[0];
+		},
+		$html
+	);
+	if ( null !== $out ) {
+		$html = $out;
+	}
+
+	// ── Pass 2: numbers written as plain text ──────────────────────
+	$parts = preg_split( '/(<[^>]*>)/s', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+	if ( ! is_array( $parts ) ) {
+		return $html;
+	}
+
+	$link_depth = 0;
+
+	foreach ( $parts as $i => $part ) {
+		// With one capture group, the odd indices are the tags themselves.
+		if ( 1 === $i % 2 ) {
+			if ( preg_match( '/^<a[\s>]/i', $part ) ) {
+				$link_depth++;
+			} elseif ( preg_match( '#^</a\s*>$#i', $part ) ) {
+				$link_depth = max( 0, $link_depth - 1 );
+			}
+			continue;
+		}
+
+		if ( '' === trim( $part ) ) {
+			continue;
+		}
+
+		if ( $link_depth > 0 ) {
+			foreach ( ekwa_phone_find_configured( $part, $phone_map ) as $raw ) {
+				$blocked[] = $raw;
+			}
+			continue;
+		}
+
+		$parts[ $i ] = ekwa_phone_replace_in_text( $part, $phone_map );
+	}
+
+	return implode( '', $parts );
+}
+
+/* ------------------------------------------------------------------
+ * Generated block markup.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Swap configured phone numbers for [ekwa_phone] throughout block markup.
+ *
+ * For AI-generated content. A number the model types into a paragraph is frozen
+ * the moment it is inserted: it misses the next change in Ekwa Settings →
+ * Locations and it misses the ad-tracking swap [ekwa_phone] performs at render
+ * time. This is the same swap the paste handler and the importer already do,
+ * applied to generated output.
+ *
+ * ONLY FOR CONTENT THAT RENDERS THROUGH `the_content`. That is where WordPress
+ * runs shortcodes — do_blocks() at priority 9, do_shortcode() at 11. A block in
+ * an FSE template part gets do_blocks() and nothing else, so a shortcode there
+ * would print as literal text. Callers must not run this over header or footer
+ * markup.
+ *
+ * Left alone deliberately:
+ *  - ekwa/phone and ekwa/phone-dropdown, which already render the number from
+ *    Settings — the user's "if its the phone block its okey";
+ *  - anything inside a link (ekwa/link, ekwa/button, an ekwa/div with
+ *    tagName "a", or an `<a>` in saved HTML), because the shortcode emits its
+ *    own anchor. Those numbers are reported instead, so a hard-coded "Call
+ *    (555) 123-4567" button is something the author is told about rather than
+ *    something that silently goes stale.
+ *
+ * @param string $markup Block-comment markup.
+ * @param array  $report By reference: converted (int), blocked (string[]).
+ * @return string Markup, unchanged byte-for-byte when nothing was swapped.
+ */
+function ekwa_phone_replace_in_blocks( $markup, &$report = array() ) {
+	$report = array( 'converted' => 0, 'blocked' => array() );
+
+	if ( ! is_string( $markup ) || '' === trim( $markup ) ) {
+		return $markup;
+	}
+
+	$phone_map = ekwa_phone_token_map();
+	if ( empty( $phone_map ) ) {
+		return $markup;
+	}
+
+	$changed   = false;
+	$converted = 0;
+	$blocked   = array();
+
+	$walk = static function ( $blocks, $in_link ) use ( &$walk, $phone_map, &$changed, &$converted, &$blocked ) {
+		foreach ( $blocks as $i => $block ) {
+			$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+
+			// Already dynamic: its number comes from Settings at render time.
+			if ( 'ekwa/phone' === $name || 'ekwa/phone-dropdown' === $name ) {
+				continue;
+			}
+
+			// An anchor — here, or anywhere above us in the tree.
+			$here = $in_link
+				|| in_array( $name, array( 'ekwa/link', 'ekwa/button' ), true )
+				|| ( 'ekwa/div' === $name && 'a' === strtolower( (string) ( $block['attrs']['tagName'] ?? '' ) ) );
+
+			// The one text attribute worth rewriting: ekwa/text renders a bare
+			// inline element, so a shortcode inside it is safe. Every other
+			// block that stores its text as an attribute is an anchor.
+			if ( ! $here && 'ekwa/text' === $name && isset( $block['attrs']['text'] ) && is_string( $block['attrs']['text'] ) ) {
+				$swapped = ekwa_phone_replace_in_text( $block['attrs']['text'], $phone_map );
+				if ( $swapped !== $block['attrs']['text'] ) {
+					$converted             += substr_count( $swapped, '[ekwa_phone' ) - substr_count( $block['attrs']['text'], '[ekwa_phone' );
+					$block['attrs']['text'] = $swapped;
+					$changed                = true;
+				}
+			} elseif ( $here ) {
+				foreach ( array( 'text', 'url', 'href' ) as $key ) {
+					if ( isset( $block['attrs'][ $key ] ) && is_string( $block['attrs'][ $key ] ) ) {
+						foreach ( ekwa_phone_find_configured( $block['attrs'][ $key ], $phone_map ) as $raw ) {
+							$blocked[] = $raw;
+						}
+					}
+				}
+			}
+
+			// Static blocks render their saved HTML, and serialize_blocks()
+			// rebuilds from innerContent — so that is the copy that has to
+			// change. Inner-block positions are null and are skipped.
+			if ( ! empty( $block['innerContent'] ) && is_array( $block['innerContent'] ) ) {
+				foreach ( $block['innerContent'] as $c => $chunk ) {
+					if ( ! is_string( $chunk ) || '' === trim( $chunk ) ) {
+						continue;
+					}
+					if ( $here ) {
+						foreach ( ekwa_phone_find_configured( $chunk, $phone_map ) as $raw ) {
+							$blocked[] = $raw;
+						}
+						continue;
+					}
+					$swapped = ekwa_phone_replace_in_html( $chunk, $phone_map, $blocked );
+					if ( $swapped !== $chunk ) {
+						$converted                  += substr_count( $swapped, '[ekwa_phone' ) - substr_count( $chunk, '[ekwa_phone' );
+						$block['innerContent'][ $c ] = $swapped;
+						$changed                     = true;
+					}
+				}
+				$block['innerHTML'] = implode( '', array_filter( $block['innerContent'], 'is_string' ) );
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				$block['innerBlocks'] = $walk( $block['innerBlocks'], $here );
+			}
+
+			$blocks[ $i ] = $block;
+		}
+
+		return $blocks;
+	};
+
+	$blocks = $walk( parse_blocks( $markup ), false );
+
+	// De-duplicate the report by digits — the same number in a link on three
+	// cards is one thing to tell the author about, not three.
+	$unique = array();
+	foreach ( $blocked as $raw ) {
+		$digits = ekwa_phone_normalize_digits( $raw );
+		if ( '' !== $digits && ! isset( $unique[ $digits ] ) ) {
+			$unique[ $digits ] = $raw;
+		}
+	}
+
+	$report['converted'] = max( 0, $converted );
+	$report['blocked']   = array_values( $unique );
+
+	// Nothing swapped — hand back the original bytes rather than a re-serialized
+	// copy of them.
+	return $changed ? serialize_blocks( $blocks ) : $markup;
+}
+
+/**
+ * The site's phone numbers as AI-prompt context.
+ *
+ * Without this the model has no way to know that a number belongs to this
+ * practice, so it writes whatever number it was given as literal text. Naming
+ * them alongside the tag that renders them lets the generator get it right on
+ * the way out, instead of relying on ekwa_phone_replace_in_blocks() to repair
+ * it afterwards.
+ *
+ * @return string Prompt fragment, or '' when no location has a number.
+ */
+function ekwa_phone_ai_context() {
+	$locations = get_option( 'ekwa_locations', array() );
+	if ( ! is_array( $locations ) || ! $locations ) {
+		return '';
+	}
+
+	$lines = array();
+
+	foreach ( $locations as $i => $loc ) {
+		if ( ! is_array( $loc ) ) {
+			continue;
+		}
+		$loc_num = $i + 1;
+		$where   = trim( (string) ( $loc['city'] ?? '' ) );
+		$where   = '' !== $where ? ' (' . $where . ')' : '';
+
+		foreach ( array( 'new' => 'phone_new', 'existing' => 'phone_existing' ) as $type => $key ) {
+			$number = trim( (string) ( $loc[ $key ] ?? '' ) );
+			if ( '' === $number || strlen( ekwa_phone_normalize_digits( $number ) ) < 7 ) {
+				continue;
+			}
+			$lines[] = sprintf(
+				'%s — location %d%s, %s patients → %s',
+				$number,
+				$loc_num,
+				$where,
+				$type,
+				ekwa_phone_shortcode_tag( $type, $loc_num )
+			);
+		}
+	}
+
+	if ( ! $lines ) {
+		return '';
+	}
+
+	return "\n\nSITE PHONE NUMBERS — these belong to the practice and are stored in Ekwa Settings → Locations:\n"
+		. implode( "\n", $lines ) . "\n"
+		. "NEVER type one of these numbers as literal text. A typed number is frozen: it does not follow a change in Settings and it skips the call-tracking swap.\n"
+		. "- In prose (a paragraph, a heading, a list item), write the SHORTCODE shown above in place of the number — e.g. \"Call [ekwa_phone] to book\". It renders the number as a tel: link.\n"
+		. "- For a number on its own — a header bar, a CTA panel, a footer column — use the ekwa/phone block instead.\n"
+		. "- NEVER put the shortcode inside a link or a button: it renders its own <a href=\"tel:…\">, and an <a> inside an <a> is invalid. For a call button use ekwa/phone (it is already a link) rather than ekwa/button with a tel: URL.\n"
+		. "- A number that is NOT in the list above belongs to someone else (a referral office, a lab, a fax) — leave it as plain text.\n";
+}
+
 /* ------------------------------------------------------------------
  * Token  ->  number (for places that cannot run a shortcode).
  * ------------------------------------------------------------------ */

@@ -1060,6 +1060,7 @@ function ekwa_settings_tabs() {
 		'performance'   => __( 'Performance', 'ekwa' ),
 		'ai'            => __( 'AI', 'ekwa' ),
 		'bulk-pages'    => __( 'Bulk Page Creator', 'ekwa' ),
+		'legacy-import' => __( 'Legacy Import', 'ekwa' ),
 	);
 
 	// Help & Ask AI is its own page now (Appearance → Help & Ask AI), so it is
@@ -2624,6 +2625,15 @@ function ekwa_render_settings_page() {
 				</div>
 			</div><!-- /bulk-pages -->
 		</form>
+
+		<?php
+		// ========== LEGACY IMPORT TAB (separate form — runs an action, not a save) ==========
+		// Rendered from inc/ekwa-import-legacy.php so the scan/preview/convert
+		// markup lives next to the code that produces it.
+		if ( function_exists( 'ekwa_legacy_render_tab' ) ) {
+			ekwa_legacy_render_tab( $active_tab );
+		}
+		?>
 
 		<script>
 			(function () {

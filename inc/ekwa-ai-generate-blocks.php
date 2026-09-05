@@ -42,6 +42,10 @@ function ekwa_ai_generate_blocks_register_routes() {
 			'images'        => array( 'required' => false, 'type' => 'array',   'default' => array() ),
 			'history'       => array( 'required' => false, 'type' => 'array',   'default' => array() ),
 			'use_child_css' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
+			// Show the model the sections this site already has, so a new one
+			// looks like it belongs here. Section context only — see
+			// ekwa_ai_blocks_site_designs_context().
+			'use_site_designs' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
 			'temperature'   => array( 'required' => false, 'type' => 'number',  'default' => 0.3 ),
 			'model'         => array( 'required' => false, 'type' => 'string',  'default' => '' ),
 			'context'       => array(
@@ -131,6 +135,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$images        = (array) $request->get_param( 'images' );
 	$history       = (array) $request->get_param( 'history' );
 	$use_child_css = (bool) $request->get_param( 'use_child_css' );
+	$use_designs   = (bool) $request->get_param( 'use_site_designs' );
 	$temperature   = (float) $request->get_param( 'temperature' );
 	$model         = (string) $request->get_param( 'model' );
 	$context       = (string) $request->get_param( 'context' );
@@ -176,6 +181,12 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $mode );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
+	}
+	// Appended here rather than inside the system prompt so the import design
+	// pass, which calls that function directly and adds the vocabulary itself,
+	// cannot end up sending it twice.
+	if ( $use_designs && 'section' === $context ) {
+		$system_prompt .= ekwa_ai_blocks_site_designs_context();
 	}
 
 	$result = ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model );
@@ -256,6 +267,16 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		$warnings     = array_merge( $warnings, $embed['warnings'] );
 	}
 
+	// A phone number the model typed into a paragraph is frozen — it misses the
+	// next change in Locations and the call-tracking swap. Turn the ones this
+	// practice owns into [ekwa_phone] before the markup is handed to the editor.
+	// Section context only: a header/footer is a template part, which never runs
+	// do_shortcode(). @see ekwa_phone_replace_in_blocks().
+	if ( 'section' === $context && function_exists( 'ekwa_phone_replace_in_blocks' ) ) {
+		$block_markup = ekwa_phone_replace_in_blocks( $block_markup, $phones );
+		$warnings     = array_merge( $warnings, ekwa_ai_blocks_phone_warnings( $phones ) );
+	}
+
 	// Validate that every referenced block is registered, and (best-effort)
 	// render the markup server-side for an accurate preview.
 	$warnings      = array_merge( $warnings, ekwa_ai_generate_blocks_validate( $block_markup ) );
@@ -319,6 +340,69 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
 	// fall back to manual CSS handling via the panel.
 	$warnings[] = __( 'Could not auto-embed the section CSS (the output is not wrapped in a single ekwa/div). Paste the CSS panel into your stylesheet manually.', 'ekwa' );
 	return array( 'markup' => $markup, 'warnings' => $warnings );
+}
+
+/**
+ * The sections this site already has, as prompt context for a new one.
+ *
+ * The same vocabulary the import design pass uses — saved patterns, the Inner
+ * Page Template, and sections already on the site's pages — so a section built
+ * in the modal comes out looking like the rest of the site instead of looking
+ * like a generic block theme.
+ *
+ * Deliberately on a tighter budget than the import pass. That one runs once per
+ * page and can afford the whole library; this one runs on every turn of an
+ * interactive conversation, and the cost is paid every time.
+ *
+ * @param int $budget Character cap on the markup+CSS shipped.
+ * @return string Prompt fragment, or '' when the site has no designs yet.
+ */
+function ekwa_ai_blocks_site_designs_context( $budget = 24000 ) {
+	if ( ! function_exists( 'ekwa_design_vocabulary' ) || ! function_exists( 'ekwa_design_vocabulary_prompt' ) ) {
+		return '';
+	}
+
+	return ekwa_design_vocabulary_prompt( ekwa_design_vocabulary(), $budget );
+}
+
+/**
+ * Turn the phone-swap report into messages for the modal's warnings list.
+ *
+ * Both halves are worth saying out loud. The swap is a change to what the model
+ * returned, so it should not happen invisibly; and a number left hard-coded
+ * inside a link is the case the swap deliberately cannot fix, which makes it
+ * the one the author actually has to act on.
+ *
+ * @param array $report From ekwa_phone_replace_in_blocks().
+ * @return array<int,string>
+ */
+function ekwa_ai_blocks_phone_warnings( $report ) {
+	$warnings = array();
+
+	$converted = isset( $report['converted'] ) ? (int) $report['converted'] : 0;
+	if ( $converted > 0 ) {
+		$warnings[] = sprintf(
+			/* translators: %d: number of phone numbers. */
+			_n(
+				'Replaced %d phone number with the [ekwa_phone] shortcode so it follows Ekwa Settings → Locations.',
+				'Replaced %d phone numbers with the [ekwa_phone] shortcode so they follow Ekwa Settings → Locations.',
+				$converted,
+				'ekwa'
+			),
+			$converted
+		);
+	}
+
+	$blocked = isset( $report['blocked'] ) && is_array( $report['blocked'] ) ? $report['blocked'] : array();
+	if ( $blocked ) {
+		$warnings[] = sprintf(
+			/* translators: %s: comma-separated list of phone numbers. */
+			__( 'Left as typed because it sits inside a link or button, where the shortcode cannot go: %s. Use the Phone block there instead, so the number updates from Settings.', 'ekwa' ),
+			implode( ', ', $blocked )
+		);
+	}
+
+	return $warnings;
 }
 
 /**
@@ -417,6 +501,15 @@ PROMPT;
 
 	$prompt .= ekwa_ai_build_block_spec_section( $context );
 
+	// Section context only. The shortcode advice inside it is true for page
+	// content, which renders through the_content() and therefore gets
+	// do_shortcode(); a header or footer is an FSE template part, which does
+	// not, so a shortcode there would print as literal text. Those two contexts
+	// already carry their own "never type a phone number, use the block" rule.
+	if ( 'section' === $context && function_exists( 'ekwa_phone_ai_context' ) ) {
+		$prompt .= ekwa_phone_ai_context();
+	}
+
 	if ( function_exists( 'ekwa_ai_project_memory_block' ) ) {
 		$prompt .= ekwa_ai_project_memory_block();
 	}
@@ -486,7 +579,10 @@ function ekwa_ai_generate_blocks_render_preview( $markup ) {
 		foreach ( $blocks as $block ) {
 			$html .= render_block( $block );
 		}
-		return $html;
+		// Mirror the_content()'s order — do_blocks() then do_shortcode(). Block
+		// rendering does not run shortcodes, so without this a [ekwa_phone] in a
+		// paragraph previews as its own literal text and reads as a bug.
+		return do_shortcode( $html );
 	} catch ( \Throwable $e ) {
 		return '';
 	}
