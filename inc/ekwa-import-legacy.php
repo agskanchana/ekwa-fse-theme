@@ -865,6 +865,7 @@ function ekwa_legacy_default_options() {
 		'do_shortcodes' => true,
 		'do_faq'        => true,
 		'faq_mode'      => 'container',
+		'post_types'    => null, // null = every post type the scan is allowed.
 	);
 }
 
@@ -1040,7 +1041,7 @@ function ekwa_legacy_apply_plan( $plan ) {
  * ================================================================== */
 
 /**
- * Post types the scan looks at.
+ * Post types the scan is ALLOWED to look at — the menu, not the choice.
  *
  * @return string[]
  */
@@ -1057,6 +1058,43 @@ function ekwa_legacy_post_types() {
 }
 
 /**
+ * Narrow a requested set of post types down to ones that are actually allowed.
+ *
+ * A request for nothing — or for nothing valid — falls back to everything,
+ * because a scan of no post types would report a clean site rather than an
+ * empty question, and "no legacy content found" is the one answer that must
+ * never be produced by accident.
+ *
+ * @param array|null $requested Post type names, or null for all.
+ * @return string[]
+ */
+function ekwa_legacy_selected_post_types( $requested = null ) {
+	$allowed = ekwa_legacy_post_types();
+
+	if ( null === $requested || ! is_array( $requested ) ) {
+		return $allowed;
+	}
+
+	$chosen = array_values( array_intersect( $allowed, array_map( 'sanitize_key', $requested ) ) );
+
+	return $chosen ? $chosen : $allowed;
+}
+
+/**
+ * A post type's singular label, for display.
+ *
+ * @param string $type Post type name.
+ * @return string
+ */
+function ekwa_legacy_post_type_label( $type ) {
+	$object = get_post_type_object( $type );
+	if ( $object && isset( $object->labels->singular_name ) && '' !== $object->labels->singular_name ) {
+		return $object->labels->singular_name;
+	}
+	return $type;
+}
+
+/**
  * Post statuses the scan looks at.
  *
  * @return string[]
@@ -1066,18 +1104,83 @@ function ekwa_legacy_post_statuses() {
 }
 
 /**
+ * A readable snippet of the text around a match.
+ *
+ * A tag name alone does not say whether something is a real shortcode. `[open]`
+ * could be a legacy tag the old theme registered, or it could be an author
+ * writing "[open until 6pm]" in a sentence — and the two want opposite
+ * treatment. Showing the words either side settles it without opening the post.
+ *
+ * @param string $text   Field the match was found in.
+ * @param int    $offset Byte offset of the match.
+ * @param int    $length Byte length of the match.
+ * @param int    $pad    Characters of context on each side.
+ * @return string
+ */
+function ekwa_legacy_context_snippet( $text, $offset, $length, $pad = 80 ) {
+	$start = max( 0, (int) $offset - $pad );
+	$slice = substr( (string) $text, $start, ( (int) $offset - $start ) + (int) $length + $pad );
+
+	// Block delimiters are noise in a one-line snippet; the prose is the point.
+	$slice = preg_replace( '/<!--.*?-->/s', ' ', $slice );
+	$slice = wp_strip_all_tags( $slice );
+	$slice = preg_replace( '/\s+/u', ' ', $slice );
+
+	// Slicing on a byte offset can cut a multibyte character in half, and an
+	// invalid UTF-8 sequence renders as nothing at all.
+	$slice = wp_check_invalid_utf8( (string) $slice, true );
+
+	return trim( (string) $slice );
+}
+
+/**
+ * Record that one post carried whatever the caller just found.
+ *
+ * Keeps the unique-post count exact while storing only the first few hundred
+ * as a browsable list. A tag used on eight thousand posts is still one line in
+ * the report; parking eight thousand titles in a transient to fill a list
+ * nobody scrolls to the end of is how a scan turns into a memory problem.
+ *
+ * @param array  $entry   By reference: the shortcode / block / host entry.
+ * @param int    $post_id Post ID.
+ * @param string $title   Post title.
+ * @param string $type    Post type name.
+ */
+function ekwa_legacy_note_post( &$entry, $post_id, $title, $type ) {
+	if ( isset( $entry['seen'][ $post_id ] ) ) {
+		return;
+	}
+
+	$entry['seen'][ $post_id ] = true;
+	$entry['post_count']       = ( isset( $entry['post_count'] ) ? $entry['post_count'] : 0 ) + 1;
+
+	if ( ! isset( $entry['post_list'] ) ) {
+		$entry['post_list'] = array();
+	}
+
+	if ( count( $entry['post_list'] ) < 200 ) {
+		$entry['post_list'][] = array(
+			'id'    => (int) $post_id,
+			'title' => (string) $title,
+			'type'  => (string) $type,
+		);
+	}
+}
+
+/**
  * Walk the site and report every legacy thing found.
  *
  * Reads in batches and keeps only counts and short samples, so the peak memory
  * is one batch of posts rather than the whole library.
  *
- * @param int $limit Maximum posts to read.
+ * @param int        $limit Maximum posts to read.
+ * @param array|null $types Post types to cover; null for every allowed one.
  * @return array Report.
  */
-function ekwa_legacy_scan( $limit = 20000 ) {
+function ekwa_legacy_scan( $limit = 20000, $types = null ) {
 	global $wpdb;
 
-	$types    = ekwa_legacy_post_types();
+	$types    = ekwa_legacy_selected_post_types( $types );
 	$statuses = ekwa_legacy_post_statuses();
 	$map      = ekwa_legacy_shortcode_map();
 	$seo_keys = ekwa_legacy_seo_meta_keys();
@@ -1090,6 +1193,8 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 		'carbon'     => array(),
 		'links'      => array(),
 		'posts'      => array(),
+		'post_types' => $types,
+		'by_type'    => array(),
 		'truncated'  => false,
 		'time'       => current_time( 'mysql' ),
 	);
@@ -1108,7 +1213,7 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT ID, post_title, post_content, post_excerpt
+				"SELECT ID, post_title, post_type, post_content, post_excerpt
 				 FROM {$wpdb->posts}
 				 WHERE post_type IN ({$type_in})
 				   AND post_status IN ({$status_in})
@@ -1150,8 +1255,12 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 
 		foreach ( $rows as $row ) {
 			$report['scanned']++;
-			$post_id = (int) $row->ID;
-			$touched = false;
+			$post_id   = (int) $row->ID;
+			$post_type = (string) $row->post_type;
+			$title     = (string) $row->post_title;
+			$touched   = false;
+
+			$report['by_type'][ $post_type ] = ( isset( $report['by_type'][ $post_type ] ) ? $report['by_type'][ $post_type ] : 0 ) + 1;
 
 			$fields = array( 'post_content' => $row->post_content );
 			if ( '' !== (string) $row->post_excerpt ) {
@@ -1173,15 +1282,17 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 
 					if ( ! isset( $report['shortcodes'][ $tag ] ) ) {
 						$report['shortcodes'][ $tag ] = array(
-							'count'  => 0,
-							'posts'  => array(),
-							'fields' => array(),
-							'sample' => $hit['match'],
+							'count'      => 0,
+							'post_count' => 0,
+							'post_list'  => array(),
+							'fields'     => array(),
+							'sample'     => $hit['match'],
+							'context'    => ekwa_legacy_context_snippet( $value, $hit['offset'], strlen( $hit['match'] ) ),
 						);
 					}
 
 					$report['shortcodes'][ $tag ]['count']++;
-					$report['shortcodes'][ $tag ]['posts'][ $post_id ]  = true;
+					ekwa_legacy_note_post( $report['shortcodes'][ $tag ], $post_id, $title, $post_type );
 					$report['shortcodes'][ $tag ]['fields'][ $field ]   = isset( $report['shortcodes'][ $tag ]['fields'][ $field ] )
 						? $report['shortcodes'][ $tag ]['fields'][ $field ] + 1
 						: 1;
@@ -1198,15 +1309,16 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 
 				if ( ! isset( $report['carbon'][ $name ] ) ) {
 					$report['carbon'][ $name ] = array(
-						'blocks' => 0,
-						'rows'   => 0,
-						'posts'  => array(),
+						'blocks'     => 0,
+						'rows'       => 0,
+						'post_count' => 0,
+						'post_list'  => array(),
 					);
 				}
 
 				$report['carbon'][ $name ]['blocks']++;
 				$report['carbon'][ $name ]['rows'] += count( $block['rows'] );
-				$report['carbon'][ $name ]['posts'][ $post_id ] = true;
+				ekwa_legacy_note_post( $report['carbon'][ $name ], $post_id, $title, $post_type );
 
 				if ( $block['rows'] ) {
 					$touched = true;
@@ -1216,13 +1328,13 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 			// ── Off-site links ────────────────────────────────────
 			foreach ( ekwa_legacy_find_links( ekwa_legacy_scannable_html( $row->post_content ), $self ) as $host => $paths ) {
 				if ( ! isset( $report['links'][ $host ] ) ) {
-					$report['links'][ $host ] = array( 'count' => 0, 'paths' => array(), 'posts' => array() );
+					$report['links'][ $host ] = array( 'count' => 0, 'paths' => array(), 'post_count' => 0, 'post_list' => array() );
 				}
 				foreach ( $paths as $path => $n ) {
 					$report['links'][ $host ]['count']          += $n;
 					$report['links'][ $host ]['paths'][ $path ]  = ( isset( $report['links'][ $host ]['paths'][ $path ] ) ? $report['links'][ $host ]['paths'][ $path ] : 0 ) + $n;
 				}
-				$report['links'][ $host ]['posts'][ $post_id ] = true;
+				ekwa_legacy_note_post( $report['links'][ $host ], $post_id, $title, $post_type );
 			}
 
 			if ( $touched ) {
@@ -1241,7 +1353,9 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 
 	// Classify each tag and sort the report so the biggest problems are first.
 	foreach ( $report['shortcodes'] as $tag => &$entry ) {
-		$entry['posts'] = array_keys( $entry['posts'] );
+		// The de-duplication map has done its job; it is per-post bookkeeping,
+		// not something the report should carry into a transient.
+		unset( $entry['seen'] );
 
 		if ( isset( $map[ $tag ] ) && '' !== $map[ $tag ] ) {
 			$entry['status']    = 'mapped';
@@ -1257,19 +1371,28 @@ function ekwa_legacy_scan( $limit = 20000 ) {
 	unset( $entry );
 
 	foreach ( $report['carbon'] as &$carbon ) {
-		$carbon['posts'] = array_keys( $carbon['posts'] );
+		unset( $carbon['seen'] );
 	}
 	unset( $carbon );
 
 	foreach ( $report['links'] as &$link ) {
-		$link['posts'] = array_keys( $link['posts'] );
+		unset( $link['seen'] );
 		arsort( $link['paths'] );
 	}
 	unset( $link );
 
+	// A tag needing a decision outranks one that is already handled, however
+	// often the handled one appears — the report is a to-do list first and an
+	// inventory second, and the thing you have to act on belongs at the top.
 	uasort(
 		$report['shortcodes'],
 		static function ( $a, $b ) {
+			$rank = array( 'unmapped' => 0, 'mapped' => 1, 'registered' => 2 );
+			$a_r  = isset( $rank[ $a['status'] ] ) ? $rank[ $a['status'] ] : 3;
+			$b_r  = isset( $rank[ $b['status'] ] ) ? $rank[ $b['status'] ] : 3;
+			if ( $a_r !== $b_r ) {
+				return $a_r - $b_r;
+			}
 			return $b['count'] - $a['count'];
 		}
 	);
@@ -1307,10 +1430,18 @@ function ekwa_legacy_transient( $what ) {
 function ekwa_legacy_options_from_post() {
 	$faq_mode = empty( $_POST['ekwa_legacy_faq_core'] ) ? 'container' : 'heading';
 
+	// An unchecked checkbox is simply absent from the POST, so "no types" and
+	// "every box cleared" arrive identically; both resolve to everything rather
+	// than to a scan that finds nothing and reports a clean site.
+	$types = ( isset( $_POST['ekwa_legacy_types'] ) && is_array( $_POST['ekwa_legacy_types'] ) )
+		? ekwa_legacy_selected_post_types( wp_unslash( $_POST['ekwa_legacy_types'] ) )
+		: ekwa_legacy_selected_post_types();
+
 	return array(
 		'do_shortcodes' => ! empty( $_POST['ekwa_legacy_do_shortcodes'] ),
 		'do_faq'        => ! empty( $_POST['ekwa_legacy_do_faq'] ),
 		'faq_mode'      => $faq_mode,
+		'post_types'    => $types,
 	);
 }
 
@@ -1354,11 +1485,11 @@ function ekwa_legacy_handle_actions() {
 	delete_transient( ekwa_legacy_transient( 'result' ) );
 
 	if ( 'scan' === $action || 'save_map' === $action ) {
-		set_transient( ekwa_legacy_transient( 'scan' ), ekwa_legacy_scan(), HOUR_IN_SECONDS );
+		set_transient( ekwa_legacy_transient( 'scan' ), ekwa_legacy_scan( 20000, $options['post_types'] ), HOUR_IN_SECONDS );
 	}
 
 	if ( 'preview' === $action || 'convert' === $action ) {
-		$scan = ekwa_legacy_scan();
+		$scan = ekwa_legacy_scan( 20000, $options['post_types'] );
 		set_transient( ekwa_legacy_transient( 'scan' ), $scan, HOUR_IN_SECONDS );
 
 		$targets = array_slice( $scan['posts'], 0, 500 );
@@ -1441,6 +1572,97 @@ function ekwa_legacy_excerpt( $text, $limit = 300 ) {
 }
 
 /**
+ * Render the "which posts" disclosure for one report entry.
+ *
+ * A count on its own tells you a problem exists but not where, which leaves
+ * hunting through the editor as the only way to judge whether an unmapped tag
+ * matters. This names one straight away — in the summary, so it is readable
+ * without clicking — and opens to the full list.
+ *
+ * @param array  $entry   A shortcode / carbon / link entry from the scan.
+ * @param int    $colspan Columns to span in the table it sits under.
+ * @param string $context Optional snippet of the first occurrence in context.
+ */
+function ekwa_legacy_render_post_row( $entry, $colspan, $context = '' ) {
+	$list  = ( isset( $entry['post_list'] ) && is_array( $entry['post_list'] ) ) ? $entry['post_list'] : array();
+	$count = isset( $entry['post_count'] ) ? (int) $entry['post_count'] : count( $list );
+
+	if ( ! $list ) {
+		return;
+	}
+
+	$first       = $list[0];
+	$first_title = '' !== trim( (string) $first['title'] ) ? $first['title'] : __( '(no title)', 'ekwa' );
+	?>
+	<tr>
+		<td colspan="<?php echo (int) $colspan; ?>" style="background:#fbfbfb;border-top:0;padding-top:0;">
+			<details>
+				<summary style="cursor:pointer;">
+					<span class="description">
+						<?php
+						printf(
+							/* translators: 1: post title, 2: post type label */
+							esc_html__( 'e.g. %1$s (%2$s)', 'ekwa' ),
+							esc_html( ekwa_legacy_excerpt( $first_title, 70 ) ),
+							esc_html( ekwa_legacy_post_type_label( $first['type'] ) )
+						);
+						if ( $count > 1 ) {
+							echo ' — ';
+							printf(
+								/* translators: %d: number of further posts */
+								esc_html( _n( 'and %d more', 'and %d more', $count - 1, 'ekwa' ) ),
+								(int) ( $count - 1 )
+							);
+						}
+						?>
+					</span>
+				</summary>
+				<?php if ( '' !== (string) $context ) : ?>
+					<p style="margin:10px 0 4px;"><strong><?php esc_html_e( 'First occurrence, in context:', 'ekwa' ); ?></strong></p>
+					<p style="margin:0;padding:8px 10px;background:#fff;border:1px solid #dcdcde;font-family:Consolas,Monaco,monospace;font-size:11px;line-height:1.6;">
+						…<?php echo esc_html( $context ); ?>…
+					</p>
+				<?php endif; ?>
+				<ul style="margin:10px 0 8px 18px;list-style:disc;columns:2;column-gap:32px;">
+					<?php foreach ( $list as $item ) : ?>
+						<?php
+						$title = '' !== trim( (string) $item['title'] ) ? $item['title'] : __( '(no title)', 'ekwa' );
+						$edit  = (string) get_edit_post_link( $item['id'] );
+						// Decide on the ESCAPED url, not the raw one: esc_url()
+						// rejects a malformed link outright, and a non-empty raw
+						// value that escapes to '' would render <a href="">, which
+						// quietly re-links the page you are already on.
+						$linked = ( '' !== esc_url( $edit ) );
+						?>
+						<li style="break-inside:avoid;">
+							<?php if ( $linked ) : ?>
+								<a href="<?php echo esc_url( $edit ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $title ); ?></a>
+							<?php else : ?>
+								<?php echo esc_html( $title ); ?>
+							<?php endif; ?>
+							<span class="description">(<?php echo esc_html( ekwa_legacy_post_type_label( $item['type'] ) ); ?>)</span>
+						</li>
+					<?php endforeach; ?>
+				</ul>
+				<?php if ( $count > count( $list ) ) : ?>
+					<p class="description" style="margin:0 0 8px;">
+						<?php
+						printf(
+							/* translators: 1: number shown, 2: total number */
+							esc_html__( 'Showing the first %1$d of %2$d.', 'ekwa' ),
+							count( $list ),
+							(int) $count
+						);
+						?>
+					</p>
+				<?php endif; ?>
+			</details>
+		</td>
+	</tr>
+	<?php
+}
+
+/**
  * Render the Legacy Import tab.
  *
  * Rendered from ekwa_render_settings_page() after the Bulk Page Creator form,
@@ -1504,6 +1726,45 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 					</div>
 				<?php endif; ?>
 
+				<table class="form-table" style="margin-top:0;">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Scan which content', 'ekwa' ); ?></th>
+						<td>
+							<?php
+							$available = ekwa_legacy_post_types();
+							$selected  = ( is_array( $scan ) && ! empty( $scan['post_types'] ) )
+								? (array) $scan['post_types']
+								: $available;
+							?>
+							<?php foreach ( $available as $type ) : ?>
+								<?php
+								// How many exist, across the statuses the scan reads —
+								// so an empty post type is visibly empty rather than a
+								// box someone ticks and then wonders about.
+								$counts = wp_count_posts( $type );
+								$total  = 0;
+								foreach ( ekwa_legacy_post_statuses() as $status ) {
+									$total += isset( $counts->$status ) ? (int) $counts->$status : 0;
+								}
+								?>
+								<label style="display:inline-block;margin:0 18px 6px 0;">
+									<input
+										type="checkbox"
+										name="ekwa_legacy_types[]"
+										value="<?php echo esc_attr( $type ); ?>"
+										<?php checked( in_array( $type, $selected, true ) ); ?>
+									/>
+									<?php echo esc_html( ekwa_legacy_post_type_label( $type ) ); ?>
+									<span class="description">(<?php echo (int) $total; ?>)</span>
+								</label>
+							<?php endforeach; ?>
+							<p class="description" style="max-width:52em;">
+								<?php esc_html_e( 'Applies to the scan, the preview and the conversion alike — whatever is ticked here is the only content any of them touch. Clearing every box scans everything rather than nothing.', 'ekwa' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+
 				<p class="submit" style="margin:0 0 8px;">
 					<button type="submit" name="ekwa_legacy_action" value="scan" class="button button-secondary">
 						<?php esc_html_e( 'Scan content', 'ekwa' ); ?>
@@ -1511,10 +1772,14 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 					<?php if ( is_array( $scan ) ) : ?>
 						<span class="description" style="margin-left:10px;">
 							<?php
+							$by_type = array();
+							foreach ( ( isset( $scan['by_type'] ) ? (array) $scan['by_type'] : array() ) as $type => $n ) {
+								$by_type[] = sprintf( '%d %s', (int) $n, ekwa_legacy_post_type_label( $type ) );
+							}
 							printf(
-								/* translators: 1: number of posts, 2: date and time */
-								esc_html__( '%1$d posts scanned at %2$s.', 'ekwa' ),
-								(int) $scan['scanned'],
+								/* translators: 1: breakdown such as "38 Post, 12 Page", 2: date and time */
+								esc_html__( 'Scanned %1$s at %2$s.', 'ekwa' ),
+								esc_html( $by_type ? implode( ', ', $by_type ) : sprintf( '%d', (int) $scan['scanned'] ) ),
 								esc_html( mysql2date( get_option( 'time_format' ) . ', ' . get_option( 'date_format' ), $scan['time'] ) )
 							);
 							?>
@@ -1556,9 +1821,21 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 							<tbody>
 							<?php foreach ( $scan['shortcodes'] as $tag => $entry ) : ?>
 								<tr>
-									<td><code>[<?php echo esc_html( $tag ); ?>]</code></td>
+									<td>
+										<code>[<?php echo esc_html( $tag ); ?>]</code>
+										<?php
+										// When the tag is used with attributes, the bare
+										// name hides what is actually written — and that
+										// is exactly what tells a real shortcode apart
+										// from a bracketed aside in a sentence.
+										$sample = isset( $entry['sample'] ) ? (string) $entry['sample'] : '';
+										if ( '' !== $sample && '[' . $tag . ']' !== $sample ) :
+											?>
+											<br><span class="description" style="font-size:11px;"><?php echo esc_html( ekwa_legacy_excerpt( $sample, 44 ) ); ?></span>
+										<?php endif; ?>
+									</td>
 									<td><?php echo (int) $entry['count']; ?></td>
-									<td><?php echo count( $entry['posts'] ); ?></td>
+									<td><?php echo isset( $entry['post_count'] ) ? (int) $entry['post_count'] : 0; ?></td>
 									<td>
 										<?php
 										$where = array();
@@ -1596,6 +1873,7 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 										<?php endif; ?>
 									</td>
 								</tr>
+								<?php ekwa_legacy_render_post_row( $entry, 6, isset( $entry['context'] ) ? $entry['context'] : '' ); ?>
 							<?php endforeach; ?>
 							</tbody>
 						</table>
@@ -1640,7 +1918,7 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 									<td><code><?php echo esc_html( $name ); ?></code></td>
 									<td><?php echo (int) $entry['blocks']; ?></td>
 									<td><?php echo (int) $entry['rows']; ?></td>
-									<td><?php echo count( $entry['posts'] ); ?></td>
+									<td><?php echo isset( $entry['post_count'] ) ? (int) $entry['post_count'] : 0; ?></td>
 									<td>
 										<?php if ( $entry['rows'] ) : ?>
 											<span style="color:#1a7f37;font-weight:600;"><?php esc_html_e( '✓ convertible', 'ekwa' ); ?></span>
@@ -1649,6 +1927,7 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 										<?php endif; ?>
 									</td>
 								</tr>
+								<?php ekwa_legacy_render_post_row( $entry, 5 ); ?>
 							<?php endforeach; ?>
 							</tbody>
 						</table>
@@ -1676,7 +1955,7 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 								<tr>
 									<td><code><?php echo esc_html( $host ); ?></code></td>
 									<td><?php echo (int) $entry['count']; ?></td>
-									<td><?php echo count( $entry['posts'] ); ?></td>
+									<td><?php echo isset( $entry['post_count'] ) ? (int) $entry['post_count'] : 0; ?></td>
 									<td>
 										<?php
 										$paths = array_slice( $entry['paths'], 0, 6, true );
@@ -1699,6 +1978,7 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 										?>
 									</td>
 								</tr>
+								<?php ekwa_legacy_render_post_row( $entry, 4 ); ?>
 							<?php endforeach; ?>
 							</tbody>
 						</table>
@@ -1777,11 +2057,16 @@ function ekwa_legacy_render_tab( $active_tab = '' ) {
 								</thead>
 								<tbody>
 								<?php foreach ( $preview['plans'] as $plan ) : ?>
+									<?php $plan_edit = (string) get_edit_post_link( $plan['post_id'] ); ?>
 									<tr>
 										<td>
-											<a href="<?php echo esc_url( get_edit_post_link( $plan['post_id'] ) ); ?>" target="_blank" rel="noopener">
+											<?php if ( '' !== esc_url( $plan_edit ) ) : ?>
+												<a href="<?php echo esc_url( $plan_edit ); ?>" target="_blank" rel="noopener">
+													<?php echo esc_html( $plan['title'] ); ?>
+												</a>
+											<?php else : ?>
 												<?php echo esc_html( $plan['title'] ); ?>
-											</a>
+											<?php endif; ?>
 										</td>
 										<td>
 											<?php
