@@ -695,6 +695,13 @@ require_once get_template_directory() . '/inc/ekwa-slider.php';
 require_once get_template_directory() . '/inc/ekwa-video-embed.php';
 
 /**
+ * Permalink default: a site activated on a fresh WordPress install comes up on
+ * "Post name" instead of WordPress' "Day and name". Activation only, and only
+ * when nothing is published yet — see the file header.
+ */
+require_once get_template_directory() . '/inc/ekwa-permalinks.php';
+
+/**
  * Enqueue theme stylesheet and Font Awesome.
  */
 function ekwa_enqueue_styles() {
