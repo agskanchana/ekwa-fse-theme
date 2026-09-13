@@ -2128,7 +2128,7 @@ function ekwa_render_settings_page() {
 									<input type="checkbox" name="ekwa_editor_disable_child_css" value="1" <?php checked( $disable_child_editor_css_val, 1 ); ?> />
 									<?php esc_html_e( 'Do not load the child theme style.css inside the block editor canvas', 'ekwa' ); ?>
 								</label>
-								<p class="description"><?php esc_html_e( 'Editor-only — the child stylesheet still loads on the front end. Turn this on when child styles overlay blocks in the editor and make them hard to select or click.', 'ekwa' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Editor-only — the child stylesheet still loads on the front end. Turn this on when child styles overlay blocks in the editor and make them hard to select or click. While it is on, the canvas outlines each Ekwa container and adds a little padding so the blocks stay readable without the design CSS.', 'ekwa' ); ?></p>
 							</td>
 						</tr>
 						<tr>

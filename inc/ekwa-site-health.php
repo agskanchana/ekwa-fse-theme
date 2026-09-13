@@ -1,0 +1,302 @@
+<?php
+/**
+ * Site Health — can the block editor actually save?
+ *
+ * The failure this exists for: a server-side WAF (ModSecurity with the OWASP
+ * Core Rule Set, which cPanel enables by default) inspects the body of the
+ * editor's REST write, matches a rule, and answers 403/406 with an HTML error
+ * page. Gutenberg expected JSON, so it reports
+ *
+ *     "Updating failed. The response is not a valid JSON response."
+ *
+ * The request never reaches PHP, so nothing in WordPress or this theme can
+ * catch it or say anything more useful. The error names neither the WAF nor the
+ * rule, and the usual "fix" is to switch ModSecurity off for the whole domain.
+ *
+ * Ekwa content makes the false positive much likelier than a stock WP site: an
+ * ekwa/div carries its section stylesheet in a `scopedCss` block attribute, so
+ * raw CSS is serialized into post_content and POSTed on every save. A CSS
+ * comment is read as CRS 942440 "SQL Comment Sequence Detected"; <style> and
+ * inline-style fragments hit the 941xxx XSS rules.
+ * ekwa_css_strip_comments() removes the commonest trigger at write time, but
+ * only a rule exclusion on the server actually fixes this.
+ *
+ * So: send the server a POST that looks like a real Ekwa save and see whether
+ * it comes back. The loopback is the only way to observe it, because the block
+ * is upstream of PHP.
+ *
+ * Read-only — writes nothing, not even a transient (the probe token is derived,
+ * not stored).
+ *
+ * @package ekwa
+ */
+
+if ( ! defined( 'ABSPATH' ) && PHP_SAPI !== 'cli' ) {
+	exit;
+}
+
+/**
+ * Token authorizing one probe request, derived rather than stored.
+ *
+ * The probe endpoint has to answer an unauthenticated loopback request (the
+ * loopback carries no cookies), so it needs its own proof that Site Health on
+ * this site is what called it. wp_hash() over a coarse time window gives that
+ * without writing an option or a transient — which the theme's rules forbid as
+ * a side effect anyway.
+ *
+ * @param int $back Windows to go back (1 = the previous window, for requests
+ *                  that straddle a boundary).
+ * @return string
+ */
+function ekwa_site_health_probe_token( $back = 0 ) {
+	$window = (int) floor( time() / 300 ) - (int) $back;
+	return wp_hash( 'ekwa-waf-probe|' . $window );
+}
+
+/**
+ * Whether a submitted probe token is one we could have just issued.
+ *
+ * @param string $token Token from the request body.
+ * @return bool
+ */
+function ekwa_site_health_probe_token_valid( $token ) {
+	$token = (string) $token;
+	if ( '' === $token ) {
+		return false;
+	}
+	// Accept the current and previous window so a probe crossing a 5-minute
+	// boundary isn't reported as a server failure.
+	return hash_equals( ekwa_site_health_probe_token( 0 ), $token )
+		|| hash_equals( ekwa_site_health_probe_token( 1 ), $token );
+}
+
+/**
+ * The probe endpoint. Does nothing and touches nothing — reaching it at all is
+ * the entire result, because it means the WAF let the body through.
+ */
+function ekwa_site_health_register_probe_route() {
+	register_rest_route(
+		'ekwa/v1',
+		'/waf-probe',
+		array(
+			'methods'             => 'POST',
+			// Gated on the derived token, not on a capability: the loopback
+			// request is necessarily anonymous. The route has no side effects
+			// and returns no site data, so the token is the whole surface.
+			'permission_callback' => function ( $request ) {
+				return ekwa_site_health_probe_token_valid( $request->get_param( 'token' ) );
+			},
+			'callback'            => function () {
+				return rest_ensure_response( array( 'ok' => true ) );
+			},
+		)
+	);
+}
+add_action( 'rest_api_init', 'ekwa_site_health_register_probe_route' );
+
+/**
+ * POST one probe body to the probe route and classify what came back.
+ *
+ * @param string $content Body content to send as the `content` field.
+ * @return array{ ok:bool, code:int, body:string, error:string }
+ */
+function ekwa_site_health_probe( $content ) {
+	$response = wp_remote_post(
+		rest_url( 'ekwa/v1/waf-probe' ),
+		array(
+			'timeout'   => 10,
+			// Same as core's own loopback checks (WP_Site_Health): a staging
+			// box with a self-signed certificate must not read as a WAF block.
+			'sslverify' => false,
+			'headers'   => array( 'Content-Type' => 'application/json' ),
+			'body'      => wp_json_encode(
+				array(
+					'token'   => ekwa_site_health_probe_token(),
+					'content' => $content,
+				)
+			),
+		)
+	);
+
+	if ( is_wp_error( $response ) ) {
+		return array(
+			'ok'    => false,
+			'code'  => 0,
+			'body'  => '',
+			'error' => $response->get_error_message(),
+		);
+	}
+
+	$code = (int) wp_remote_retrieve_response_code( $response );
+	$body = (string) wp_remote_retrieve_body( $response );
+	$json = json_decode( $body, true );
+
+	return array(
+		'ok'    => ( 200 === $code && is_array( $json ) && ! empty( $json['ok'] ) ),
+		'code'  => $code,
+		'body'  => $body,
+		'error' => '',
+	);
+}
+
+/**
+ * Name the WAF from its rejection, when it's recognizable.
+ *
+ * Only as good as the fingerprints below — an unrecognized blocker still gets
+ * reported, just without a name.
+ *
+ * @param int    $code HTTP status.
+ * @param string $body Response body.
+ * @return string Human-readable guess, or '' when nothing matched.
+ */
+function ekwa_site_health_waf_fingerprint( $code, $body ) {
+	$body = strtolower( (string) $body );
+
+	if ( false !== strpos( $body, 'mod_security' ) || false !== strpos( $body, 'modsecurity' ) ) {
+		return __( 'ModSecurity (named itself in the response)', 'ekwa' );
+	}
+	// cPanel/EasyApache ship ModSecurity configured to answer 406 with Apache's
+	// stock "Not Acceptable" page — the single most common shape of this.
+	if ( 406 === $code && false !== strpos( $body, 'not acceptable' ) ) {
+		return __( 'ModSecurity on cPanel (406 “Not Acceptable”)', 'ekwa' );
+	}
+	if ( false !== strpos( $body, 'imunify' ) ) {
+		return __( 'Imunify360', 'ekwa' );
+	}
+	if ( false !== strpos( $body, 'cloudflare' ) ) {
+		return __( 'Cloudflare WAF', 'ekwa' );
+	}
+	if ( false !== strpos( $body, 'wordfence' ) ) {
+		return __( 'Wordfence firewall', 'ekwa' );
+	}
+	return '';
+}
+
+/**
+ * The remediation block — shown whenever a probe was blocked.
+ *
+ * @param bool $payload_specific Whether a plain body got through while the
+ *                               CSS-shaped one did not.
+ * @return string HTML.
+ */
+function ekwa_site_health_waf_remediation( $payload_specific ) {
+	$out = '';
+
+	if ( $payload_specific ) {
+		$out .= '<p>' . esc_html__( 'A plain request body went through and only the one carrying CSS was blocked, so this is a content rule — most likely CRS 942440 (“SQL Comment Sequence Detected”), which matches the comment markers in a stylesheet, or a 941xxx XSS rule matching a style fragment.', 'ekwa' ) . '</p>';
+	} else {
+		$out .= '<p>' . esc_html__( 'Both a plain body and a CSS-carrying body were blocked, so the rule is matching REST writes generally rather than anything specific to the content.', 'ekwa' ) . '</p>';
+	}
+
+	$out .= '<p>' . esc_html__( 'Find the rule that fired, at the time of the failure, in WHM → ModSecurity™ Tools → Hit List, or on the server:', 'ekwa' ) . '</p>';
+	$out .= '<pre style="white-space:pre-wrap">' . esc_html( "grep -B5 -A20 'wp-json' /usr/local/apache/logs/modsec_audit.log | tail -60" ) . '</pre>';
+	$out .= '<p>' . esc_html__( 'Then exclude that rule for the REST path only — rather than switching the firewall off for the whole domain, which is what the editor error usually leads people to do. With root access, add it as a custom rule (WHM → ModSecurity™ Configuration → Rules List), substituting the IDs you actually saw:', 'ekwa' ) . '</p>';
+	$out .= '<pre style="white-space:pre-wrap">' . esc_html( "<LocationMatch \"^/wp-json/\">\n    SecRuleRemoveById 942440\n</LocationMatch>" ) . '</pre>';
+	$out .= '<p>' . esc_html__( '<LocationMatch> is a server-config directive and will not work in .htaccess, so this needs WHM or the host — the per-domain cPanel toggle can only turn ModSecurity off entirely.', 'ekwa' ) . '</p>';
+
+	return $out;
+}
+
+/**
+ * Site Health test: does a representative editor save survive the round trip?
+ *
+ * Sends the CSS-shaped body first and stops there when it succeeds, so the
+ * healthy case costs one loopback request. A failure earns a second, plain
+ * request, because "every REST write is blocked" and "this content is blocked"
+ * point at different exclusions.
+ *
+ * @return array Site Health result.
+ */
+function ekwa_site_health_rest_write_test() {
+	$result = array(
+		'label'       => __( 'The block editor can save through this server', 'ekwa' ),
+		'status'      => 'good',
+		'badge'       => array(
+			'label' => __( 'Ekwa', 'ekwa' ),
+			'color' => 'blue',
+		),
+		'description' => '<p>' . esc_html__( 'A test save carrying section CSS — the shape of content Ekwa blocks store — reached the REST API and came back as JSON.', 'ekwa' ) . '</p>',
+		'actions'     => '',
+		'test'        => 'ekwa_rest_write',
+	);
+
+	// Shaped like the real thing: an ekwa/div block delimiter whose scopedCss
+	// attribute holds a commented stylesheet, which is exactly what the
+	// converter and the AI Block Builder produce.
+	$css_body = '<!-- wp:ekwa/div {"scopedCss":"/* hero */ .hero{background:url(hero.jpg);color:#fff}"} -->'
+		. '<div class="hero"><style>.hero h2{margin:0}</style></div>'
+		. '<!-- /wp:ekwa/div -->';
+
+	$probe = ekwa_site_health_probe( $css_body );
+
+	if ( $probe['ok'] ) {
+		return $result;
+	}
+
+	// Couldn't make the request at all — that's a loopback problem (DNS, a
+	// closed egress, basic auth on staging), not evidence of a WAF. Core's own
+	// loopback test covers it, so don't raise a duplicate alarm here.
+	if ( 0 === $probe['code'] ) {
+		$result['status']      = 'recommended';
+		$result['label']       = __( 'The editor-save check could not run', 'ekwa' );
+		$result['description'] = '<p>' . sprintf(
+			/* translators: %s: HTTP error message. */
+			esc_html__( 'This site could not make a request to itself, so whether the block editor can save is unknown: %s', 'ekwa' ),
+			'<code>' . esc_html( $probe['error'] ) . '</code>'
+		) . '</p><p>' . esc_html__( 'See the “loopback request” result elsewhere on this page; this check can only run once that works.', 'ekwa' ) . '</p>';
+		return $result;
+	}
+
+	// Something answered, but not our JSON. Find out whether it's the content.
+	$plain            = ekwa_site_health_probe( 'plain text, no markup' );
+	$payload_specific = ! empty( $plain['ok'] );
+	$waf              = ekwa_site_health_waf_fingerprint( $probe['code'], $probe['body'] );
+
+	$result['status'] = 'critical';
+	$result['badge']['color'] = 'red';
+	$result['label']  = __( 'Something on this server is blocking block editor saves', 'ekwa' );
+
+	$description  = '<p>' . sprintf(
+		/* translators: %d: HTTP status code. */
+		esc_html__( 'A test save was answered with HTTP %d and a non-JSON body, which is what produces “Updating failed. The response is not a valid JSON response.” in the editor. The request was rejected before it reached WordPress, so nothing in the theme or in WordPress can report it more precisely than this.', 'ekwa' ),
+		(int) $probe['code']
+	) . '</p>';
+
+	if ( '' !== $waf ) {
+		$description .= '<p>' . sprintf(
+			/* translators: %s: WAF name. */
+			esc_html__( 'It looks like: %s', 'ekwa' ),
+			'<strong>' . esc_html( $waf ) . '</strong>'
+		) . '</p>';
+	}
+
+	$snippet = trim( wp_strip_all_tags( $probe['body'] ) );
+	if ( '' !== $snippet ) {
+		$description .= '<p>' . esc_html__( 'What the server sent back:', 'ekwa' ) . '</p>'
+			. '<pre style="white-space:pre-wrap">' . esc_html( mb_substr( $snippet, 0, 300 ) ) . '</pre>';
+	}
+
+	$result['description'] = $description;
+	$result['actions']     = ekwa_site_health_waf_remediation( $payload_specific );
+
+	return $result;
+}
+
+/**
+ * Register the test.
+ *
+ * Direct rather than async: the happy path is a single loopback request, and a
+ * direct test also runs in the scheduled weekly check, so a site that starts
+ * failing surfaces it on the dashboard without anyone opening Site Health.
+ *
+ * @param array $tests Registered tests.
+ * @return array
+ */
+function ekwa_site_health_register_tests( $tests ) {
+	$tests['direct']['ekwa_rest_write'] = array(
+		'label' => __( 'Block editor saves', 'ekwa' ),
+		'test'  => 'ekwa_site_health_rest_write_test',
+	);
+	return $tests;
+}
+add_filter( 'site_status_tests', 'ekwa_site_health_register_tests' );

@@ -1,0 +1,98 @@
+/* ==========================================================================
+   Ekwa Block Editor — bare-canvas container outlines
+
+   Loaded ONLY when "Hide child CSS in editor" is on AND a child theme is
+   active — i.e. exactly the state where the design CSS has been removed from
+   the canvas and every Ekwa wrapper collapses to an invisible flow element.
+   See ekwa_editor_styles() / ekwa_editor_child_css_suppressed() in
+   functions.php. Sites that leave that toggle off never load this file, so
+   the canvas they have today is unchanged.
+
+   Nothing here is saved and nothing reaches the front end — add_editor_style()
+   injects it into the editor canvas only.
+
+   Deliberately uses inset box-shadow rather than `outline` so it COMPOSES with
+   the two existing outline affordances instead of fighting them: Select mode
+   (X-ray) and the scoped-CSS hairline both set `outline`, and an element can
+   only carry one. Their outlines still win visually; this ring stays as well.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Container rings
+
+   `:has( .block-editor-inner-blocks )` picks out the Ekwa blocks that actually
+   wrap other blocks — div, section, container, flex, grid, figure, card-link,
+   button-group and anything added later — without a hand-maintained list, and
+   leaves leaf blocks (image, button, phone, icon…) untouched.
+
+   Ring and padding both step down as nesting deepens: the outermost section
+   reads as the strongest boundary, and converted markup that nests four or
+   five wrappers deep doesn't eat the canvas width in indentation or turn into
+   a uniform grid of lines. Level 4+ inherits level 3 (12 + 8 + 6 = 26px of
+   padding per side at worst).
+   -------------------------------------------------------------------------- */
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ) {
+	--ekwa-ed-ring: rgba( 30, 41, 59, 0.28 );
+	--ekwa-ed-pad: 12px;
+
+	padding: var( --ekwa-ed-pad );
+	/* Only margin-BOTTOM: ekwa-editor.css resets margin-top with !important for
+	   front-end parity, and this must not start an !important war with it. */
+	margin-bottom: 8px;
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px var( --ekwa-ed-ring );
+	transition: box-shadow 0.15s;
+}
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks )
+	.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ) {
+	--ekwa-ed-ring: rgba( 30, 41, 59, 0.19 );
+	--ekwa-ed-pad: 8px;
+}
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks )
+	.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks )
+	.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ) {
+	--ekwa-ed-ring: rgba( 30, 41, 59, 0.12 );
+	--ekwa-ed-pad: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Hover / selected emphasis
+
+   Hovering nests: every ancestor container is also hovered, so restrict the
+   strong ring to the innermost hovered container (`:not(:has(…:hover))`) —
+   otherwise pointing at a paragraph lights up all five wrappers around it.
+   Brand teal, matching the other editor affordances in ekwa-editor.css.
+
+   Sets box-shadow directly rather than re-pointing --ekwa-ed-ring: custom
+   properties inherit, so a teal ring on the hovered container would bleed into
+   any descendant deeper than the three levels declared above (which have no
+   declaration of their own and fall back to inheritance). box-shadow doesn't
+   inherit, so the highlight stays on the one box under the cursor.
+   -------------------------------------------------------------------------- */
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ):hover:not(
+	:has( .wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ):hover )
+),
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ).is-selected {
+	box-shadow: inset 0 0 0 1px rgba( 14, 124, 107, 0.85 );
+}
+
+/* --------------------------------------------------------------------------
+   Flow rhythm
+
+   With the design CSS gone, headings and paragraphs run together into a wall
+   of text (block-gap is reset to 0 in ekwa-editor.css for front-end parity,
+   and nothing replaces it here). Give the canvas a readable rhythm — bottom
+   margins only, for the same !important reason as above.
+   -------------------------------------------------------------------------- */
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ) :where( p, ul, ol ) {
+	margin-bottom: 0.6em;
+}
+
+.wp-block[data-type^="ekwa/"]:has( .block-editor-inner-blocks ) :where( h1, h2, h3, h4, h5, h6 ) {
+	margin-bottom: 0.4em;
+}

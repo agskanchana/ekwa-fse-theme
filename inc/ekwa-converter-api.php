@@ -696,7 +696,10 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 					$scoped    = $rewritten['css'];
 				}
 
-				$response['css_scoped']  = $scoped;
+				// Comments are stripped only from the value handed to the editor
+				// (never from $scoped itself, which ekwa_css_subtract() still
+				// matches against below) — see ekwa_css_strip_comments().
+				$response['css_scoped']  = ekwa_css_strip_comments( $scoped );
 				$response['css_extract'] = ekwa_mc_extract_css_tokens( $source_css );
 
 				if ( ! empty( $split['truncated'] ) ) {
@@ -751,8 +754,10 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 			$response['css_saved'] = true;
 		} elseif ( 'scoped' === $css_mode ) {
 			// The editor plugin attaches this to the first wrapper block's
-			// scopedCss attribute after parsing the markup.
-			$response['css_scoped'] = $css;
+			// scopedCss attribute after parsing the markup. Comments come out
+			// here rather than in the editor, so every path that can write a
+			// scopedCss value goes through ekwa_css_strip_comments().
+			$response['css_scoped'] = ekwa_css_strip_comments( $css );
 		}
 	}
 

@@ -641,6 +641,12 @@ require_once get_template_directory() . '/inc/ekwa-header-menu.php';
 require_once get_template_directory() . '/inc/ekwa-editor-ux.php';
 
 /**
+ * Load the Site Health test that catches a server firewall blocking block
+ * editor saves — the cause of "The response is not a valid JSON response."
+ */
+require_once get_template_directory() . '/inc/ekwa-site-health.php';
+
+/**
  * Load responsive layer: per-block device visibility + configurable breakpoints.
  */
 require_once get_template_directory() . '/inc/ekwa-responsive.php';
@@ -763,6 +769,14 @@ function ekwa_editor_styles() {
 	add_editor_style( 'assets/fontawesome/css/all.min.css' );
 	add_editor_style( 'assets/css/ekwa-editor.css' );
 
+	// Canvas affordance for the "Hide child CSS in editor" mode only: with the
+	// design CSS gone, Ekwa wrappers collapse to invisible flow elements and the
+	// page reads as one wall of text. Loaded only in that mode, so a site that
+	// hasn't turned the toggle on sees exactly the canvas it saw before.
+	if ( ekwa_editor_child_css_suppressed() ) {
+		add_editor_style( 'assets/css/ekwa-editor-outline.css' );
+	}
+
 	// The per-block partials are the single source of truth for block CSS. The
 	// front end inlines only the blocks in use; the editor loads the full set so
 	// every block previews correctly. Paths are RELATIVE and resolved child-first
@@ -799,6 +813,20 @@ function ekwa_editor_disable_child_css_enabled() {
 }
 
 /**
+ * Whether the canvas is actually running without the child theme's design CSS:
+ * the toggle is on AND a child theme is active (with no child there is nothing
+ * to suppress and the toggle is a no-op).
+ *
+ * This is the condition ekwa_editor_remove_child_css() already enforced inline;
+ * it is named here because the bare-canvas outlines in ekwa_editor_styles()
+ * must load under exactly the same condition, never one of the two halves.
+ */
+function ekwa_editor_child_css_suppressed() {
+	return ekwa_editor_disable_child_css_enabled()
+		&& get_template_directory() !== get_stylesheet_directory();
+}
+
+/**
  * Drop the active child theme's style.css (and its RTL variant) from the editor
  * styles global so it isn't inlined into the block editor iframe.
  *
@@ -808,11 +836,9 @@ function ekwa_editor_disable_child_css_enabled() {
  * functions.php (mirrors the inline-child design in inc/ekwa-inline-child.php).
  */
 function ekwa_editor_remove_child_css() {
-	if ( ! ekwa_editor_disable_child_css_enabled() ) {
-		return;
-	}
-	// No child theme active — parent === stylesheet root; nothing to remove.
-	if ( get_template_directory() === get_stylesheet_directory() ) {
+	// Toggle off, or no child theme active (parent === stylesheet root, so
+	// there is nothing to remove) — leave the editor styles alone.
+	if ( ! ekwa_editor_child_css_suppressed() ) {
 		return;
 	}
 	if ( empty( $GLOBALS['editor_styles'] ) || ! is_array( $GLOBALS['editor_styles'] ) ) {

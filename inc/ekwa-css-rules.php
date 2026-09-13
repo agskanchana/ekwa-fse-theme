@@ -68,6 +68,101 @@ function ekwa_css_decode_entities( $css ) {
 }
 
 /**
+ * Remove CSS comments from a stylesheet.
+ *
+ * Called where the converter and the AI Block Builder write a *new* value into
+ * an ekwa/div `scopedCss` attribute — never over CSS a site already saved.
+ *
+ * The reason is not size: scopedCss is serialized into the block delimiter in
+ * post_content, so every editor save POSTs it to /wp-json/wp/v2/…, and a
+ * ModSecurity/OWASP-CRS server reads a bare comment-open sequence in a request
+ * body as rule 942440 "SQL Comment Sequence Detected". It answers 403 with an
+ * HTML error page, and the block editor — which expected JSON — reports the
+ * opaque "Updating failed. The response is not a valid JSON response."
+ * AI-written and mockup CSS is full of section comments, so this removes the
+ * most common trigger. It is a mitigation, not a fix: the real fix is a rule
+ * exclusion on the server. See ekwa_site_health_rest_write_test() in
+ * inc/ekwa-site-health.php, which detects the condition and names the rule.
+ *
+ * Comments are dropped, not replaced with a space: per CSS Syntax a comment is
+ * discarded at tokenization and produces no whitespace, so a comment sitting
+ * between ".a" and ".b" leaves a compound ".a.b" selector — inserting a space
+ * would silently turn it into a descendant selector.
+ *
+ * Tolerant in the same way as the rest of this file: quoted strings and
+ * unquoted url() spans are copied verbatim (a comment-open sequence inside
+ * either is data, not a comment), and an unterminated comment leaves the
+ * remainder untouched rather than swallowing it.
+ *
+ * @param string $css Stylesheet.
+ * @return string Stylesheet with comments removed.
+ */
+function ekwa_css_strip_comments( $css ) {
+	$css = (string) $css;
+	if ( false === strpos( $css, '/*' ) ) {
+		return $css; // Nothing to do — the overwhelmingly common case.
+	}
+
+	$out = '';
+	$len = strlen( $css );
+	$i   = 0;
+
+	while ( $i < $len ) {
+		$ch = $css[ $i ];
+
+		// Comment — drop it. An unterminated one is not a comment we can trust,
+		// so keep everything that follows rather than truncating the stylesheet.
+		if ( '/' === $ch && $i + 1 < $len && '*' === $css[ $i + 1 ] ) {
+			$end = strpos( $css, '*/', $i + 2 );
+			if ( false === $end ) {
+				$out .= substr( $css, $i );
+				break;
+			}
+			$i = $end + 2;
+			continue;
+		}
+
+		// Quoted string — copy verbatim, honoring backslash escapes.
+		if ( '"' === $ch || "'" === $ch ) {
+			$quote = $ch;
+			$out  .= $ch;
+			$i++;
+			while ( $i < $len ) {
+				if ( '\\' === $css[ $i ] && $i + 1 < $len ) {
+					$out .= substr( $css, $i, 2 );
+					$i   += 2;
+					continue;
+				}
+				$out .= $css[ $i ];
+				$i++;
+				if ( $css[ $i - 1 ] === $quote ) {
+					break;
+				}
+			}
+			continue;
+		}
+
+		// Unquoted url( … ) — copy verbatim to the closing paren. A path may
+		// legitimately contain "/*", and it is not a comment there.
+		if ( ( 'u' === $ch || 'U' === $ch ) && 0 === substr_compare( $css, 'url(', $i, 4, true ) ) {
+			$end = strpos( $css, ')', $i + 4 );
+			if ( false === $end ) {
+				$out .= substr( $css, $i );
+				break;
+			}
+			$out .= substr( $css, $i, $end - $i + 1 );
+			$i    = $end + 1;
+			continue;
+		}
+
+		$out .= $ch;
+		$i++;
+	}
+
+	return $out;
+}
+
+/**
  * At-rules whose body contains further rules (so the walker descends into
  * them). Everything else with a body (@font-face, @keyframes, @page…) is
  * treated as one opaque rule.

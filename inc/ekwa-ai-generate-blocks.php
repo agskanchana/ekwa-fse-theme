@@ -322,7 +322,11 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
 		if ( ! isset( $blocks[ $idx ]['attrs'] ) || ! is_array( $blocks[ $idx ]['attrs'] ) ) {
 			$blocks[ $idx ]['attrs'] = array();
 		}
-		$blocks[ $idx ]['attrs']['scopedCss'] = $css;
+		// Strip CSS comments on the way in. This is the funnel for both the AI
+		// Block Builder and the inner-template importer, and AI-written CSS is
+		// heavily commented — see ekwa_css_strip_comments() for why a comment in
+		// a block attribute can make an editor save fail on a WAF'd server.
+		$blocks[ $idx ]['attrs']['scopedCss'] = ekwa_css_strip_comments( $css );
 
 		// Make sure the scope class is actually on the wrapper, so the scoped
 		// selectors match. (It normally is, via the sentinel replacement.)
