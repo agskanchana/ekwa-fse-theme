@@ -839,3 +839,128 @@
 	font-size: 12px;
 	min-width: 0;
 }
+
+/* ==================================================================
+ * Find in Site (Appearance → Find in Site).
+ * ================================================================== */
+.ekwa-find-intro {
+	max-width: 60em;
+	margin-bottom: 1em;
+}
+.ekwa-find-search {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 14px 16px 6px;
+	margin-bottom: 20px;
+}
+.ekwa-find-input {
+	min-width: 28em;
+}
+.ekwa-find-opts label {
+	display: inline-block;
+	margin: 0 20px 6px 0;
+}
+.ekwa-find-summary {
+	font-size: 15px;
+	margin: 18px 0 4px;
+}
+.ekwa-find-group {
+	font-size: 14px;
+	margin: 26px 0 6px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.ekwa-find-groupcount {
+	font-size: 12px;
+	font-weight: 400;
+	color: #646970;
+	background: #f0f0f1;
+	border-radius: 9px;
+	padding: 1px 8px;
+}
+.ekwa-find-table td,
+.ekwa-find-table th {
+	vertical-align: top;
+}
+.ekwa-find-table .ekwa-find-count {
+	width: 4em;
+	text-align: center;
+}
+.ekwa-find-table .ekwa-find-links {
+	width: 8em;
+	white-space: nowrap;
+}
+.ekwa-find-links a {
+	margin-right: 10px;
+}
+.ekwa-find-field {
+	color: #646970;
+	font-size: 12px;
+	font-family: Consolas, Monaco, monospace;
+	margin-top: 2px;
+	word-break: break-word;
+}
+.ekwa-find-note {
+	color: #8a6d1f;
+	font-size: 12px;
+	margin-top: 4px;
+	max-width: 34em;
+}
+.ekwa-find-context p {
+	margin: 0 0 6px;
+	font-size: 12px;
+	line-height: 1.6;
+	word-break: break-word;
+}
+.ekwa-find-context mark {
+	background: #fff3b0;
+	font-weight: 600;
+	padding: 0 2px;
+}
+.ekwa-find-line {
+	color: #646970;
+	font-family: Consolas, Monaco, monospace;
+	margin-right: 6px;
+}
+.ekwa-find-more {
+	color: #646970;
+	font-style: italic;
+}
+.ekwa-find-lock {
+	color: #a7aaad;
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+}
+.ekwa-find-replacebar {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 6px 16px 14px;
+	margin-top: 26px;
+}
+.ekwa-find-replacebar .description {
+	max-width: 60em;
+}
+.ekwa-find-replacebar label {
+	margin-right: 8px;
+	font-weight: 600;
+}
+.ekwa-find-confirm,
+.ekwa-find-result {
+	padding: 12px 14px;
+	margin: 0 0 16px;
+}
+.ekwa-find-errors {
+	margin: 4px 0 0 18px;
+	list-style: disc;
+}
+.ekwa-find-hint {
+	margin: 0 0 12px;
+	max-width: 60em;
+}
+.ekwa-find-hint code {
+	background: #f0f0f1;
+}

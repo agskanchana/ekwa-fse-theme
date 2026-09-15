@@ -647,6 +647,13 @@ require_once get_template_directory() . '/inc/ekwa-editor-ux.php';
 require_once get_template_directory() . '/inc/ekwa-site-health.php';
 
 /**
+ * Site-wide text search (Appearance → Find in Site): finds a word or shortcode
+ * in content, SEO fields, templates and template parts, menus and settings —
+ * the places WordPress' own admin search does not reach.
+ */
+require_once get_template_directory() . '/inc/ekwa-find.php';
+
+/**
  * Load responsive layer: per-block device visibility + configurable breakpoints.
  */
 require_once get_template_directory() . '/inc/ekwa-responsive.php';
