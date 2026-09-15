@@ -138,6 +138,33 @@ function ekwa_find_file_mods_allowed() {
  * ================================================================== */
 
 /**
+ * Escape for HTML *without* collapsing entities that are already in the value.
+ *
+ * esc_attr() and esc_html() both call _wp_specialchars() with
+ * $double_encode = false, which is right for ordinary content and catastrophic
+ * here. A search for the literal text "Main Line Dental Health &amp; Wellness"
+ * — which is how WordPress actually stores "… & …" in post_title — written
+ * through esc_attr() into a hidden input reaches the browser as
+ *
+ *     value="Main Line Dental Health &amp; Wellness"
+ *
+ * and the BROWSER decodes the entity on submit, so the next request searches
+ * for "… & …" instead. The replace preview then re-runs the scan, matches
+ * nothing, and reports "Nothing selected that can be written to" even though
+ * rows were ticked.
+ *
+ * Double-encoding makes the value that comes back byte-for-byte the value that
+ * went out, and makes "&" and "&amp;" visibly different on screen so the two
+ * searches can be told apart.
+ *
+ * @param string $value Raw value.
+ * @return string
+ */
+function ekwa_find_esc( $value ) {
+	return _wp_specialchars( (string) $value, ENT_QUOTES, false, true );
+}
+
+/**
  * Normalize the search arguments out of a request array.
  *
  * @param array $src $_GET or $_POST.
@@ -1551,7 +1578,7 @@ function ekwa_find_render_encoded_hint( $args ) {
 		printf(
 			/* translators: 1: encoded search term, 2: opening link tag, 3: closing link tag */
 			esc_html__( 'WordPress stores characters like & and quotes encoded, so this phrase may be saved as %1$s. %2$sSearch for that instead%3$s.', 'ekwa' ),
-			'<code>' . esc_html( $encoded ) . '</code>',
+			'<code>' . ekwa_find_esc( $encoded ) . '</code>',
 			'<a href="' . esc_url( ekwa_find_page_url( $alt ) ) . '">',
 			'</a>'
 		);
@@ -1604,7 +1631,7 @@ function ekwa_find_render_row( $row, $can_pick ) {
 		<?php if ( $can_pick ) : ?>
 			<th scope="row" class="check-column">
 				<?php if ( $row['writable'] ) : ?>
-					<input type="checkbox" name="ekwa_find_rows[]" value="<?php echo esc_attr( $row['key'] ); ?>" />
+					<input type="checkbox" name="ekwa_find_rows[]" value="<?php echo ekwa_find_esc( $row['key'] ); ?>" />
 				<?php else : ?>
 					<span class="dashicons dashicons-lock ekwa-find-lock" aria-hidden="true"></span>
 					<span class="screen-reader-text"><?php esc_html_e( 'Read-only', 'ekwa' ); ?></span>
@@ -1678,8 +1705,8 @@ function ekwa_find_render_preview( $args, $rows, $replacement ) {
 				printf(
 					/* translators: 1: search term, 2: replacement */
 					esc_html__( 'About to replace %1$s with %2$s in the places listed below.', 'ekwa' ),
-					'<code>' . esc_html( $args['term'] ) . '</code>',
-					'' === $replacement ? '<code>' . esc_html__( '(nothing — the text is removed)', 'ekwa' ) . '</code>' : '<code>' . esc_html( $replacement ) . '</code>'
+					'<code>' . ekwa_find_esc( $args['term'] ) . '</code>',
+					'' === $replacement ? '<code>' . esc_html__( '(nothing — the text is removed)', 'ekwa' ) . '</code>' : '<code>' . ekwa_find_esc( $replacement ) . '</code>'
 				);
 				?>
 			</p>
@@ -1748,8 +1775,8 @@ function ekwa_find_render_preview( $args, $rows, $replacement ) {
 		<form method="post" action="">
 			<?php wp_nonce_field( 'ekwa_find_replace', 'ekwa_find_nonce' ); ?>
 			<input type="hidden" name="ekwa_find_action" value="apply" />
-			<input type="hidden" name="ekwa_find_term" value="<?php echo esc_attr( $args['term'] ); ?>" />
-			<input type="hidden" name="ekwa_find_replacement" value="<?php echo esc_attr( $replacement ); ?>" />
+			<input type="hidden" name="ekwa_find_term" value="<?php echo ekwa_find_esc( $args['term'] ); ?>" />
+			<input type="hidden" name="ekwa_find_replacement" value="<?php echo ekwa_find_esc( $replacement ); ?>" />
 			<?php if ( 'shortcode' === $args['mode'] ) : ?>
 				<input type="hidden" name="ekwa_find_mode" value="shortcode" />
 			<?php endif; ?>
@@ -1760,7 +1787,7 @@ function ekwa_find_render_preview( $args, $rows, $replacement ) {
 				<input type="hidden" name="ekwa_find_trash" value="1" />
 			<?php endif; ?>
 			<?php foreach ( $rows as $row ) : ?>
-				<input type="hidden" name="ekwa_find_rows[]" value="<?php echo esc_attr( $row['key'] ); ?>" />
+				<input type="hidden" name="ekwa_find_rows[]" value="<?php echo ekwa_find_esc( $row['key'] ); ?>" />
 			<?php endforeach; ?>
 
 			<p class="submit">
@@ -1849,7 +1876,7 @@ function ekwa_find_render_page() {
 					id="ekwa_find_term"
 					name="ekwa_find_term"
 					class="regular-text ekwa-find-input"
-					value="<?php echo esc_attr( $args['term'] ); ?>"
+					value="<?php echo ekwa_find_esc( $args['term'] ); ?>"
 					placeholder="<?php esc_attr_e( 'e.g. Main Line Dental Health, or ekwa_phone', 'ekwa' ); ?>"
 				/>
 				<button type="submit" class="button button-primary"><?php esc_html_e( 'Find', 'ekwa' ); ?></button>
@@ -1889,7 +1916,7 @@ function ekwa_find_render_page() {
 				esc_html__( '%1$d match(es) in %2$d place(s) for “%3$s”', 'ekwa' ),
 				(int) $scan['total'],
 				(int) $scan['places'],
-				esc_html( $args['term'] )
+				ekwa_find_esc( $args['term'] )
 			);
 			?>
 		</h2>
@@ -1927,7 +1954,7 @@ function ekwa_find_render_page() {
 		<form method="post" action="" class="ekwa-find-results">
 			<?php wp_nonce_field( 'ekwa_find_replace', 'ekwa_find_nonce' ); ?>
 			<input type="hidden" name="ekwa_find_action" value="preview" />
-			<input type="hidden" name="ekwa_find_term" value="<?php echo esc_attr( $args['term'] ); ?>" />
+			<input type="hidden" name="ekwa_find_term" value="<?php echo ekwa_find_esc( $args['term'] ); ?>" />
 			<?php if ( 'shortcode' === $args['mode'] ) : ?>
 				<input type="hidden" name="ekwa_find_mode" value="shortcode" />
 			<?php endif; ?>
