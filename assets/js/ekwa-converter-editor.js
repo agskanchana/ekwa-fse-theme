@@ -67,6 +67,18 @@
 		return false;
 	}
 
+	/**
+	 * "38 KB" / "412 B" — a byte count at a glance.
+	 *
+	 * @param {number} bytes
+	 * @return {string}
+	 */
+	function formatBytes( bytes ) {
+		var n  = Number( bytes ) || 0;
+		var kb = n / 1024;
+		return kb < 0.1 ? ( n + ' B' ) : ( kb.toFixed( kb < 10 ? 1 : 0 ) + ' KB' );
+	}
+
 	// ─── Cross-plugin handoff store ─────────────────────────────────────────
 	// The AI Generator plugin calls window.ekwaMockupConverter.openWithHtml(html, css)
 	// to pre-fill this modal. We hold the pending HTML/CSS and a single
@@ -246,6 +258,12 @@
 		var s17 = useState( '' );        var cssScoped  = s17[0]; var setCssScoped  = s17[1];
 		var s18 = useState( [] );        var report     = s18[0]; var setReport     = s18[1];
 		var s23 = useState( null );      var cssGlobal  = s23[0]; var setCssGlobal  = s23[1];
+		// Section CSS extraction — lift this section's rules out of the site
+		// stylesheet so they inline where the section renders instead of in
+		// every page's <head>. Off by default: it rewrites site-wide CSS.
+		var s27 = useState( false );     var autoCss    = s27[0]; var setAutoCss    = s27[1];
+		var s28 = useState( false );     var autoCssAi  = s28[0]; var setAutoCssAi  = s28[1];
+		var s29 = useState( null );      var cssSection = s29[0]; var setCssSection = s29[1];
 
 		var fileRef = useRef( null );
 
@@ -268,6 +286,10 @@
 					aiBody.css      = cssValue;
 					aiBody.css_mode = cssMode;
 				}
+				if ( autoCss ) {
+					aiBody.css_auto_extract   = true;
+					aiBody.css_auto_ai_review = autoCssAi;
+				}
 				if ( importMenu ) {
 					aiBody.import_menu  = true;
 					aiBody.menu_replace = menuReplace;
@@ -287,6 +309,7 @@
 					setCssSaved( !! res.css_saved );
 					setCssScoped( res.css_scoped || '' );
 					setCssGlobal( res.css_global_updated ? { bytes: res.css_global_bytes || 0 } : null );
+					setCssSection( res.css_section || null );
 					setMediaMaps( {} );
 					setConverting( false );
 					setStep( 'result' );
@@ -310,6 +333,10 @@
 			if ( cssValue.trim() ) {
 				body.css      = cssValue;
 				body.css_mode = cssMode;
+			}
+			if ( autoCss ) {
+				body.css_auto_extract   = true;
+				body.css_auto_ai_review = autoCssAi;
 			}
 			if ( importMenu ) {
 				body.import_menu  = true;
@@ -348,6 +375,7 @@
 				setCssSaved( !! res.css_saved );
 				setCssScoped( res.css_scoped || '' );
 				setCssGlobal( res.css_global_updated ? { bytes: res.css_global_bytes || 0 } : null );
+				setCssSection( res.css_section || null );
 				setConverting( false );
 				setStep( 'result' );
 
@@ -390,7 +418,54 @@
 			}
 
 			dispatch( 'core/block-editor' ).insertBlocks( blocks );
+
+			// Only now — with the section really in the editor and carrying the
+			// rules — take them out of the site stylesheet. Converting (and
+			// re-converting to compare options) never writes site CSS, so a
+			// second pass can't find an already-thinned sheet and hand back an
+			// empty Scoped CSS. A failure here is harmless: the rules are simply
+			// still in <head> as well as on the section.
+			if ( cssSection && cssSection.can_thin && cssScoped ) {
+				thinStylesheet( cssScoped );
+			}
+
 			onClose();
+		}
+
+		/**
+		 * Remove the inserted section's rules from the site stylesheet.
+		 *
+		 * @param {string} css The Scoped CSS that was attached to the section.
+		 */
+		function thinStylesheet( css ) {
+			var notices = dispatch( 'core/notices' );
+			apiFetch( {
+				path: '/ekwa/v1/mc-thin-css',
+				method: 'POST',
+				data: { css: css },
+			} ).then( function ( res ) {
+				if ( ! notices ) { return; }
+				if ( ! res || ! res.removed ) {
+					notices.createWarningNotice(
+						( res && res.message ) || __( 'The site stylesheet was left unchanged.', 'ekwa' ),
+						{ type: 'snackbar' }
+					);
+					return;
+				}
+				notices.createSuccessNotice(
+					res.removed + ' ' + __( 'rules moved out of the site stylesheet — it is now', 'ekwa' ) + ' ' +
+						formatBytes( res.bytes ) + '. ' +
+						__( 'Ekwa Settings → Design Setup can undo this.', 'ekwa' ),
+					{ type: 'snackbar' }
+				);
+			} ).catch( function ( err ) {
+				if ( ! notices ) { return; }
+				notices.createWarningNotice(
+					__( 'The section kept its CSS, but the site stylesheet could not be updated: ', 'ekwa' ) +
+						( ( err && err.message ) || __( 'request failed.', 'ekwa' ) ),
+					{ type: 'snackbar' }
+				);
+			} );
 		}
 
 		function handleCopy() {
@@ -480,8 +555,27 @@
 						placeholder: '/* paste the mockup’s style.css here */',
 						help: __( 'Fonts and colors are always extracted and shown after conversion.', 'ekwa' ),
 					} ),
-					cssValue.trim() ? el( 'p', { className: 'ekwa-mc-css-dest' },
+					cssValue.trim() && ! autoCss ? el( 'p', { className: 'ekwa-mc-css-dest' },
 						__( 'This CSS is attached to the section as Scoped CSS — inlined only where the section renders.', 'ekwa' )
+					) : null,
+
+					// Section CSS extraction — the reason <head> stops growing.
+					el( ToggleControl, {
+						label: __( 'Move this section’s CSS out of the mockup stylesheet', 'ekwa' ),
+						help: autoCss
+							? __( 'Reads the saved mockup stylesheet, finds every rule whose selector matches this markup — media queries included — and attaches them to the section as Scoped CSS, so they are inlined only on pages where this section renders. Those rules leave the stylesheet when you press Insert, not before. Variables, :root, @font-face and base rules (body, h2, a:hover) always stay. Review the rule list after converting.', 'ekwa' )
+							: __( 'The mockup stylesheet is printed whole in every page’s <head>. Turn this on to give each section its own CSS instead, and keep only variables and shared rules global.', 'ekwa' ),
+						checked: autoCss,
+						onChange: setAutoCss,
+					} ),
+					autoCss ? el( ToggleControl, {
+						label: __( 'Let AI spot shared classes first', 'ekwa' ),
+						help: __( 'A matching selector isn’t always this section’s: .btn matches because the section has a button, but it belongs to the whole site. The AI reviews the matched selector list (not the stylesheet) and anything it calls shared stays global — it can only ever move fewer rules. Uses your AI quota. Classes listed under Design Setup → “Never move these” are excluded either way.', 'ekwa' ),
+						checked: autoCssAi,
+						onChange: setAutoCssAi,
+					} ) : null,
+					autoCss && cssValue.trim() ? el( 'p', { className: 'ekwa-mc-css-dest' },
+						__( 'CSS is pasted above, so this conversion takes the section’s rules from the paste instead of the saved stylesheet — and the saved stylesheet is left alone.', 'ekwa' )
 					) : null
 				)
 			);
@@ -690,12 +784,59 @@
 		// the shared leftover stays in <head>. Shown even when no fonts/colors
 		// surfaced (the pool can be pure structural CSS by now).
 		if ( cssGlobal ) {
-			var gBytes = cssGlobal.bytes || 0;
-			var gKb    = gBytes / 1024;
-			var gSize  = gKb < 0.1 ? ( gBytes + ' B' ) : ( gKb.toFixed( gKb < 10 ? 1 : 0 ) + ' KB' );
 			resultChildren.push(
 				el( Notice, { key: 'css-global', status: 'success', isDismissible: false },
-					__( 'Global CSS pool thinned — this section’s rules are now its Scoped CSS. Shared CSS still in <head>: ', 'ekwa' ) + gSize
+					__( 'Global CSS pool thinned — this section’s rules are now its Scoped CSS. Shared CSS still in <head>: ', 'ekwa' ) + formatBytes( cssGlobal.bytes || 0 )
+				)
+			);
+		}
+
+		// Section CSS extraction — what WILL move, listed before it moves. The
+		// stylesheet is only rewritten when Insert is pressed, so this is the
+		// moment to spot a shared class that shouldn't leave <head>.
+		if ( cssSection ) {
+			var secKids = [
+				el( 'p', { key: 'sum', style: { margin: '0 0 6px' } },
+					cssSection.rules + ' ' +
+					__( 'rules', 'ekwa' ) + ' (' + formatBytes( cssSection.bytes ) + ') ' +
+					( cssSection.can_thin
+						? __( 'will move to this section’s Scoped CSS and leave the mockup stylesheet when you insert.', 'ekwa' )
+						: __( 'will be attached to this section as Scoped CSS. The mockup stylesheet is left as it is.', 'ekwa' ) )
+				),
+			];
+
+			if ( ( cssSection.kept_shared || [] ).length ) {
+				secKids.push(
+					el( 'p', { key: 'kept', style: { margin: '0 0 6px' } },
+						__( 'Kept in the stylesheet as shared:', 'ekwa' ) + ' ' +
+						cssSection.kept_shared.join( ', ' )
+					)
+				);
+			}
+
+			if ( ( cssSection.selectors || [] ).length ) {
+				secKids.push(
+					el( 'details', { key: 'list' },
+						el( 'summary', { style: { cursor: 'pointer' } },
+							__( 'Review the rules being moved', 'ekwa' )
+						),
+						el( 'ul', { className: 'ekwa-mc-css-rules' },
+							cssSection.selectors.map( function ( sel, i ) {
+								return el( 'li', { key: i }, el( 'code', null, sel ) );
+							} )
+						)
+					)
+				);
+				secKids.push(
+					el( 'p', { key: 'hint', style: { margin: '6px 0 0' } },
+						__( 'Anything in that list which other sections also use (buttons, containers, grids) belongs in Design Setup → “Never move these” — add it there and convert again.', 'ekwa' )
+					)
+				);
+			}
+
+			resultChildren.push(
+				el( Notice, { key: 'css-section', status: 'info', isDismissible: false },
+					el( 'div', null, secKids )
 				)
 			);
 		}

@@ -18,6 +18,15 @@ add_action( 'rest_api_init', 'ekwa_register_converter_routes' );
  * Register the convert-markup REST route.
  */
 function ekwa_register_converter_routes() {
+	// No sanitize_callback on the string args below, deliberately. REST params
+	// arrive ALREADY unslashed — core does set_body_params( wp_unslash( $_POST ) )
+	// for form bodies (wp-includes/rest-api/class-wp-rest-server.php) and plain
+	// json_decode() for JSON bodies, which is what wp.apiFetch sends. Running
+	// wp_unslash() again therefore strips backslashes that are real DATA: block
+	// markup carries & for "&" (serialize_block_attributes() hex-escapes it
+	// so the & cannot break the block comment), and a second unslash turns that
+	// into a literal "u0026" in the saved attribute. Windows paths lose their
+	// separators the same way. The declared 'type' => 'string' is enough.
 	register_rest_route( 'ekwa/v1', '/convert-markup', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_rest_convert_markup',
@@ -26,11 +35,8 @@ function ekwa_register_converter_routes() {
 		},
 		'args' => array(
 			'html' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) {
-					return wp_unslash( $v );
-				},
+				'required' => true,
+				'type'     => 'string',
 			),
 			'manifest' => array(
 				'required' => false,
@@ -48,12 +54,9 @@ function ekwa_register_converter_routes() {
 				'default'  => true,
 			),
 			'css' => array(
-				'required'          => false,
-				'type'              => 'string',
-				'default'           => '',
-				'sanitize_callback' => function ( $v ) {
-					return wp_unslash( $v );
-				},
+				'required' => false,
+				'type'     => 'string',
+				'default'  => '',
 			),
 			'css_mode' => array(
 				'required' => false,
@@ -65,6 +68,23 @@ function ekwa_register_converter_routes() {
 			// stylesheet (pasted css, or the saved mockup stylesheet when the
 			// field is empty) and attach them as the wrapper's Scoped CSS.
 			'css_ai_extract' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			// Section CSS extraction: match the saved stylesheet's selectors
+			// against this markup and hand back the rules that style it, so the
+			// editor can attach them to the wrapper and (on insert) cut them out
+			// of the sheet. Deterministic — no model involved.
+			'css_auto_extract' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			// Optional second opinion on the above: ask the AI which of the
+			// matched selectors look like shared site-wide utilities and keep
+			// those in the stylesheet. It can only ever move FEWER rules.
+			'css_auto_ai_review' => array(
 				'required' => false,
 				'type'     => 'boolean',
 				'default'  => false,
@@ -101,11 +121,30 @@ function ekwa_register_converter_routes() {
 		},
 		'args' => array(
 			'html' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) {
-					return wp_unslash( $v );
-				},
+				'required' => true,
+				'type'     => 'string',
+			),
+		),
+	) );
+
+	// Commit half of the section-CSS extraction: cut the rules the editor just
+	// attached to a section out of the site's stylesheet. Deliberately a second
+	// call, made only when the user actually inserts the section — converting
+	// (or re-converting to tweak the options) must never rewrite site CSS as a
+	// side effect, and an extraction that ran against an already-thinned sheet
+	// would come back empty and silently insert an unstyled section.
+	register_rest_route( 'ekwa/v1', '/mc-thin-css', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_rest_mc_thin_css',
+		'permission_callback' => function () {
+			return current_user_can( 'edit_theme_options' );
+		},
+		'args' => array(
+			// The Scoped CSS that was attached to the section. Only rules whose
+			// selector is present in BOTH this and the stylesheet are removed.
+			'css' => array(
+				'required' => true,
+				'type'     => 'string',
 			),
 		),
 	) );
@@ -651,6 +690,11 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 	$css        = trim( (string) $request->get_param( 'css' ) );
 	$css_mode   = $request->get_param( 'css_mode' );
 	$ai_extract = (bool) $request->get_param( 'css_ai_extract' );
+	$auto       = (bool) $request->get_param( 'css_auto_extract' );
+
+	if ( $auto && ! $ai_extract ) {
+		return ekwa_mc_apply_section_css_extract( $request, $html, $response, $css );
+	}
 
 	if ( $ai_extract ) {
 		// Thinning-pool model: with no CSS pasted, the source is the site-wide
@@ -764,6 +808,292 @@ function ekwa_mc_apply_css_options( $request, $html, array $response ) {
 	return $response;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SECTION CSS EXTRACTION
+//
+//  "Move this section's CSS out of the mockup stylesheet". The stylesheet is
+//  printed whole in <head> on every page, so a site with twenty converted
+//  sections inlines twenty sections' worth of CSS on a page that renders three
+//  of them. This walks the saved sheet, keeps the rules whose selectors actually
+//  match the markup being converted, and hands them back as the wrapper's Scoped
+//  CSS — media queries and all, in source order, byte-for-byte as written.
+//
+//  It only READS here. The matching rules leave the stylesheet in a separate
+//  call the editor makes when the section is inserted (/mc-thin-css), so
+//  converting twice to compare options can't quietly empty the sheet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Which stylesheet is this site actually printing, and where is it stored?
+ *
+ * Legacy split-model sites print the Global CSS pool and keep the mockup sheet
+ * as reference only (see ekwa_tokens_legacy_mode()), so extracting from the
+ * mockup sheet there would thin something that isn't on the page. Both models
+ * are handled; the site is never switched from one to the other.
+ *
+ * @return array{css:string,target:string} target is 'global' or 'mockup'.
+ */
+function ekwa_mc_printed_stylesheet() {
+	$legacy = function_exists( 'ekwa_tokens_legacy_mode' ) && ekwa_tokens_legacy_mode();
+	if ( $legacy ) {
+		return array(
+			'css'    => function_exists( 'ekwa_tokens_global_css' ) ? trim( ekwa_tokens_global_css() ) : '',
+			'target' => 'global',
+		);
+	}
+	return array(
+		'css'    => function_exists( 'ekwa_tokens_mockup_css' ) ? trim( ekwa_tokens_mockup_css() ) : '',
+		'target' => 'mockup',
+	);
+}
+
+/**
+ * Run the section-CSS extraction and describe it in the response.
+ *
+ * @param WP_REST_Request $request  Carries css_auto_ai_review.
+ * @param string          $html     The section HTML being converted.
+ * @param array           $response Response payload so far.
+ * @param string          $css      CSS pasted in the modal, if any.
+ * @return array Amended payload.
+ */
+function ekwa_mc_apply_section_css_extract( $request, $html, array $response, $css ) {
+	if ( ! function_exists( 'ekwa_css_extract_section_rules' ) ) {
+		$response['warnings'][] = __( 'Section CSS extraction is unavailable — the CSS utilities failed to load.', 'ekwa' );
+		return $response;
+	}
+
+	// Pasting CSS in the modal overrides the source for this one conversion and
+	// never touches the saved stylesheet — same rule the AI extraction follows.
+	$pasted = '' !== trim( (string) $css );
+	$sheet  = ekwa_mc_printed_stylesheet();
+	$source = $pasted ? (string) $css : $sheet['css'];
+
+	if ( '' === trim( $source ) ) {
+		$response['warnings'][] = __( 'Section CSS extraction skipped — there is no stylesheet to take rules from. Paste your mockup\'s style.css into Ekwa Settings → Design Setup → Mockup stylesheet first.', 'ekwa' );
+		return $response;
+	}
+
+	$keep    = function_exists( 'ekwa_tokens_keep_global_selectors' ) ? ekwa_tokens_keep_global_selectors() : '';
+	$extract = ekwa_css_extract_section_rules( $source, $html, $keep );
+	$scoped  = trim( $extract['scoped'] );
+
+	if ( '' === $scoped ) {
+		$response['warnings'][] = __( 'Section CSS extraction found nothing — no rule in the stylesheet matches this markup. Check that the pasted HTML still carries the mockup\'s class names (and that the classes aren\'t all on the “Never move these” list).', 'ekwa' );
+		return $response;
+	}
+
+	// Optional second opinion: the matcher can tell that `.btn` styles this
+	// section, but not that `.btn` is the site's button. Ask the model about the
+	// SELECTOR LIST only — a few hundred bytes, no stylesheet, no truncation
+	// risk — and drop whatever it calls shared. It can only ever move fewer
+	// rules, so a failed or nonsense answer costs styling nowhere.
+	$ai_kept = array();
+	if ( $request->get_param( 'css_auto_ai_review' ) ) {
+		$review = ekwa_mc_ai_review_shared_selectors( $html, $extract['selectors'] );
+		if ( is_wp_error( $review ) ) {
+			$response['warnings'][] = __( 'Shared-class review skipped: ', 'ekwa' ) . $review->get_error_message();
+		} elseif ( ! empty( $review ) ) {
+			// Re-run with the model's picks spared. A bare ".btn" becomes a token
+			// rule, so its :hover and its @media overrides go with it; anything
+			// more elaborate is spared verbatim and nothing else is inferred.
+			$ai_tokens = array();
+			$ai_exact  = array();
+			foreach ( $review as $selector ) {
+				if ( preg_match( '/^[.#][A-Za-z0-9_-]+$/', $selector ) ) {
+					$ai_tokens[] = $selector;
+				} else {
+					$ai_exact[] = $selector;
+				}
+			}
+			$extract = ekwa_css_extract_section_rules(
+				$source,
+				$html,
+				trim( $keep . "\n" . implode( "\n", $ai_tokens ) ),
+				$ai_exact
+			);
+			$scoped  = trim( $extract['scoped'] );
+			$ai_kept = $review;
+		}
+	}
+
+	if ( '' === $scoped ) {
+		$response['warnings'][] = __( 'Section CSS extraction found nothing to move — the shared-class review classed every matching rule as site-wide CSS.', 'ekwa' );
+		return $response;
+	}
+
+	if ( strlen( $scoped ) > 100000 ) {
+		$response['warnings'][] = __( 'This section claimed a very large amount of CSS. That is usually a sign the markup is a whole page rather than one section — review the rule list before inserting.', 'ekwa' );
+	}
+
+	$response['css_scoped']  = ekwa_css_strip_comments( $scoped );
+	$response['css_extract'] = ekwa_mc_extract_css_tokens( $scoped );
+	$response['css_section'] = array(
+		'rules'       => (int) $extract['moved'],
+		'bytes'       => strlen( $scoped ),
+		'selectors'   => array_slice( $extract['selectors'], 0, 300 ),
+		'kept_shared' => array_slice( array_values( array_unique( array_merge( $extract['kept_shared'], $ai_kept ) ) ), 0, 100 ),
+		'source'      => $pasted ? 'pasted' : $sheet['target'],
+		// Whether the editor should offer to thin the sheet on insert.
+		'can_thin'    => ! $pasted && current_user_can( 'edit_theme_options' ),
+	);
+
+	if ( ! $pasted && ! current_user_can( 'edit_theme_options' ) ) {
+		$response['warnings'][] = __( 'The section keeps its CSS, but only an administrator can remove those rules from the site stylesheet — they will be inlined twice until one does.', 'ekwa' );
+	}
+
+	return $response;
+}
+
+/**
+ * AI: of these selectors, which are shared site-wide utilities?
+ *
+ * Deliberately narrow. The model never sees the stylesheet and never writes
+ * CSS — it answers with a subset of the selector list it was given, and that
+ * subset is simply added to the "never move" list for this one extraction.
+ *
+ * @param string   $html      Section HTML, for context.
+ * @param string[] $selectors Selectors the matcher claimed for this section.
+ * @return string[]|WP_Error Selectors to keep in the stylesheet (possibly empty).
+ */
+function ekwa_mc_ai_review_shared_selectors( $html, $selectors ) {
+	$selectors = array_values( array_filter( array_map( 'trim', (array) $selectors ), 'strlen' ) );
+	if ( empty( $selectors ) ) {
+		return array();
+	}
+	if ( ! function_exists( 'ekwa_ai_generate_call_gemini' ) || ! function_exists( 'ekwa_get_ai_api_key' ) ) {
+		return new WP_Error( 'ai_unavailable', __( 'AI modules are not loaded.', 'ekwa' ) );
+	}
+	if ( ! ekwa_get_ai_api_key() ) {
+		return new WP_Error( 'no_api_key', __( 'Gemini API key not configured (Ekwa Settings → AI).', 'ekwa' ) );
+	}
+	if ( function_exists( 'ekwa_ai_rest_permission' ) ) {
+		$allowed = ekwa_ai_rest_permission();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+	}
+	if ( function_exists( 'ekwa_ai_current_feature' ) ) {
+		ekwa_ai_current_feature( 'css-shared-review' );
+	}
+
+	// The at-rule context suffix the extractor adds for display is noise here.
+	$plain = array();
+	foreach ( $selectors as $selector ) {
+		$plain[] = trim( explode( '  ·  ', $selector )[0] );
+	}
+	$plain = array_values( array_unique( $plain ) );
+
+	$system = "You are reviewing a CSS extraction for a WordPress site built from a static mockup.\n\n"
+		. "A section of the mockup is being converted into a reusable block. Every selector the user lists matches an element inside that section, so all of them are about to be MOVED out of the site-wide stylesheet and into this one section's scoped CSS.\n\n"
+		. "That is wrong for any selector that belongs to the site's SHARED vocabulary — a button, a layout container, a grid, a generic card, a form control, a utility class — because other sections and other pages use it too, and moving it would leave them unstyled. It is right for anything named after this section.\n\n"
+		. "Answer with ONLY the selectors that should STAY in the site-wide stylesheet, one per line, copied character for character from the list you were given. Answer with nothing at all if every selector is specific to this section. No explanation, no code fences, no bullets, no other text.";
+
+	$contents = "SECTION HTML (may be truncated):\n" . substr( (string) $html, 0, 6000 ) . "\n\n"
+		. "SELECTORS:\n" . implode( "\n", array_slice( $plain, 0, 400 ) ) . "\n";
+
+	// Low temperature, no thinking budget, small output cap: the answer is a
+	// subset of the input lines, so there is nothing to reason at length about.
+	$result = ekwa_ai_generate_call_gemini(
+		$system,
+		$contents,
+		0.1,
+		ekwa_get_ai_api_key(),
+		function_exists( 'ekwa_ai_fast_model' ) ? ekwa_ai_fast_model() : '',
+		4096,
+		0
+	);
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+	$out = isset( $result['content'] ) ? (string) $result['content'] : '';
+	if ( function_exists( 'ekwa_ai_generate_strip_fences' ) ) {
+		$out = ekwa_ai_generate_strip_fences( $out );
+	}
+
+	// Only selectors that were actually offered come back — the model can narrow
+	// the move, never widen it or invent a rule.
+	$offered = array();
+	foreach ( $plain as $selector ) {
+		$offered[ strtolower( $selector ) ] = $selector;
+	}
+	$keep = array();
+	foreach ( preg_split( '/\r\n|\r|\n/', (string) $out ) as $line ) {
+		$line = trim( $line, " \t\"'`-•" );
+		if ( '' === $line ) {
+			continue;
+		}
+		$key = strtolower( $line );
+		if ( isset( $offered[ $key ] ) ) {
+			$keep[ $offered[ $key ] ] = true;
+		}
+	}
+	return array_keys( $keep );
+}
+
+/**
+ * Handle POST /mc-thin-css — remove a section's rules from the site stylesheet.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_rest_mc_thin_css( $request ) {
+	if ( ! function_exists( 'ekwa_css_remove_rules_by_key' ) ) {
+		return new WP_Error( 'unavailable', __( 'CSS utilities are not loaded.', 'ekwa' ), array( 'status' => 500 ) );
+	}
+
+	$scoped = (string) $request->get_param( 'css' );
+	if ( '' === trim( $scoped ) ) {
+		return new WP_Error( 'empty_css', __( 'No section CSS was sent.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+
+	$sheet = ekwa_mc_printed_stylesheet();
+	if ( '' === trim( $sheet['css'] ) ) {
+		return new WP_Error( 'no_stylesheet', __( 'There is no saved stylesheet to thin.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+
+	$keys = ekwa_css_rule_keys( $scoped );
+	if ( empty( $keys ) ) {
+		return new WP_Error( 'no_rules', __( 'No rules could be read from the section CSS.', 'ekwa' ), array( 'status' => 400 ) );
+	}
+
+	$thinned = ekwa_css_remove_rules_by_key( $sheet['css'], $keys );
+
+	// Two ways this is allowed to do nothing, both of which leave the site
+	// exactly as it was: the rules were already taken out by an earlier
+	// extraction, or they somehow account for the entire stylesheet.
+	if ( 0 === $thinned['removed'] ) {
+		return rest_ensure_response( array(
+			'removed' => 0,
+			'bytes'   => strlen( trim( $sheet['css'] ) ),
+			'message' => __( 'Stylesheet left unchanged — these rules were not in it (already extracted, or edited since).', 'ekwa' ),
+		) );
+	}
+	if ( '' === trim( $thinned['css'] ) ) {
+		return rest_ensure_response( array(
+			'removed' => 0,
+			'bytes'   => strlen( trim( $sheet['css'] ) ),
+			'message' => __( 'Stylesheet left unchanged — this section claimed every rule in it, which would have emptied the site stylesheet.', 'ekwa' ),
+		) );
+	}
+
+	if ( function_exists( 'ekwa_tokens_backup_stylesheet' ) ) {
+		ekwa_tokens_backup_stylesheet( $sheet['css'], $sheet['target'] );
+	}
+	if ( 'global' === $sheet['target'] ) {
+		ekwa_tokens_set_global_css( $thinned['css'] );
+	} else {
+		ekwa_tokens_set_mockup_css( $thinned['css'] );
+	}
+
+	return rest_ensure_response( array(
+		'removed'    => (int) $thinned['removed'],
+		'kept'       => (int) $thinned['kept'],
+		'bytes'      => strlen( trim( $thinned['css'] ) ),
+		'target'     => $sheet['target'],
+		'restorable' => true,
+	) );
+}
+
 /**
  * AI: split a stylesheet ("the pool") into (1) the rules that specifically
  * style the given HTML section — rewritten to the site's design tokens, ready
@@ -808,6 +1138,7 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 		. "INPUT: an HTML section, then a stylesheet (\"the pool\").\n"
 		. "TASK: return ONLY the rules from the pool that specifically style THIS section (matched by its classes, ids, tags and their descendants). INCLUDE the section's ::before/::after pseudo-element rules, :hover/:focus states, @media variants of those rules (keep them inside their original @media wrapper, with the media query written exactly as in the pool), and any @keyframes they reference.\n"
 		. "COPY EACH SELECTOR EXACTLY as it appears in the pool — character for character, including the @media prelude. The selector text is how the rule is matched back to the pool and removed from the site-wide stylesheet; a reworded or merged selector means the rule stays duplicated. You MAY rewrite DECLARATION VALUES to the site's design tokens where one matches: var(--name) for colors, font-family variables for fonts, background-image variables instead of url(...) when the token represents the same image. Do NOT redeclare the token variables themselves.\n"
+		. "NEVER alter a CSS escape sequence. A backslash inside a value is a unicode escape, not a typographic accident: content: '\\f00c' is the Font Awesome check glyph and content: '\\201C' is a curly quote. Reproduce every backslash and every hex digit exactly — dropping the backslash turns the icon into literal text like \"f00c\" on the page. Never token-substitute a content: value, and copy font-family names on icon rules (Font Awesome, icomoon…) verbatim.\n"
 		. "LEAVE OUT the shared/base layer: resets, html/body typography, bare element rules (a, img, headings, lists…), generic component rules (e.g. .btn, .container) that aren't unique to this section, utility classes, and other sections' rules. When unsure whether a rule is section-specific or shared, LEAVE IT OUT — anything you omit simply stays in the site-wide stylesheet.\n"
 		. "EXCLUDE entirely: :root blocks, @font-face, and @import (those are handled elsewhere). Invent nothing — every rule you return must exist in the pool.\n"
 		. "OUTPUT: the marker on its own line, then raw CSS — no markdown fences, no commentary, nothing after the CSS:\n"
@@ -845,6 +1176,10 @@ function ekwa_mc_ai_split_section_css( $html, $css ) {
 	}
 
 	$split = ekwa_mc_parse_split_css( $out );
+
+	// The prompt forbids touching CSS escapes, but that is an instruction, not a
+	// guarantee — repair any icon glyph the model retyped without its backslash.
+	$split['scoped'] = ekwa_mc_restore_content_escapes( $split['scoped'], $css );
 
 	// A truncated response is a partial list of the section's rules. That is
 	// safe now — the pool only loses what came back — but the Scoped CSS is
@@ -896,6 +1231,129 @@ function ekwa_mc_parse_split_css( $out ) {
 		'scoped'   => trim( (string) $scoped ),
 		'leftover' => ( null === $leftover ) ? null : trim( (string) $leftover ),
 	);
+}
+
+/**
+ * Locate the first `content:` declaration in a rule body.
+ *
+ * The lookbehind keeps it off align-content/justify-content/place-content, and
+ * the value scan honors quoted strings so a ";" inside the string can't end the
+ * declaration early.
+ *
+ * @param string $body Declaration block (braces already removed).
+ * @return array{0:int,1:int,2:string}|null [offset, length, text], or null.
+ */
+function ekwa_mc_find_content_decl( $body ) {
+	if ( ! preg_match( '/(?<![-\w])content\s*:/i', $body, $m, PREG_OFFSET_CAPTURE ) ) {
+		return null;
+	}
+	$start = (int) $m[0][1];
+	$i     = $start + strlen( $m[0][0] );
+	$len   = strlen( $body );
+
+	while ( $i < $len ) {
+		$ch = $body[ $i ];
+		if ( '"' === $ch || "'" === $ch ) {
+			$quote = $ch;
+			$i++;
+			while ( $i < $len ) {
+				if ( '\\' === $body[ $i ] && $i + 1 < $len ) {
+					$i += 2;
+					continue;
+				}
+				$i++;
+				if ( $body[ $i - 1 ] === $quote ) {
+					break;
+				}
+			}
+			continue;
+		}
+		if ( ';' === $ch ) {
+			break;
+		}
+		$i++;
+	}
+
+	return array( $start, $i - $start, substr( $body, $start, $i - $start ) );
+}
+
+/**
+ * Put back any `content:` declaration the model retyped without its escapes.
+ *
+ * The splitter deliberately lets the model rewrite declaration VALUES so colors
+ * and fonts can pick up design tokens. That licence is wrong for exactly one
+ * property: an icon font's glyph is a unicode escape (content: '\f00c'), and a
+ * model retyping it commonly drops the backslash — which renders the literal
+ * text "f00c" on the page instead of the icon. content: is never a design
+ * token, so whenever a returned rule matches a pool rule whose content: value
+ * carries a backslash, the pool's declaration is authoritative and is restored
+ * verbatim.
+ *
+ * Only that one declaration's byte range is rewritten; every other value the
+ * model tokenized is left exactly as it came back.
+ *
+ * @param string $scoped CSS the model returned.
+ * @param string $pool   The stylesheet it was copying from.
+ * @return string
+ */
+function ekwa_mc_restore_content_escapes( $scoped, $pool ) {
+	$scoped = (string) $scoped;
+	$pool   = (string) $pool;
+	// No backslash anywhere in the source means there is no escape to lose.
+	if ( '' === trim( $scoped ) || false === strpos( $pool, '\\' ) ) {
+		return $scoped;
+	}
+	if ( ! function_exists( 'ekwa_css_walk' ) ) {
+		return $scoped;
+	}
+
+	// Index the pool's escaped content: declarations by rule identity.
+	$authoritative = array();
+	ekwa_css_walk( $pool, function ( $rule ) use ( &$authoritative ) {
+		if ( null === $rule['body'] ) {
+			return;
+		}
+		$decl = ekwa_mc_find_content_decl( $rule['body'] );
+		if ( null !== $decl && false !== strpos( $decl[2], '\\' ) ) {
+			$authoritative[ $rule['key'] ] = $decl[2];
+		}
+	} );
+
+	if ( empty( $authoritative ) ) {
+		return $scoped;
+	}
+
+	// Collect edits as absolute byte ranges, then apply them right-to-left so
+	// earlier offsets stay valid.
+	$edits = array();
+	ekwa_css_walk( $scoped, function ( $rule ) use ( $authoritative, &$edits ) {
+		if ( null === $rule['body'] || ! isset( $authoritative[ $rule['key'] ] ) ) {
+			return;
+		}
+		$decl = ekwa_mc_find_content_decl( $rule['body'] );
+		if ( null === $decl || $decl[2] === $authoritative[ $rule['key'] ] ) {
+			return; // Absent, or already identical — nothing to repair.
+		}
+		// prelude_end is the index of "{", so the body starts one byte later.
+		$edits[] = array(
+			$rule['prelude_end'] + 1 + $decl[0],
+			$decl[1],
+			$authoritative[ $rule['key'] ],
+		);
+	} );
+
+	if ( empty( $edits ) ) {
+		return $scoped;
+	}
+
+	usort( $edits, function ( $a, $b ) {
+		return $b[0] - $a[0];
+	} );
+	foreach ( $edits as $edit ) {
+		$scoped = substr_replace( $scoped, $edit[2], $edit[0], $edit[1] );
+	}
+
+	return $scoped;
 }
 
 /**

@@ -140,6 +140,11 @@
 		var s15 = useState( DEFAULT_MODEL ); var model        = s15[0]; var setModel        = s15[1];
 		var s16 = useState( false );         var isFullscreen = s16[0]; var setIsFullscreen = s16[1];
 		var s17 = useState( 'page' );        var context      = s17[0]; var setContext      = s17[1];
+		// Non-fatal notes about the last generation (e.g. the response was cut
+		// off at the model's output limit) — shown alongside the result, not
+		// instead of it, since the partial HTML is still usable as a starting
+		// point.
+		var s18 = useState( [] );            var warnings     = s18[0]; var setWarnings     = s18[1];
 		// step is derived: 'generate' before HTML, 'preview' after.
 
 		var fileRef = useRef( null );
@@ -282,6 +287,7 @@
 			}
 			setGenerating( true );
 			setError( null );
+			setWarnings( [] );
 
 			var payloadImages = images.map( function ( img ) {
 				return { mime: img.mime, data_base64: img.data_base64 };
@@ -325,6 +331,8 @@
 				setHtml( res.html || '' );
 				setExtractedCss( res.extracted_css || '' );
 				setExtractedJs( res.extracted_js || '' );
+				// Absent on a response from an older theme build — no warning shown.
+				setWarnings( res.warnings || [] );
 
 				// Clear input ready for the next refine turn.
 				setPrompt( '' );
@@ -352,6 +360,7 @@
 			setExtractedJs( '' );
 			setHistory( [] );
 			setError( null );
+			setWarnings( [] );
 			setIsFullscreen( false );
 		}
 
@@ -737,6 +746,17 @@
 					)
 				)
 			);
+
+			if ( warnings && warnings.length ) {
+				children.push(
+					el( Notice, { key: 'warn', status: 'warning', isDismissible: false },
+						el( 'strong', null, __( 'Heads up:', 'ekwa' ) ),
+						el( 'ul', { style: { margin: '4px 0 0', paddingLeft: '18px' } },
+							warnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
+						)
+					)
+				);
+			}
 
 			if ( error ) {
 				children.push(

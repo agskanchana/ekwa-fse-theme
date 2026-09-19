@@ -24,15 +24,23 @@ add_action( 'rest_api_init', 'ekwa_ai_generate_register_routes' );
  * Register the AI HTML generation REST route.
  */
 function ekwa_ai_generate_register_routes() {
+	// No sanitize_callback on the string args below, deliberately. REST params
+	// arrive ALREADY unslashed — core does set_body_params( wp_unslash( $_POST ) )
+	// for form bodies (wp-includes/rest-api/class-wp-rest-server.php) and plain
+	// json_decode() for JSON bodies, which is what wp.apiFetch sends. Running
+	// wp_unslash() again therefore strips backslashes that are real DATA: block
+	// markup carries & for "&" (serialize_block_attributes() hex-escapes it
+	// so the & cannot break the block comment), and a second unslash turns that
+	// into a literal "u0026" in the saved attribute. Windows paths lose their
+	// separators the same way. The declared 'type' => 'string' is enough.
 	register_rest_route( 'ekwa/v1', '/ai-generate-html', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_generate_handle_request',
 		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args' => array(
 			'prompt' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => true,
+				'type'     => 'string',
 			),
 			'images' => array(
 				'required' => false,
@@ -142,12 +150,19 @@ function ekwa_ai_generate_handle_request( $request ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
 	}
 
+	// No output cap: a full page of HTML with inline styles is long, and on the
+	// 2.5/3.x models the thinking step is billed against the same allowance, so
+	// the shared 16k default was being spent before the markup finished and cut
+	// pages off mid-tag (finishReason MAX_TOKENS). Passing 0 sends no
+	// maxOutputTokens at all, letting each model use its own maximum rather than
+	// pinning a number that would need revisiting on every model change.
 	$result = ekwa_ai_generate_call_gemini(
 		$system_prompt,
 		$contents,
 		$temperature,
 		$api_key,
-		$model
+		$model,
+		0
 	);
 
 	if ( is_wp_error( $result ) ) {
@@ -161,10 +176,21 @@ function ekwa_ai_generate_handle_request( $request ) {
 	$cleaned   = ekwa_ai_generate_strip_fences( $result['content'] );
 	$extracted = ekwa_ai_generate_extract_css_js( $cleaned );
 
+	// MAX_TOKENS means Gemini stopped mid-answer, so what follows is a partial
+	// document — typically an unclosed tag or a half-written rule. The central
+	// caller only writes that to the PHP error log, which left the user looking
+	// at silently truncated output with no sign anything had gone wrong. Report
+	// it with the content, the same way the converter and Block Builder do.
+	$warnings = array();
+	if ( isset( $result['finish_reason'] ) && 'MAX_TOKENS' === $result['finish_reason'] ) {
+		$warnings[] = __( 'The AI reached its output limit and the response was cut off — this HTML is incomplete, so a tag or CSS rule near the end is probably unfinished. Ask for one section at a time, or press Back to start a fresh conversation (each refine turn resends every earlier turn, which eats the same budget), then generate again.', 'ekwa' );
+	}
+
 	return rest_ensure_response( array(
 		'html'          => $extracted['html'],
 		'extracted_css' => $extracted['css'],
 		'extracted_js'  => $extracted['js'],
+		'warnings'      => $warnings,
 	) );
 }
 
@@ -481,6 +507,14 @@ function ekwa_ai_generate_image_part( $img ) {
  *                                    leaving it too low silently TRUNCATES the
  *                                    response, which callers must then detect via
  *                                    the returned finish_reason.
+ *                                    Pass 0 (or null) to send NO cap at all, which
+ *                                    lets Gemini apply the model's own maximum —
+ *                                    preferable to a hard-coded ceiling for
+ *                                    open-ended output, since it tracks whatever
+ *                                    the selected model actually supports instead
+ *                                    of a number that ages with the model list.
+ *                                    The default stays 16384 so existing callers
+ *                                    keep the budget they were written against.
  * @param int|null $thinking_budget   When set, caps the model's "thinking" tokens
  *                                    (0 disables thinking entirely). Thinking is
  *                                    drawn from the SAME output budget, so for
@@ -498,9 +532,14 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 	$url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent?key=' . urlencode( $api_key );
 
 	$generation_config = array(
-		'temperature'     => $temperature,
-		'maxOutputTokens' => (int) $max_output_tokens,
+		'temperature' => $temperature,
 	);
+	// Omitting maxOutputTokens entirely is what "no cap" means to the API — it
+	// then applies the model's own maximum. Sending 0 would instead be read as a
+	// literal zero-token budget, so the key has to be left out, not set.
+	if ( $max_output_tokens ) {
+		$generation_config['maxOutputTokens'] = (int) $max_output_tokens;
+	}
 	if ( null !== $thinking_budget ) {
 		$generation_config['thinkingConfig'] = array( 'thinkingBudget' => (int) $thinking_budget );
 	}
@@ -547,7 +586,12 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 
 	$finish_reason = isset( $data['candidates'][0]['finishReason'] ) ? (string) $data['candidates'][0]['finishReason'] : '';
 	if ( 'MAX_TOKENS' === $finish_reason ) {
-		error_log( sprintf( '[ekwa-ai] %s (%s) — response truncated at MAX_TOKENS (budget %d)', $feature_label, $model, (int) $max_output_tokens ) );
+		error_log( sprintf(
+			'[ekwa-ai] %s (%s) — response truncated at MAX_TOKENS (budget %s)',
+			$feature_label,
+			$model,
+			$max_output_tokens ? (string) (int) $max_output_tokens : "the model's own maximum"
+		) );
 	}
 
 	$content = '';

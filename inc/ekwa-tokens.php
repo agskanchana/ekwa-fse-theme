@@ -5,10 +5,26 @@
  *
  * THE MODEL: the mockup stylesheet IS the site's global stylesheet. You paste
  * it once and it is printed in <head> as-is. Its `:root` block defines every
- * design token, including responsive `@media` overrides, because nothing is
- * split out of it. Sections still carry their own Scoped CSS; the Fonts module
- * still owns @font-face and font variables (self-hosting + conditional mobile
- * loading), which is why those are stripped from the printed sheet.
+ * design token, including responsive `@media` overrides. Sections still carry
+ * their own Scoped CSS; the Fonts module still owns @font-face and font
+ * variables (self-hosting + conditional mobile loading), which is why those are
+ * stripped from the printed sheet.
+ *
+ * OPTIONAL, PER SECTION: the Mockup Converter can move one section's rules out
+ * of this sheet and into that section's Scoped CSS ("Move this section's CSS
+ * out of the mockup stylesheet"), so a page inlines the CSS of the sections it
+ * actually renders instead of every section on the site. It is off by default
+ * and never runs on its own — see ekwa_tokens_set_mockup_css() and the
+ * extraction block below it. Two consequences worth knowing:
+ *
+ *   - A moved rule now lands in the body rather than <head>, so against a rule
+ *     of EQUAL specificity that stayed in the sheet, the moved one now wins
+ *     where the sheet's later rule used to. Section rules are normally the more
+ *     specific of the two, so this rarely shows; when it does, the undo button
+ *     in Design Setup puts the sheet back.
+ *   - The rules only leave when a converted section is inserted, and the sheet
+ *     as it was is kept in `ekwa_mockup_css_backup` so one bad extraction is
+ *     always reversible.
  *
  * <head> print order, which is deliberate — see ekwa_tokens_print_mockup_css():
  *
@@ -553,6 +569,93 @@ function ekwa_tokens_set_global_css( $css ) {
 	update_option( 'ekwa_global_css', ekwa_tokens_strip_css_variables( (string) $css ), false );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SECTION CSS EXTRACTION — support for the Mockup Converter's option to move a
+//  section's rules out of this sheet and into the section's own Scoped CSS, so
+//  <head> stops inlining CSS that only one section on one page ever uses.
+//
+//  Everything here is inert until someone ticks that box in the converter: no
+//  migration runs, nothing is rewritten on update, and a site that never uses it
+//  keeps printing the stylesheet exactly as it always did.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Replace the mockup stylesheet. Stored raw — it IS the site's stylesheet, so
+ * (unlike the legacy pool) its :root variables and at-rules stay put.
+ *
+ * @param string $css
+ */
+function ekwa_tokens_set_mockup_css( $css ) {
+	update_option( 'ekwa_mockup_css', (string) $css, false );
+}
+
+/**
+ * Selectors, class names or ids the extraction must never move out of the
+ * stylesheet — the site's shared vocabulary (".btn", ".container", "grid*").
+ *
+ * Empty on every existing site, which is exactly the point: nothing changes
+ * until the extraction is used and the list is filled in.
+ *
+ * @return string Raw list as typed in Design Setup.
+ */
+function ekwa_tokens_keep_global_selectors() {
+	return (string) get_option( 'ekwa_mockup_css_keep_global', '' );
+}
+
+/**
+ * The one-slot undo buffer for the last extraction.
+ *
+ * @return array{css:string,target:string,time:int}|null
+ */
+function ekwa_tokens_stylesheet_backup() {
+	$backup = get_option( 'ekwa_mockup_css_backup', null );
+	if ( ! is_array( $backup ) || ! isset( $backup['css'] ) ) {
+		return null;
+	}
+	return array(
+		'css'    => (string) $backup['css'],
+		'target' => isset( $backup['target'] ) ? (string) $backup['target'] : 'mockup',
+		'time'   => isset( $backup['time'] ) ? (int) $backup['time'] : 0,
+	);
+}
+
+/**
+ * Remember the stylesheet as it was before an extraction rewrote it.
+ *
+ * @param string $css    The stylesheet being replaced.
+ * @param string $target 'mockup' (current model) or 'global' (legacy pool).
+ */
+function ekwa_tokens_backup_stylesheet( $css, $target = 'mockup' ) {
+	update_option( 'ekwa_mockup_css_backup', array(
+		'css'    => (string) $css,
+		'target' => ( 'global' === $target ) ? 'global' : 'mockup',
+		'time'   => time(),
+	), false );
+}
+
+/**
+ * Put the backed-up stylesheet back, and keep the version it replaced in the
+ * buffer — so the button is an undo AND a redo, and one bad extraction can
+ * always be walked back without hunting for the rules by hand.
+ *
+ * @return bool True when something was restored.
+ */
+function ekwa_tokens_restore_stylesheet() {
+	$backup = ekwa_tokens_stylesheet_backup();
+	if ( null === $backup ) {
+		return false;
+	}
+	if ( 'global' === $backup['target'] ) {
+		$current = ekwa_tokens_global_css();
+		update_option( 'ekwa_global_css', $backup['css'], false );
+	} else {
+		$current = ekwa_tokens_mockup_css();
+		ekwa_tokens_set_mockup_css( $backup['css'] );
+	}
+	ekwa_tokens_backup_stylesheet( $current, $backup['target'] );
+	return true;
+}
+
 /**
  * Every CSS custom property the site actually defines, from all four sources.
  *
@@ -779,6 +882,17 @@ function ekwa_tokens_save_settings() {
 		update_option( 'ekwa_mockup_css', wp_unslash( $_POST['ekwa_mockup_css'] ), false ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 	}
 
+	// Selectors the Mockup Converter's section-CSS extraction must leave alone.
+	if ( isset( $_POST['ekwa_mockup_css_keep_global'] ) ) {
+		update_option( 'ekwa_mockup_css_keep_global', sanitize_textarea_field( wp_unslash( $_POST['ekwa_mockup_css_keep_global'] ) ) );
+	}
+
+	// "Undo last extraction" — runs AFTER the textarea above, so it wins over the
+	// (already thinned) value the form just posted back.
+	if ( ! empty( $_POST['ekwa_tokens_css_restore'] ) ) {
+		ekwa_tokens_restore_stylesheet();
+	}
+
 	// ── Legacy fields ────────────────────────────────────────────────────
 	// Only rendered (and therefore only posted) by sites still on the split
 	// model. Emptying one now means EMPTY — the old "clear to re-derive from
@@ -832,6 +946,9 @@ function ekwa_tokens_render_tab() {
 	$colors     = ekwa_tokens_colors();
 	$bgimages   = ekwa_tokens_bgimages();
 	$bp         = ekwa_fonts_conditional_bp();
+
+	// Undo buffer for the converter's section-CSS extraction (null until used).
+	$ekwa_css_backup = ekwa_tokens_stylesheet_backup();
 
 	$mockup_prompts = ekwa_mockup_ai_prompts();
 
@@ -1006,6 +1123,78 @@ function ekwa_tokens_render_tab() {
 		</details>
 		<div id="ekwa-mockup-css-bg-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
 		<div id="ekwa-mockup-css-var-warning" class="ekwa-css-bg-warning" aria-live="polite"></div>
+
+		<details class="ekwa-collapsible" id="ekwa-mockup-css-extract-details">
+			<summary>
+				<span class="ekwa-collapsible__label"><?php esc_html_e( 'Section CSS extraction', 'ekwa' ); ?></span>
+				<span class="ekwa-collapsible__meta"><?php
+					echo $ekwa_css_backup
+						? esc_html__( 'one extraction can be undone', 'ekwa' )
+						: esc_html__( 'off until you use it', 'ekwa' );
+				?></span>
+			</summary>
+			<div class="ekwa-collapsible__body">
+				<p class="description" style="margin-bottom:1em;">
+					<?php esc_html_e( 'The Mockup Converter can move a section\'s rules — media queries included — out of this stylesheet and into that section\'s own Scoped CSS, so they are inlined only on pages where the section actually renders instead of in every page\'s <head>. Tick “Move this section\'s CSS out of the mockup stylesheet” when you convert. Variables, :root, @font-face, and base rules with no class or id of their own (body, h2, a:hover) are never moved.', 'ekwa' ); ?>
+				</p>
+				<p class="description" style="margin-bottom:1em;">
+					<?php esc_html_e( 'Rules only leave the stylesheet when you insert the converted section, never while you are still trying options — and the converter lists exactly what it is about to take first. One thing to keep in mind: a moved rule is printed with the section instead of in the <head>, so against a rule of the same specificity that stayed here, the moved one now wins. Section rules are usually the more specific of the two, so this rarely shows.', 'ekwa' ); ?>
+				</p>
+				<p>
+					<label for="ekwa-mockup-css-keep"><strong><?php esc_html_e( 'Never move these', 'ekwa' ); ?></strong></label>
+				</p>
+				<textarea id="ekwa-mockup-css-keep" name="ekwa_mockup_css_keep_global" rows="3" class="large-text code" spellcheck="false" placeholder=".btn, .container, .section-title, grid*"><?php echo esc_textarea( ekwa_tokens_keep_global_selectors() ); ?></textarea>
+				<p class="description">
+					<?php esc_html_e( 'Your shared vocabulary — the classes more than one section uses. Comma or line separated; a leading dot or hash is optional, and a trailing * matches a prefix (btn* covers .btn, .btn-primary and .btn--ghost). A rule naming any of these stays in the stylesheet even when it matches the section being converted. Worth filling in before the first extraction: a button style that lives in one section\'s Scoped CSS is gone from every other page that used it.', 'ekwa' ); ?>
+				</p>
+
+				<?php if ( $ekwa_css_backup ) : ?>
+					<hr style="margin:1.5em 0;">
+					<p>
+						<?php // Not a submit button: it would become the form's default for
+						// implicit submission (Enter in any text field) and silently undo
+						// an extraction. The click below submits the real form instead. ?>
+						<input type="hidden" name="ekwa_tokens_css_restore" id="ekwa-tokens-css-restore-flag" value="">
+						<button type="button" class="button button-secondary" id="ekwa-tokens-css-restore">
+							<?php esc_html_e( 'Undo the last extraction', 'ekwa' ); ?>
+						</button>
+						<span class="description" style="margin-left:8px;">
+							<?php
+							printf(
+								/* translators: 1: how long ago, 2: size of the saved copy. */
+								esc_html__( 'Puts back the stylesheet as it was %1$s ago (%2$s). Press it again to redo — the two versions swap. The sections that were given those rules keep their copy, so review them afterwards.', 'ekwa' ),
+								esc_html( human_time_diff( $ekwa_css_backup['time'] ) ),
+								esc_html( size_format( strlen( $ekwa_css_backup['css'] ) ) )
+							);
+							?>
+						</span>
+					</p>
+					<script>
+					( function () {
+						var btn = document.getElementById( 'ekwa-tokens-css-restore' );
+						if ( ! btn ) { return; }
+						btn.addEventListener( 'click', function () {
+							if ( ! window.confirm( '<?php echo esc_js( __( 'Put back the stylesheet as it was before the last extraction? This saves the settings page too.', 'ekwa' ) ); ?>' ) ) {
+								return;
+							}
+							document.getElementById( 'ekwa-tokens-css-restore-flag' ).value = '1';
+							var form = btn.form || btn.closest( 'form' );
+							if ( ! form ) { return; }
+							// requestSubmit() fires the form's submit listeners — the CSS/JS
+							// editors sync CodeMirror back into their textareas there, and
+							// form.submit() would skip that and post stale fields.
+							if ( typeof form.requestSubmit === 'function' ) {
+								form.requestSubmit();
+							} else {
+								form.dispatchEvent( new Event( 'submit', { bubbles: true, cancelable: true } ) );
+								form.submit();
+							}
+						} );
+					} )();
+					</script>
+				<?php endif; ?>
+			</div>
+		</details>
 	</div>
 
 	<div class="ekwa-section">

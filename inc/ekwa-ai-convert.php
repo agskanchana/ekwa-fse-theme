@@ -33,15 +33,23 @@ add_action( 'rest_api_init', 'ekwa_ai_convert_register_routes' );
  * Register POST /ekwa/v1/ai-convert.
  */
 function ekwa_ai_convert_register_routes() {
+	// No sanitize_callback on the string args below, deliberately. REST params
+	// arrive ALREADY unslashed — core does set_body_params( wp_unslash( $_POST ) )
+	// for form bodies (wp-includes/rest-api/class-wp-rest-server.php) and plain
+	// json_decode() for JSON bodies, which is what wp.apiFetch sends. Running
+	// wp_unslash() again therefore strips backslashes that are real DATA: block
+	// markup carries & for "&" (serialize_block_attributes() hex-escapes it
+	// so the & cannot break the block comment), and a second unslash turns that
+	// into a literal "u0026" in the saved attribute. Windows paths lose their
+	// separators the same way. The declared 'type' => 'string' is enough.
 	register_rest_route( 'ekwa/v1', '/ai-convert', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_convert_handle_request',
 		'permission_callback' => 'ekwa_ai_rest_permission', // Role gate + daily cap.
 		'args'                => array(
 			'html' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => true,
+				'type'     => 'string',
 			),
 			'model' => array(
 				'required' => false,
@@ -51,10 +59,9 @@ function ekwa_ai_convert_register_routes() {
 			// Same CSS workflow as /convert-markup (extract / child / scoped /
 			// AI-extract) — handled by the shared ekwa_mc_apply_css_options().
 			'css' => array(
-				'required'          => false,
-				'type'              => 'string',
-				'default'           => '',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => false,
+				'type'     => 'string',
+				'default'  => '',
 			),
 			'css_mode' => array(
 				'required' => false,
@@ -63,6 +70,17 @@ function ekwa_ai_convert_register_routes() {
 				'enum'     => array( 'extract', 'child', 'scoped' ),
 			),
 			'css_ai_extract' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			// Section CSS extraction — see the matching args on /convert-markup.
+			'css_auto_extract' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
+			'css_auto_ai_review' => array(
 				'required' => false,
 				'type'     => 'boolean',
 				'default'  => false,
@@ -95,9 +113,8 @@ function ekwa_ai_convert_register_routes() {
 		'permission_callback' => 'ekwa_ai_rest_permission', // Role gate + daily cap.
 		'args'                => array(
 			'html' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => true,
+				'type'     => 'string',
 			),
 			'target' => array(
 				'required' => true,

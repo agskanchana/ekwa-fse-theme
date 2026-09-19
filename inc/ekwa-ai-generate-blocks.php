@@ -29,15 +29,23 @@ add_action( 'rest_api_init', 'ekwa_ai_generate_blocks_register_routes' );
  * Register the AI block generation REST route.
  */
 function ekwa_ai_generate_blocks_register_routes() {
+	// No sanitize_callback on the string args below, deliberately. REST params
+	// arrive ALREADY unslashed — core does set_body_params( wp_unslash( $_POST ) )
+	// for form bodies (wp-includes/rest-api/class-wp-rest-server.php) and plain
+	// json_decode() for JSON bodies, which is what wp.apiFetch sends. Running
+	// wp_unslash() again therefore strips backslashes that are real DATA: block
+	// markup carries & for "&" (serialize_block_attributes() hex-escapes it
+	// so the & cannot break the block comment), and a second unslash turns that
+	// into a literal "u0026" in the saved attribute. Windows paths lose their
+	// separators the same way. The declared 'type' => 'string' is enough.
 	register_rest_route( 'ekwa/v1', '/ai-generate-blocks', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_ai_generate_blocks_handle_request',
 		'permission_callback' => 'ekwa_ai_rest_permission',
 		'args' => array(
 			'prompt' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => true,
+				'type'     => 'string',
 			),
 			'images'        => array( 'required' => false, 'type' => 'array',   'default' => array() ),
 			'history'       => array( 'required' => false, 'type' => 'array',   'default' => array() ),
@@ -63,16 +71,14 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'enum'     => array( 'create', 'edit' ),
 			),
 			'base_markup'   => array(
-				'required'          => false,
-				'type'              => 'string',
-				'default'           => '',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => false,
+				'type'     => 'string',
+				'default'  => '',
 			),
 			'base_css'      => array(
-				'required'          => false,
-				'type'              => 'string',
-				'default'           => '',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => false,
+				'type'     => 'string',
+				'default'  => '',
 			),
 		),
 	) );
@@ -85,9 +91,8 @@ function ekwa_ai_generate_blocks_register_routes() {
 		'permission_callback' => function () { return current_user_can( 'edit_posts' ); },
 		'args' => array(
 			'markup' => array(
-				'required'          => true,
-				'type'              => 'string',
-				'sanitize_callback' => function ( $v ) { return wp_unslash( $v ); },
+				'required' => true,
+				'type'     => 'string',
 			),
 		),
 	) );

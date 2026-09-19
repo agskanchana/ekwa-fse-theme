@@ -2,7 +2,7 @@
 /**
  * CSS rule utilities — a small, dependency-free stylesheet walker.
  *
- * Two jobs, both about not losing CSS:
+ * Three jobs, all about not losing CSS:
  *
  * 1. SUBTRACTION (`ekwa_css_subtract`) — the converter's "Extract this
  *    section's CSS with AI" used to trust the model to echo the entire
@@ -18,6 +18,17 @@
  * 2. FONT VARIABLE REWRITING (`ekwa_css_rewrite_font_families`) — see
  *    ekwa-fonts.php.
  *
+ * 3. SECTION EXTRACTION (`ekwa_css_extract_section_rules` +
+ *    `ekwa_css_remove_rules_by_key`) — the converter's "move this section's CSS
+ *    out of the mockup stylesheet". Rules are selected by actually matching
+ *    their selectors against the section's DOM, so nothing rests on a model's
+ *    judgement, and they are cut out of the sheet by byte offset, so the
+ *    comments and formatting of a hand-written stylesheet survive around them.
+ *    Both halves fail toward "leave it in the stylesheet": a rule this can't
+ *    parse, can't match or can't classify costs a slightly larger <head>, while
+ *    a rule wrongly removed is a broken page. See the section at the bottom.
+ *
+
  * The walker is deliberately tolerant: it never validates CSS, only finds rule
  * boundaries. Anything it can't classify is preserved untouched.
  *
@@ -181,17 +192,28 @@ function ekwa_css_nesting_at_rules() {
  *   key       string  Normalized "chain||selector" identity used for matching
  *   order     int     Source order, for stable re-assembly
  *
+ * Plus the rule's byte extents in the ORIGINAL stylesheet, which is what lets
+ * ekwa_css_remove_rules_by_key() cut rules out by offset instead of
+ * re-serializing the sheet — so comments, blank lines and the author's own
+ * formatting survive everywhere a rule wasn't removed:
+ *   start          int  Offset of the first character of the selector
+ *   end            int  Offset just past the rule's closing "}" (or ";")
+ *   prelude_start  int  Same as start
+ *   prelude_end    int  Offset of the "{" (or the ";" for statement at-rules)
+ *
  * @param string   $css      Stylesheet.
  * @param callable $callback Receives the rule array.
  * @param array    $chain    Internal: enclosing at-rule preludes.
  * @param int      $order    Internal: running rule counter.
+ * @param int      $base     Internal: offset of $css within the original sheet.
  * @return int Next order value.
  */
-function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
-	$css = (string) $css;
-	$len = strlen( $css );
-	$i   = 0;
-	$buf = '';
+function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0, $base = 0 ) {
+	$css       = (string) $css;
+	$len       = strlen( $css );
+	$i         = 0;
+	$buf       = '';
+	$buf_start = 0;
 
 	while ( $i < $len ) {
 		$ch = $css[ $i ];
@@ -206,6 +228,9 @@ function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
 		// Strings — copied verbatim so braces/semicolons inside can't confuse us.
 		if ( '"' === $ch || "'" === $ch ) {
 			$quote = $ch;
+			if ( '' === trim( $buf ) ) {
+				$buf_start = $i;
+			}
 			$buf  .= $ch;
 			$i++;
 			while ( $i < $len ) {
@@ -226,15 +251,20 @@ function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
 		// Statement at-rule (@import/@charset/@namespace) — no body.
 		if ( ';' === $ch ) {
 			$prelude = trim( $buf );
+			$start   = $buf_start;
 			$buf     = '';
 			$i++;
 			if ( '' !== $prelude ) {
 				call_user_func( $callback, array(
-					'selector' => $prelude,
-					'body'     => null, // null = statement, re-emitted as "prelude;"
-					'chain'    => $chain,
-					'key'      => ekwa_css_rule_key( $chain, $prelude ),
-					'order'    => $order,
+					'selector'      => $prelude,
+					'body'          => null, // null = statement, re-emitted as "prelude;"
+					'chain'         => $chain,
+					'key'           => ekwa_css_rule_key( $chain, $prelude ),
+					'order'         => $order,
+					'start'         => $base + $start,
+					'end'           => $base + $i,
+					'prelude_start' => $base + $start,
+					'prelude_end'   => $base + $i - 1,
 				) );
 				$order++;
 			}
@@ -243,6 +273,8 @@ function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
 
 		if ( '{' === $ch ) {
 			$prelude = trim( preg_replace( '/\s+/', ' ', $buf ) );
+			$start   = $buf_start;
+			$open    = $i;
 			$buf     = '';
 			$close   = ekwa_css_find_block_end( $css, $i );
 			$body    = substr( $css, $i + 1, $close - $i - 1 );
@@ -254,7 +286,7 @@ function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
 				if ( in_array( $name, ekwa_css_nesting_at_rules(), true ) ) {
 					$sub   = $chain;
 					$sub[] = $prelude;
-					$order = ekwa_css_walk( $body, $callback, $sub, $order );
+					$order = ekwa_css_walk( $body, $callback, $sub, $order, $base + $open + 1 );
 					continue;
 				}
 			}
@@ -262,17 +294,24 @@ function ekwa_css_walk( $css, $callback, $chain = array(), $order = 0 ) {
 			// Plain rule (or opaque at-rule): one entry per comma-separated selector.
 			foreach ( ekwa_css_split_selectors( $prelude ) as $selector ) {
 				call_user_func( $callback, array(
-					'selector' => $selector,
-					'body'     => $body,
-					'chain'    => $chain,
-					'key'      => ekwa_css_rule_key( $chain, $selector ),
-					'order'    => $order,
+					'selector'      => $selector,
+					'body'          => $body,
+					'chain'         => $chain,
+					'key'           => ekwa_css_rule_key( $chain, $selector ),
+					'order'         => $order,
+					'start'         => $base + $start,
+					'end'           => $base + $close + 1,
+					'prelude_start' => $base + $start,
+					'prelude_end'   => $base + $open,
 				) );
 			}
 			$order++;
 			continue;
 		}
 
+		if ( '' === trim( $buf ) && '' !== trim( $ch ) ) {
+			$buf_start = $i;
+		}
 		$buf .= $ch;
 		$i++;
 	}
@@ -559,4 +598,814 @@ function ekwa_css_dedent( $text ) {
 		$lines[ $i ] = substr( $line, $min );
 	}
 	return trim( implode( "\n", $lines ) );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SECTION EXTRACTION — "which of these rules belong to this piece of markup?"
+//
+//  Used by the Mockup Converter's "Move this section's CSS out of the mockup
+//  stylesheet" option: every rule whose selector actually matches an element in
+//  the pasted section is lifted into the wrapper's Scoped CSS (with its @media
+//  context intact) and cut out of the sheet, so <head> stops carrying CSS that
+//  only one section uses.
+//
+//  Three things are deliberately NEVER claimed, because they are what "common
+//  CSS" means: rules that declare only custom properties (and anything under
+//  `:root`), at-rules with no selector (@font-face, @keyframes, @import), and
+//  selectors with no class / id / attribute of their own — `body`, `h2`,
+//  `a:hover`, `ul li` are the site's base typography, not a section's styling.
+//  Anything the matcher cannot parse is left in the sheet too: an unmatched rule
+//  only means a slightly larger <head>, a wrongly-removed one means a broken
+//  page.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Re-serialize a list of walked rules into a stylesheet.
+ *
+ * Source order is preserved exactly: consecutive rules that share an at-rule
+ * chain are emitted inside one wrapper, and a new wrapper starts whenever the
+ * chain changes — so a `@media` block never jumps ahead of (or behind) the base
+ * rules it was written to override.
+ *
+ * Selectors that shared a comma group AND a body are merged back together.
+ *
+ * @param array $rules Rule arrays from ekwa_css_walk(), in source order.
+ * @return string Stylesheet.
+ */
+function ekwa_css_assemble_rules( $rules ) {
+	// Group into runs of one at-rule chain, preserving order.
+	$runs = array();
+	$sig  = null;
+	foreach ( $rules as $rule ) {
+		$this_sig = implode( '||', (array) $rule['chain'] );
+		if ( null === $sig || $this_sig !== $sig ) {
+			$runs[] = array( 'chain' => (array) $rule['chain'], 'rules' => array() );
+			$sig    = $this_sig;
+		}
+		$runs[ count( $runs ) - 1 ]['rules'][] = $rule;
+	}
+
+	$out = '';
+	foreach ( $runs as $run ) {
+		$inner         = '';
+		$pending_body  = null;
+		$pending_sels  = array();
+		$pending_order = null;
+
+		$flush = function () use ( &$inner, &$pending_body, &$pending_sels, &$pending_order ) {
+			if ( empty( $pending_sels ) ) {
+				return;
+			}
+			if ( null === $pending_body ) {
+				$inner .= implode( ', ', $pending_sels ) . ";\n";
+			} else {
+				$body   = ekwa_css_dedent( $pending_body );
+				$inner .= implode( ', ', $pending_sels ) . ' {'
+					. ( '' === $body ? '' : "\n" . ekwa_css_indent( $body ) . "\n" )
+					. "}\n";
+			}
+			$pending_sels  = array();
+			$pending_body  = null;
+			$pending_order = null;
+		};
+
+		foreach ( $run['rules'] as $rule ) {
+			if ( $pending_order === $rule['order'] && $pending_body === $rule['body'] ) {
+				$pending_sels[] = $rule['selector'];
+				continue;
+			}
+			$flush();
+			$pending_sels  = array( $rule['selector'] );
+			$pending_body  = $rule['body'];
+			$pending_order = $rule['order'];
+		}
+		$flush();
+
+		if ( '' === trim( $inner ) ) {
+			continue;
+		}
+
+		$chain = array_reverse( $run['chain'] );
+		foreach ( $chain as $prelude ) {
+			$inner = $prelude . " {\n" . ekwa_css_indent( trim( $inner ) ) . "\n}\n";
+		}
+		$out .= $inner . "\n";
+	}
+
+	return trim( preg_replace( "/\n{3,}/", "\n\n", $out ) );
+}
+
+/**
+ * Cut rules out of a stylesheet by rule identity, editing the source text in
+ * place rather than re-serializing it.
+ *
+ * This is the difference that matters for the mockup stylesheet: it is a file a
+ * human wrote and keeps editing, so its section banners, blank lines and
+ * formatting have to survive. Only the byte ranges of the removed rules are
+ * touched. A comma group that loses some of its selectors keeps its body and
+ * its position — just its prelude is rewritten to the selectors that stayed.
+ *
+ * Matching is by the same normalized identity ekwa_css_subtract() uses, so a
+ * rule leaves only when a rule with the same at-rule chain AND selector was
+ * asked for. Anything unrecognized is kept.
+ *
+ * @param string $css  Stylesheet to thin.
+ * @param array  $drop Map of rule key => anything (e.g. ekwa_css_rule_keys()).
+ * @return array{css:string,removed:int,kept:int}
+ */
+function ekwa_css_remove_rules_by_key( $css, $drop ) {
+	$css = (string) $css;
+	if ( empty( $drop ) || ! is_array( $drop ) || '' === trim( $css ) ) {
+		return array( 'css' => $css, 'removed' => 0, 'kept' => 0 );
+	}
+
+	$groups  = array(); // start offset => rule group.
+	$removed = 0;
+	$kept    = 0;
+
+	ekwa_css_walk( $css, function ( $rule ) use ( &$groups, &$removed, &$kept, $drop ) {
+		if ( ! isset( $rule['start'] ) ) {
+			return; // Defensive: a walker without offsets can't be edited safely.
+		}
+		$id = (int) $rule['start'];
+		if ( ! isset( $groups[ $id ] ) ) {
+			$groups[ $id ] = array(
+				'start'         => (int) $rule['start'],
+				'end'           => (int) $rule['end'],
+				'prelude_start' => (int) $rule['prelude_start'],
+				'prelude_end'   => (int) $rule['prelude_end'],
+				'keep'          => array(),
+				'dropped'       => 0,
+			);
+		}
+		if ( isset( $drop[ $rule['key'] ] ) ) {
+			$groups[ $id ]['dropped']++;
+			$removed++;
+		} else {
+			$groups[ $id ]['keep'][] = $rule['selector'];
+			$kept++;
+		}
+	} );
+
+	if ( 0 === $removed ) {
+		return array( 'css' => $css, 'removed' => 0, 'kept' => $kept );
+	}
+
+	// Build the edit list, then apply back-to-front so earlier offsets stay valid.
+	$edits = array();
+	foreach ( $groups as $group ) {
+		if ( ! $group['dropped'] ) {
+			continue;
+		}
+		if ( empty( $group['keep'] ) ) {
+			$edits[] = array( 'from' => $group['start'], 'to' => $group['end'], 'text' => '' );
+		} else {
+			$edits[] = array(
+				'from' => $group['prelude_start'],
+				'to'   => $group['prelude_end'],
+				'text' => implode( ', ', $group['keep'] ) . ' ',
+			);
+		}
+	}
+	usort( $edits, function ( $a, $b ) {
+		return $b['from'] - $a['from'];
+	} );
+
+	foreach ( $edits as $edit ) {
+		$from = $edit['from'];
+		$to   = min( $edit['to'], strlen( $css ) );
+		if ( '' === $edit['text'] ) {
+			// Take the whole line with it: trailing spaces + one newline, and the
+			// indentation in front when the rule started its own line. Otherwise a
+			// removal leaves a blank, indented hole behind.
+			$len = strlen( $css );
+			while ( $to < $len && ( ' ' === $css[ $to ] || "\t" === $css[ $to ] || "\r" === $css[ $to ] ) ) {
+				$to++;
+			}
+			if ( $to < $len && "\n" === $css[ $to ] ) {
+				$to++;
+			}
+			$j = $from;
+			while ( $j > 0 && ( ' ' === $css[ $j - 1 ] || "\t" === $css[ $j - 1 ] ) ) {
+				$j--;
+			}
+			if ( 0 === $j || "\n" === $css[ $j - 1 ] ) {
+				$from = $j;
+			}
+		}
+		$css = substr( $css, 0, $from ) . $edit['text'] . substr( $css, $to );
+
+		// Collapse the blank-line pile-up the removal left behind — but only at
+		// the seam, so blank lines the author put elsewhere are untouched.
+		if ( '' === $edit['text'] ) {
+			$css = ekwa_css_collapse_blank_lines_at( $css, $from );
+		}
+	}
+
+	// Drop the @media/@supports shells the removals emptied, innermost first.
+	$pattern = '/@(?:media|supports|layer|container|document|scope)\b[^{}]*\{\s*\}[ \t]*\r?\n?/i';
+	do {
+		$before = $css;
+		$css    = preg_replace( $pattern, '', $css );
+		if ( null === $css ) {
+			$css = $before; // preg failure (e.g. bad UTF-8) — keep what we had.
+			break;
+		}
+	} while ( $css !== $before );
+
+	return array( 'css' => rtrim( $css ) . "\n", 'removed' => $removed, 'kept' => $kept );
+}
+
+/**
+ * Collapse a run of blank lines around one offset down to a single blank line.
+ *
+ * Cutting a rule out joins whatever surrounded it, and two rules that each sat
+ * on their own paragraph leave three or four newlines behind. Only the
+ * whitespace run touching $at is rewritten; the rest of the sheet is untouched.
+ *
+ * @param string $css Stylesheet.
+ * @param int    $at  Offset the removal closed over.
+ * @return string
+ */
+function ekwa_css_collapse_blank_lines_at( $css, $at ) {
+	$len = strlen( $css );
+	$at  = max( 0, min( $at, $len ) );
+
+	$start = $at;
+	while ( $start > 0 && false !== strpos( " \t\r\n", $css[ $start - 1 ] ) ) {
+		$start--;
+	}
+	$end = $at;
+	while ( $end < $len && false !== strpos( " \t\r\n", $css[ $end ] ) ) {
+		$end++;
+	}
+
+	$run = substr( $css, $start, $end - $start );
+	if ( substr_count( $run, "\n" ) < 3 ) {
+		return $css;
+	}
+	return substr( $css, 0, $start ) . "\n\n" . substr( $css, $end );
+}
+
+/**
+ * Does this declaration block contain nothing but custom properties?
+ *
+ * Those are design tokens — they stay in the stylesheet no matter which section
+ * happens to match their selector, because every other section reads them.
+ *
+ * @param string $body Declaration block, braces excluded.
+ * @return bool
+ */
+function ekwa_css_body_is_vars_only( $body ) {
+	$body = ekwa_css_strip_comments( (string) $body );
+	if ( '' === trim( $body ) ) {
+		return true; // Empty rule — nothing worth moving either way.
+	}
+	foreach ( explode( ';', $body ) as $decl ) {
+		$decl = trim( $decl );
+		if ( '' === $decl ) {
+			continue;
+		}
+		if ( 0 !== strpos( $decl, '--' ) ) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Read one CSS identifier, honoring backslash escapes.
+ *
+ * `.w-1\/2` is a class literally named "w-1/2", so an escape contributes the
+ * escaped character itself — otherwise the generated XPath would look for a
+ * class that no element has.
+ *
+ * @param string $text  Compound selector text.
+ * @param int    $i     Cursor, advanced past the identifier.
+ * @return string The identifier ('' when the cursor isn't on one).
+ */
+function ekwa_css_read_ident( $text, &$i ) {
+	$len  = strlen( $text );
+	$out  = '';
+	while ( $i < $len ) {
+		$ch = $text[ $i ];
+		if ( '\\' === $ch && $i + 1 < $len ) {
+			$out .= $text[ $i + 1 ];
+			$i   += 2;
+			continue;
+		}
+		if ( ctype_alnum( $ch ) || '-' === $ch || '_' === $ch || ord( $ch ) >= 0x80 ) {
+			$out .= $ch;
+			$i++;
+			continue;
+		}
+		break;
+	}
+	return $out;
+}
+
+/**
+ * Quote a string for use as an XPath 1.0 literal (which has no escape syntax —
+ * a value containing both quote characters has to be built with concat()).
+ *
+ * @param string $value
+ * @return string
+ */
+function ekwa_css_xpath_literal( $value ) {
+	$value = (string) $value;
+	if ( false === strpos( $value, "'" ) ) {
+		return "'" . $value . "'";
+	}
+	if ( false === strpos( $value, '"' ) ) {
+		return '"' . $value . '"';
+	}
+	$parts = array();
+	foreach ( explode( "'", $value ) as $i => $chunk ) {
+		if ( $i > 0 ) {
+			$parts[] = '"\'"';
+		}
+		if ( '' !== $chunk ) {
+			$parts[] = "'" . $chunk . "'";
+		}
+	}
+	return 'concat(' . implode( ',', $parts ) . ')';
+}
+
+/**
+ * Translate one compound selector ("a.btn[target]:hover") into an XPath step.
+ *
+ * Pseudo-classes and pseudo-elements are dropped: `.btn:hover` and `.card::after`
+ * belong to `.btn` and `.card`, and dropping the state keeps them with the
+ * markup that has those elements. A compound left with nothing but a pseudo
+ * (`:hover`, `::selection`) is unresolvable and reported as such.
+ *
+ * @param string $text One compound selector, no combinators.
+ * @return array{tag:string,preds:string[],tokens:string[],identity:bool}|false
+ */
+function ekwa_css_parse_compound( $text ) {
+	$text     = (string) $text;
+	$len      = strlen( $text );
+	$i        = 0;
+	$tag      = '';
+	$preds    = array();
+	$tokens   = array();
+	$identity = false;
+	$any      = false;
+
+	while ( $i < $len ) {
+		$ch = $text[ $i ];
+
+		if ( '*' === $ch ) {
+			$i++;
+			$any = true;
+			continue;
+		}
+
+		if ( '.' === $ch || '#' === $ch ) {
+			$i++;
+			$name = ekwa_css_read_ident( $text, $i );
+			if ( '' === $name ) {
+				return false;
+			}
+			if ( '.' === $ch ) {
+				$preds[] = "[contains(concat(' ', normalize-space(@class), ' '), "
+					. ekwa_css_xpath_literal( ' ' . $name . ' ' ) . ')]';
+			} else {
+				$preds[] = '[@id=' . ekwa_css_xpath_literal( $name ) . ']';
+			}
+			$tokens[] = strtolower( $name );
+			$identity = true;
+			$any      = true;
+			continue;
+		}
+
+		if ( '[' === $ch ) {
+			$close = strpos( $text, ']', $i );
+			if ( false === $close ) {
+				return false;
+			}
+			$inner = substr( $text, $i + 1, $close - $i - 1 );
+			$i     = $close + 1;
+			$pred  = ekwa_css_attr_predicate( $inner );
+			if ( false === $pred ) {
+				return false;
+			}
+			$preds[]  = $pred;
+			$identity = true;
+			$any      = true;
+			continue;
+		}
+
+		if ( ':' === $ch ) {
+			$i++;
+			if ( $i < $len && ':' === $text[ $i ] ) {
+				$i++;
+			}
+			$name = ekwa_css_read_ident( $text, $i );
+			if ( '' === $name ) {
+				return false;
+			}
+			if ( $i < $len && '(' === $text[ $i ] ) {
+				$depth = 0;
+				while ( $i < $len ) {
+					if ( '(' === $text[ $i ] ) {
+						$depth++;
+					} elseif ( ')' === $text[ $i ] ) {
+						$depth--;
+						if ( 0 === $depth ) {
+							$i++;
+							break;
+						}
+					}
+					$i++;
+				}
+			}
+			continue;
+		}
+
+		// Type selector — only one per compound, and only in first position.
+		$name = ekwa_css_read_ident( $text, $i );
+		if ( '' === $name || '' !== $tag ) {
+			return false;
+		}
+		$tag = strtolower( $name );
+		$any = true;
+	}
+
+	if ( ! $any ) {
+		return false;
+	}
+
+	return array(
+		'tag'      => $tag,
+		'preds'    => $preds,
+		'tokens'   => $tokens,
+		'identity' => $identity,
+	);
+}
+
+/**
+ * XPath predicate for one attribute selector body ("href^=https").
+ *
+ * @param string $inner Text between the square brackets.
+ * @return string|false
+ */
+function ekwa_css_attr_predicate( $inner ) {
+	$re = '/^\s*([-\w]+)\s*(?:([~^$*|]?=)\s*("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|[^\s\]]+)(?:\s+([iIsS]))?\s*)?$/';
+	if ( ! preg_match( $re, (string) $inner, $m ) ) {
+		return false;
+	}
+	$attr = $m[1];
+	if ( ! isset( $m[2] ) || '' === $m[2] ) {
+		return '[@' . $attr . ']';
+	}
+	if ( ! empty( $m[4] ) ) {
+		return false; // Case-sensitivity flag — XPath 1.0 has no equivalent.
+	}
+	$value = $m[3];
+	if ( strlen( $value ) > 1 && ( '"' === $value[0] || "'" === $value[0] ) && $value[ strlen( $value ) - 1 ] === $value[0] ) {
+		$value = stripslashes( substr( $value, 1, -1 ) );
+	}
+	$lit = ekwa_css_xpath_literal( $value );
+
+	switch ( $m[2] ) {
+		case '=':
+			return '[@' . $attr . '=' . $lit . ']';
+		case '~=':
+			return "[contains(concat(' ', normalize-space(@" . $attr . "), ' '), " . ekwa_css_xpath_literal( ' ' . $value . ' ' ) . ')]';
+		case '^=':
+			return '[starts-with(@' . $attr . ',' . $lit . ')]';
+		case '$=':
+			return '[substring(@' . $attr . ', string-length(@' . $attr . ') - ' . ( strlen( $value ) - 1 ) . ') = ' . $lit . ']';
+		case '*=':
+			return '[contains(@' . $attr . ',' . $lit . ')]';
+		case '|=':
+			return '[@' . $attr . '=' . $lit . ' or starts-with(@' . $attr . ',' . ekwa_css_xpath_literal( $value . '-' ) . ')]';
+	}
+	return false;
+}
+
+/**
+ * Analyze a single CSS selector.
+ *
+ * @param string $selector One selector (no comma groups).
+ * @return array{xpath:string,identity:bool,tokens:string[]}|false False when the
+ *         selector uses syntax this translator doesn't handle — treated as
+ *         "leave it in the stylesheet".
+ */
+function ekwa_css_selector_analyze( $selector ) {
+	$sel = trim( (string) $selector );
+	if ( '' === $sel || '@' === $sel[0] ) {
+		return false;
+	}
+
+	// 1. Split into (combinator, compound) steps at top level.
+	$parts = array();
+	$buf   = '';
+	$comb  = '';
+	$depth = 0;
+	$len   = strlen( $sel );
+
+	for ( $i = 0; $i < $len; $i++ ) {
+		$ch = $sel[ $i ];
+
+		if ( '\\' === $ch && $i + 1 < $len ) {
+			$buf .= substr( $sel, $i, 2 );
+			$i++;
+			continue;
+		}
+		if ( '"' === $ch || "'" === $ch ) {
+			$quote = $ch;
+			$buf  .= $ch;
+			$i++;
+			while ( $i < $len ) {
+				if ( '\\' === $sel[ $i ] && $i + 1 < $len ) {
+					$buf .= substr( $sel, $i, 2 );
+					$i   += 2;
+					continue;
+				}
+				$buf .= $sel[ $i ];
+				$i++;
+				if ( $sel[ $i - 1 ] === $quote ) {
+					break;
+				}
+			}
+			$i--;
+			continue;
+		}
+		if ( '(' === $ch || '[' === $ch ) {
+			$depth++;
+			$buf .= $ch;
+			continue;
+		}
+		if ( ')' === $ch || ']' === $ch ) {
+			$depth--;
+			$buf .= $ch;
+			continue;
+		}
+		if ( $depth > 0 ) {
+			$buf .= $ch;
+			continue;
+		}
+		if ( ' ' === $ch || "\t" === $ch || "\n" === $ch || "\r" === $ch || "\f" === $ch ) {
+			if ( '' !== $buf ) {
+				$parts[] = array( 'comb' => $comb, 'text' => $buf );
+				$buf     = '';
+				$comb    = ' ';
+			} elseif ( '' === $comb ) {
+				$comb = ' ';
+			}
+			continue;
+		}
+		if ( '>' === $ch || '+' === $ch || '~' === $ch ) {
+			if ( '' !== $buf ) {
+				$parts[] = array( 'comb' => $comb, 'text' => $buf );
+				$buf     = '';
+			}
+			$comb = $ch;
+			continue;
+		}
+		$buf .= $ch;
+	}
+	if ( '' !== $buf ) {
+		$parts[] = array( 'comb' => $comb, 'text' => $buf );
+	}
+	if ( empty( $parts ) ) {
+		return false;
+	}
+
+	// 2. Compile each step.
+	$xpath    = '';
+	$tokens   = array();
+	$identity = false;
+
+	foreach ( $parts as $index => $part ) {
+		$compound = ekwa_css_parse_compound( $part['text'] );
+		if ( false === $compound ) {
+			return false;
+		}
+		$identity = $identity || $compound['identity'];
+		$tokens   = array_merge( $tokens, $compound['tokens'] );
+
+		$step = ( '' === $compound['tag'] ? '*' : $compound['tag'] ) . implode( '', $compound['preds'] );
+
+		if ( 0 === $index ) {
+			$xpath .= '//' . $step;
+		} elseif ( '>' === $part['comb'] ) {
+			$xpath .= '/' . $step;
+		} elseif ( '+' === $part['comb'] ) {
+			$xpath .= '/following-sibling::*[1]/self::' . $step;
+		} elseif ( '~' === $part['comb'] ) {
+			$xpath .= '/following-sibling::' . $step;
+		} else {
+			$xpath .= '//' . $step;
+		}
+	}
+
+	return array(
+		'xpath'    => $xpath,
+		'identity' => $identity,
+		'tokens'   => array_values( array_unique( $tokens ) ),
+	);
+}
+
+/**
+ * Parse an HTML fragment into a DOMXPath for selector matching.
+ *
+ * The fragment is wrapped in a synthetic root so several top-level siblings all
+ * survive — LIBXML_HTML_NOIMPLIED otherwise keeps only the first, which is the
+ * same trick ekwa_mc_convert_html() uses. No implied <html>/<body> is created,
+ * so a `body .hero` rule does not match a pasted section and stays global.
+ *
+ * @param string $html Section markup.
+ * @return DOMXPath|null
+ */
+function ekwa_css_dom_xpath( $html ) {
+	$html = (string) $html;
+	if ( '' === trim( $html ) || ! class_exists( 'DOMDocument' ) ) {
+		return null;
+	}
+	$doc  = new DOMDocument();
+	$prev = libxml_use_internal_errors( true );
+	$ok   = $doc->loadHTML(
+		'<?xml encoding="utf-8"?><div data-ekwa-css-root="1">' . $html . '</div>',
+		LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+	);
+	libxml_clear_errors();
+	libxml_use_internal_errors( $prev );
+
+	if ( ! $ok || ! $doc->documentElement ) {
+		return null;
+	}
+	return new DOMXPath( $doc );
+}
+
+/**
+ * Normalize a "keep these in the stylesheet" list into a lookup set.
+ *
+ * Accepts an array or a comma/newline separated string of class names, ids or
+ * simple selectors (".btn", "#header", "container"). A trailing "*" makes it a
+ * prefix rule, so "btn*" protects .btn, .btn-primary and .btn--ghost at once.
+ *
+ * @param string|array $raw
+ * @return array{exact:array<string,true>,prefix:string[]}
+ */
+function ekwa_css_keep_tokens( $raw ) {
+	$items  = is_array( $raw ) ? $raw : preg_split( '/[\s,]+/', (string) $raw );
+	$exact  = array();
+	$prefix = array();
+	foreach ( (array) $items as $item ) {
+		$item = strtolower( trim( (string) $item ) );
+		$item = ltrim( $item, '.#' );
+		if ( '' === $item ) {
+			continue;
+		}
+		if ( '*' === substr( $item, -1 ) ) {
+			$stem = substr( $item, 0, -1 );
+			if ( '' !== $stem ) {
+				$prefix[] = $stem;
+			}
+			continue;
+		}
+		$exact[ $item ] = true;
+	}
+	return array( 'exact' => $exact, 'prefix' => $prefix );
+}
+
+/**
+ * Select the rules in a stylesheet that style a given HTML fragment.
+ *
+ * $keep matches on class/id TOKENS, so ".btn" protects `.btn`, `.btn:hover` and
+ * the `.btn` inside a media query in one entry. $exclude matches whole
+ * selectors instead, for the cases where only one spelling should be spared.
+ *
+ * @param string       $css     Stylesheet to read (never modified).
+ * @param string       $html    Section markup.
+ * @param string|array $keep    Class/id tokens that must stay in the stylesheet.
+ * @param array        $exclude Whole selectors that must stay, matched verbatim.
+ * @return array{scoped:string,keys:array<string,true>,selectors:string[],moved:int,kept_shared:string[]}
+ */
+function ekwa_css_extract_section_rules( $css, $html, $keep = array(), $exclude = array() ) {
+	$result = array(
+		'scoped'      => '',
+		'keys'        => array(),
+		'selectors'   => array(),
+		'moved'       => 0,
+		'kept_shared' => array(),
+	);
+
+	$css = (string) $css;
+	if ( '' === trim( $css ) ) {
+		return $result;
+	}
+	$xpath = ekwa_css_dom_xpath( $html );
+	if ( ! $xpath ) {
+		return $result;
+	}
+
+	$keep    = ekwa_css_keep_tokens( $keep );
+	$cache   = array();
+	$matched = array();
+	$shared  = array();
+	$keys    = array();
+	$labels  = array();
+
+	// Every class and id the fragment actually contains. A selector naming one
+	// that isn't here cannot match, and skipping the XPath for those takes a
+	// real mockup stylesheet (3,000+ rules) from hundreds of queries to a few
+	// dozen. Folded to lowercase on both sides, which only ever lets MORE
+	// selectors through to the real (case-sensitive) match below.
+	$present = array();
+	foreach ( $xpath->query( '//*[@class or @id]' ) as $node ) {
+		foreach ( preg_split( '/\s+/', (string) $node->getAttribute( 'class' ) ) as $class ) {
+			if ( '' !== $class ) {
+				$present[ strtolower( $class ) ] = true;
+			}
+		}
+		$id = (string) $node->getAttribute( 'id' );
+		if ( '' !== $id ) {
+			$present[ strtolower( $id ) ] = true;
+		}
+	}
+
+	// Whole-selector exclusions, normalized the same way rule keys are.
+	$skip = array();
+	foreach ( (array) $exclude as $selector ) {
+		$selector = trim( (string) $selector );
+		if ( '' !== $selector ) {
+			$skip[ ekwa_css_rule_key( array(), $selector ) ] = true;
+		}
+	}
+
+	ekwa_css_walk( $css, function ( $rule ) use ( &$matched, &$cache, &$shared, &$keys, &$labels, $xpath, $keep, $skip, $present ) {
+		$selector = $rule['selector'];
+
+		// Never claimed: statements (@import), at-rules with no selector
+		// (@font-face, @keyframes), :root, and pure custom-property blocks.
+		if ( null === $rule['body'] || '' === trim( $selector ) ) {
+			return;
+		}
+		if ( '@' === substr( ltrim( $selector ), 0, 1 ) ) {
+			return;
+		}
+		if ( false !== stripos( $selector, ':root' ) ) {
+			return;
+		}
+		if ( ekwa_css_body_is_vars_only( $rule['body'] ) ) {
+			return;
+		}
+		if ( isset( $skip[ ekwa_css_rule_key( array(), $selector ) ] ) ) {
+			$shared[ $selector ] = true;
+			return;
+		}
+
+		if ( ! array_key_exists( $selector, $cache ) ) {
+			$cache[ $selector ] = ekwa_css_selector_analyze( $selector );
+		}
+		$analysis = $cache[ $selector ];
+
+		// Unparseable, or base CSS with no class/id/attribute of its own.
+		if ( false === $analysis || ! $analysis['identity'] ) {
+			return;
+		}
+
+		// Definite miss — the fragment has no element with that class or id.
+		foreach ( $analysis['tokens'] as $token ) {
+			if ( ! isset( $present[ $token ] ) ) {
+				return;
+			}
+		}
+
+		foreach ( $analysis['tokens'] as $token ) {
+			if ( isset( $keep['exact'][ $token ] ) ) {
+				$shared[ $selector ] = true;
+				return;
+			}
+			foreach ( $keep['prefix'] as $stem ) {
+				if ( 0 === strpos( $token, $stem ) ) {
+					$shared[ $selector ] = true;
+					return;
+				}
+			}
+		}
+
+		$nodes = @$xpath->query( $analysis['xpath'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		if ( false === $nodes || 0 === $nodes->length ) {
+			return;
+		}
+
+		$chain = (array) $rule['chain'];
+
+		$matched[]            = $rule;
+		$keys[ $rule['key'] ] = true;
+		$labels[]             = empty( $chain ) ? $selector : ( $selector . '  ·  ' . end( $chain ) );
+	} );
+
+	$result['scoped']      = ekwa_css_assemble_rules( $matched );
+	$result['keys']        = $keys;
+	$result['selectors']   = $labels;
+	$result['moved']       = count( $matched );
+	$result['kept_shared'] = array_keys( $shared );
+
+	return $result;
 }

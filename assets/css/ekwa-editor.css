@@ -745,6 +745,29 @@
 	color: #6b7280;
 	font-style: italic;
 }
+
+/* Section CSS extraction — the list of rules about to leave the stylesheet.
+   Scrolls rather than pushing the Insert button off the modal. */
+.ekwa-mc-css-rules {
+	list-style: none;
+	margin: 6px 0 0;
+	padding: 6px 8px;
+	max-height: 220px;
+	overflow-y: auto;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+}
+.ekwa-mc-css-rules li {
+	margin: 0 0 2px;
+}
+.ekwa-mc-css-rules code {
+	font-size: 11px;
+	background: none;
+	padding: 0;
+	color: #374151;
+	word-break: break-all;
+}
 .ekwa-mc-chip {
 	font-size: 11px;
 	background: #eef2ff;
