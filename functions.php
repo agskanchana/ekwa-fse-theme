@@ -896,6 +896,17 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_button_phone_editor_scr
  * Enqueue the mockup converter editor plugin.
  */
 function ekwa_enqueue_converter_editor_script() {
+	// Shared clipboard cleaner for the AI prompt boxes: turns a Word / Google
+	// Docs / web-page paste into clean semantic HTML instead of the flattened
+	// plain text a <textarea> would otherwise take. No dependencies — plain DOM.
+	wp_enqueue_script(
+		'ekwa-rich-paste',
+		get_template_directory_uri() . '/assets/js/ekwa-rich-paste.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/js/ekwa-rich-paste.js' ),
+		true
+	);
+
 	wp_enqueue_script(
 		'ekwa-converter-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-converter-editor.js',
@@ -920,6 +931,7 @@ function ekwa_enqueue_converter_editor_script() {
 		get_template_directory_uri() . '/assets/js/ekwa-ai-generate-editor.js',
 		array(
 			'ekwa-converter-editor',
+			'ekwa-rich-paste',
 			'wp-plugins',
 			'wp-editor',
 			'wp-components',
@@ -969,6 +981,7 @@ function ekwa_enqueue_converter_editor_script() {
 		'ekwa-ai-blocks-editor',
 		get_template_directory_uri() . '/assets/js/ekwa-ai-blocks-editor.js',
 		array(
+			'ekwa-rich-paste',
 			'wp-plugins',
 			'wp-editor',
 			'wp-blocks',

@@ -179,6 +179,59 @@
 		}
 	}
 
+	// ─── Rich paste ─────────────────────────────────────────────────────────
+
+	// A prompt box is a plain <textarea>, so a paste from Word, Google Docs or a
+	// web page used to arrive as text/plain — headings, lists, bold and every
+	// link gone before the model ever saw them. window.ekwaRichPaste
+	// (assets/js/ekwa-rich-paste.js) reads the clipboard's HTML flavour instead
+	// and rewrites it down to clean semantic tags. Copied markup pastes untouched.
+	var PASTE_PREF_KEY = 'ekwaAiKeepPasteFormatting';
+
+	function readPastePref() {
+		try {
+			return '0' !== window.localStorage.getItem( PASTE_PREF_KEY );
+		} catch ( e ) {
+			return true; // storage blocked — the default holds for the session
+		}
+	}
+
+	function writePastePref( on ) {
+		try {
+			window.localStorage.setItem( PASTE_PREF_KEY, on ? '1' : '0' );
+		} catch ( e ) { /* noop */ }
+	}
+
+	// Sits under a prompt box: the opt-out, and what the last paste brought in.
+	function PasteNote( props ) {
+		if ( ! window.ekwaRichPaste ) {
+			return null;
+		}
+		var last = props.last;
+		return el( 'div', { className: 'ekwa-ai-paste-note' },
+			el( 'label', { className: 'ekwa-ai-paste-toggle' },
+				el( 'input', {
+					type: 'checkbox',
+					checked: props.keep,
+					onChange: function ( event ) { props.onKeepChange( event.target.checked ); },
+				} ),
+				el( 'span', null, __( 'Keep formatting when pasting', 'ekwa' ) )
+			),
+			last
+				? el( Fragment, null,
+					el( 'span', { className: 'ekwa-ai-paste-stats' },
+						__( 'Pasted with formatting — ', 'ekwa' ) + last.summary ),
+					el( Button, {
+						isSmall: true,
+						variant: 'link',
+						onClick: props.onUndo,
+					}, __( 'Use plain text instead', 'ekwa' ) )
+				)
+				: el( 'span', { className: 'ekwa-ai-paste-hint' },
+					__( 'Word, Google Docs and web-page pastes keep their headings, lists, bold and links as HTML. Copied HTML source is pasted untouched.', 'ekwa' ) )
+		);
+	}
+
 	// ─── Image thumbnail strip ──────────────────────────────────────────────
 
 	function ImageStrip( props ) {
@@ -230,6 +283,10 @@
 		var s17 = useState( '' );            var seedRendered = s17[0]; var setSeedRendered = s17[1];
 		var s18 = useState( !! props.editMode ); var previewLoading = s18[0]; var setPreviewLoading = s18[1];
 		var s19 = useState( true );          var useDesigns   = s19[0]; var setUseDesigns   = s19[1];
+		// Paste handling for the two prompt boxes: the operator's stored opt-out,
+		// and a record of the last rewritten paste so it can be swapped back.
+		var s20 = useState( readPastePref ); var keepPaste    = s20[0]; var setKeepPaste    = s20[1];
+		var s21 = useState( null );          var lastPaste    = s21[0]; var setLastPaste    = s21[1];
 
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
@@ -242,7 +299,8 @@
 		var ss4 = useState( false ); var restoring   = ss4[0]; var setRestoring   = ss4[1];
 		var sessionsEnabled = ! editMode;
 
-		var fileRef = useRef( null );
+		var fileRef  = useRef( null );
+		var caretRef = useRef( null );
 
 		var step = markup ? 'result' : 'generate';
 
@@ -399,6 +457,82 @@
 			setImages( next );
 		}
 
+		// ── Rich paste into the prompt boxes ───────────────────────────
+
+		function handlePromptPaste( event ) {
+			var rich = window.ekwaRichPaste;
+			if ( ! keepPaste || ! rich ) { return; }
+
+			// Null means "nothing to gain here" — plain text, copied markup, or a
+			// screenshot. The browser's own paste must then run untouched.
+			var resolved = rich.resolve( event );
+			if ( ! resolved ) { return; }
+
+			var textarea = event.target;
+			var next     = rich.spliceInto( textarea, resolved.text );
+
+			// stopPropagation as well as preventDefault: the modal body catches
+			// paste to collect screenshots, and Word puts a bitmap of the
+			// selection on the clipboard beside the rich text taken here.
+			event.preventDefault();
+			event.stopPropagation();
+
+			setPrompt( next.value );
+			setLastPaste( {
+				start:   next.start,
+				end:     next.end,
+				chunk:   next.chunk,
+				lead:    next.lead,
+				tail:    next.tail,
+				plain:   resolved.plain,
+				summary: rich.describe( resolved.stats ),
+			} );
+			caretRef.current = { node: textarea, pos: next.end };
+		}
+
+		// Swap the last rewritten paste back for the plain text it came from —
+		// but only while that text is still sitting there untouched, so edits
+		// made since are never clobbered by a stale offset.
+		function undoRichPaste() {
+			if ( ! lastPaste ) { return; }
+			setPrompt( function ( current ) {
+				if ( current.slice( lastPaste.start, lastPaste.end ) !== lastPaste.chunk ) {
+					return current;
+				}
+				return current.slice( 0, lastPaste.start )
+					+ lastPaste.lead + lastPaste.plain + lastPaste.tail
+					+ current.slice( lastPaste.end );
+			} );
+			setLastPaste( null );
+		}
+
+		function changeKeepPaste( on ) {
+			setKeepPaste( on );
+			writePastePref( on );
+		}
+
+		// The prompt is a controlled input, so setting its value from here moves
+		// the caret to the end of the box. Put it back where the paste finished.
+		useEffect( function () {
+			var pending = caretRef.current;
+			if ( ! pending ) { return; }
+			caretRef.current = null;
+			try {
+				pending.node.focus();
+				pending.node.setSelectionRange( pending.pos, pending.pos );
+			} catch ( e ) { /* the box moved or unmounted */ }
+		} );
+
+		function pasteNoteProps( key ) {
+			return {
+				key:          key,
+				keep:         keepPaste,
+				onKeepChange: changeKeepPaste,
+				last:         lastPaste,
+				onUndo:       undoRichPaste,
+			};
+		}
+
 		// ── Imported content ───────────────────────────────────────────
 
 		// Ask once per open whether this page has content parked on it. On every
@@ -524,6 +658,7 @@
 				persistSession( storedHistory, res.block_markup || '', res.extracted_css || '' );
 
 				setPrompt( '' );
+				setLastPaste( null );
 				images.forEach( function ( img ) {
 					if ( img.previewUrl ) {
 						try { URL.revokeObjectURL( img.previewUrl ); } catch ( e ) { /* noop */ }
@@ -702,6 +837,7 @@
 					label: __( 'Prompt', 'ekwa' ),
 					value: prompt,
 					onChange: setPrompt,
+					onPaste: handlePromptPaste,
 					rows: 9,
 					className: 'ekwa-ai-prompt',
 					placeholder: context === 'header'
@@ -711,6 +847,8 @@
 							: __( 'e.g. "A 3-column services section. Each card has an icon, a heading, two lines of copy, and a Read More link."', 'ekwa' ) ),
 				} )
 			);
+
+			children.push( el( PasteNote, pasteNoteProps( 'paste-note' ) ) );
 
 			children.push(
 				el( 'div', { key: 'images', className: 'ekwa-ai-image-picker' },
@@ -945,12 +1083,14 @@
 					el( TextareaControl, {
 						value: prompt,
 						onChange: setPrompt,
+						onPaste: handlePromptPaste,
 						rows: 3,
 						className: 'ekwa-ai-refine-prompt',
 						placeholder: editMode
 							? __( 'e.g. "Make the buttons larger, and add more spacing between the cards."', 'ekwa' )
 							: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ),
 					} ),
+					el( PasteNote, pasteNoteProps( 'paste-note' ) ),
 					el( 'div', { className: 'ekwa-ai-refine-actions' },
 						el( Button, {
 							variant: 'secondary',

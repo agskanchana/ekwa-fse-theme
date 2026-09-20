@@ -839,6 +839,50 @@
 	font-size: 13px;
 	line-height: 1.5;
 }
+
+/* Paste-formatting opt-out + what the last paste brought in. Sits tight under
+   the prompt box it belongs to, in both the main and the refine layouts. */
+.ekwa-ai-paste-note {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	margin: -4px 0 14px;
+	font-size: 11px;
+	line-height: 1.5;
+	color: #6b7280;
+}
+.ekwa-ai-paste-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	margin: 0;
+	font-size: 11px;
+	color: #1d2327;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.ekwa-ai-paste-toggle input[type="checkbox"] {
+	margin: 0;
+}
+.ekwa-ai-paste-hint {
+	flex: 1 1 260px;
+	min-width: 0;
+}
+.ekwa-ai-paste-stats {
+	flex: 1 1 auto;
+	color: #0a7c3f;
+	font-weight: 500;
+}
+.ekwa-ai-paste-note .components-button.is-link {
+	height: auto;
+	padding: 0;
+	font-size: 11px;
+}
+.ekwa-ai-refine .ekwa-ai-paste-note {
+	margin: -4px 0 10px;
+}
+
 .ekwa-ai-image-picker {
 	margin: 12px 0 16px;
 	padding: 14px;
