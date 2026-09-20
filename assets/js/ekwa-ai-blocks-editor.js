@@ -67,7 +67,29 @@
 		section: __( 'Page section', 'ekwa' ),
 	};
 
+	// How adventurous the layout may be. The values are Gemini temperatures; the
+	// first is what the server used before this control existed, so leaving the
+	// select alone reproduces the old behaviour exactly.
+	var CREATIVITY_OPTIONS = [
+		{ value: '0.3', label: __( 'Consistent — closest to the site’s existing sections', 'ekwa' ) },
+		{ value: '0.6', label: __( 'Balanced — same look, fresh layout', 'ekwa' ) },
+		{ value: '0.9', label: __( 'Bold — takes real design risks', 'ekwa' ) },
+	];
+
 	// ─── Helpers ────────────────────────────────────────────────────────────
+
+	/**
+	 * The post being edited, or 0 when there is no editor store (the modal is
+	 * also mounted in contexts that have none).
+	 */
+	function currentPostId() {
+		try {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			return ( sel && sel.getCurrentPostId ) ? ( sel.getCurrentPostId() || 0 ) : 0;
+		} catch ( e ) {
+			return 0;
+		}
+	}
 
 	/**
 	 * Auto-detect whether the editor is on the Header / Footer template part.
@@ -287,6 +309,9 @@
 		// and a record of the last rewritten paste so it can be swapped back.
 		var s20 = useState( readPastePref ); var keepPaste    = s20[0]; var setKeepPaste    = s20[1];
 		var s21 = useState( null );          var lastPaste    = s21[0]; var setLastPaste    = s21[1];
+		// Sampling temperature. '0.3' is what the server defaulted to before this
+		// control existed, so an untouched modal behaves exactly as it used to.
+		var s22 = useState( '0.3' );         var creativity   = s22[0]; var setCreativity   = s22[1];
 
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
@@ -629,6 +654,10 @@
 					history:       historyPayload,
 					use_child_css: useChildCss,
 					use_site_designs: useDesigns,
+					temperature:   parseFloat( creativity ) || 0.3,
+					// Keeps this page's own sections out of the inspiration list,
+					// so a new section is not modelled on the ones beside it.
+					post_id:       currentPostId(),
 					model:         model,
 					context:       context,
 					mode:          editMode ? 'edit' : 'create',
@@ -880,6 +909,14 @@
 						onChange: setModel,
 						className: 'ekwa-ai-model-select',
 					} ),
+					el( SelectControl, {
+						label: __( 'Creativity', 'ekwa' ),
+						help: __( 'Colors, fonts and component shapes come from this site either way — this only controls how freely the layout is designed.', 'ekwa' ),
+						value: creativity,
+						options: CREATIVITY_OPTIONS,
+						onChange: setCreativity,
+						className: 'ekwa-ai-creativity-select',
+					} ),
 					el( ToggleControl, {
 						label: __( 'Send child theme stylesheet as context', 'ekwa' ),
 						help: __( 'Lets the AI reuse classes and CSS variables from your child theme.', 'ekwa' ),
@@ -889,8 +926,8 @@
 					// Header/footer generation ignores this server-side — the
 					// vocabulary is page sections — so don't offer it there.
 					context === 'section' && el( ToggleControl, {
-						label: __( 'Build from this site’s existing sections', 'ekwa' ),
-						help: __( 'Shows the AI the sections already on this site — saved patterns, the Inner Page Template, and your pages — so a new section matches them. Turn off for a design unlike anything here.', 'ekwa' ),
+						label: __( 'Match this site’s existing sections', 'ekwa' ),
+						help: __( 'Shows the AI the sections already on this site — saved patterns, the Inner Page Template, and your pages — so a new one inherits their colors, type and component shapes. The layout is still designed for your content. Turn off only for something deliberately unlike the rest of the site.', 'ekwa' ),
 						checked: useDesigns,
 						onChange: setUseDesigns,
 					} )

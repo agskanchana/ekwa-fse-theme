@@ -473,6 +473,17 @@ function ekwa_design_vocabulary_build( $limit = 20 ) {
 		$seen[ $fingerprint ] = true;
 		$census               = ekwa_inner_template_census( $block );
 
+		// A section stamped with a generated scope class came out of one of the
+		// AI builders. Harvesting those back is how the vocabulary ends up
+		// feeding on its own output: each build imitates the last, and the
+		// site's designs converge on their own average. They stay — on a site
+		// built entirely this way they are all there is — but they queue behind
+		// anything a person designed, so the budget fills with real work first.
+		$machine = (bool) preg_match(
+			'/\b(?:eai|ekwa)-sec-[0-9a-f]{4,}\b/i',
+			(string) ( $block['attrs']['className'] ?? '' )
+		);
+
 		$out[] = array(
 			'key'         => 'P' . ( count( $out ) + 1 ),
 			'label'       => $label,
@@ -482,6 +493,12 @@ function ekwa_design_vocabulary_build( $limit = 20 ) {
 			'has_heading' => $census['headings'] > 0,
 			'text_slots'  => $census['text'],
 			'media_slots' => $census['media'],
+			// How it is ARRANGED, so the builder can see which arrangements this
+			// site has already worn out. @see ekwa_layout_usage_prompt().
+			'layout'      => ekwa_design_layout_signature( $block ),
+			// 0 = deliberate (saved pattern / the template), 1 = a page section
+			// someone designed, 2 = a page section an AI builder produced.
+			'rank'        => 'page' === $source ? ( $machine ? 2 : 1 ) : 0,
 		);
 	};
 
@@ -528,8 +545,14 @@ function ekwa_design_vocabulary_build( $limit = 20 ) {
 		$front
 	) );
 
+	// Collect past $limit so the ranking below has something to choose from.
+	// Stopping at $limit meant that on a site where the AI builders had run a
+	// few times, the cap was reached before the loop ever got to a page someone
+	// had designed by hand — and the demotion had nothing left to promote.
+	$collect = $limit * 2;
+
 	foreach ( (array) $page_ids as $page_id ) {
-		if ( count( $out ) >= $limit ) {
+		if ( count( $out ) >= $collect ) {
 			break;
 		}
 		$page = get_post( (int) $page_id );
@@ -548,7 +571,29 @@ function ekwa_design_vocabulary_build( $limit = 20 ) {
 		}
 	}
 
-	return array_slice( $out, 0, $limit );
+	// Order by rank, keeping harvest order within a rank. Decorated rather than
+	// handed to usort() directly because usort is only guaranteed stable from
+	// PHP 8.0, and this runs on whatever a client's host provides.
+	$ordered = array();
+	foreach ( $out as $i => $entry ) {
+		$ordered[] = array( isset( $entry['rank'] ) ? (int) $entry['rank'] : 0, $i, $entry );
+	}
+	usort( $ordered, static function ( $a, $b ) {
+		return $a[0] === $b[0] ? $a[1] - $b[1] : $a[0] - $b[0];
+	} );
+
+	// Re-key after sorting so the labels the prompt shows read P1, P2, P3…
+	$out = array();
+	foreach ( $ordered as $row ) {
+		if ( count( $out ) >= $limit ) {
+			break;
+		}
+		$entry        = $row[2];
+		$entry['key'] = 'P' . ( count( $out ) + 1 );
+		$out[]        = $entry;
+	}
+
+	return $out;
 }
 
 /**
@@ -695,6 +740,337 @@ function ekwa_inner_template_census( $block ) {
 	return $out;
 }
 
+/* ------------------------------------------------------------------
+ * Arrangement census — which layouts a page is already using.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Blocks that only wrap. They hold a section together but say nothing about how
+ * it is arranged, so the classifier descends straight through them.
+ *
+ * @return string[]
+ */
+function ekwa_design_layout_wrappers() {
+	return array( 'ekwa/div', 'ekwa/container', 'ekwa/section', 'ekwa/conditional', 'core/group' );
+}
+
+/**
+ * Blocks that DO arrange their children — into a row, a grid, or columns.
+ *
+ * @return string[]
+ */
+function ekwa_design_layout_containers() {
+	return array( 'ekwa/grid', 'ekwa/flex', 'core/columns' );
+}
+
+/**
+ * The block inside a section that actually decides its arrangement.
+ *
+ * A section is almost never arranged by its outermost block: the usual shape is
+ * `ekwa/div > ekwa/container > ekwa/grid` — three levels of wrapper before
+ * anything says "three across". This walks down to the level that does.
+ *
+ * A heading or lead paragraph sitting beside the arranging block is stepped
+ * over rather than counted: `div > [h2, grid]` is a titled grid, not a two-part
+ * split, and counting that h2 as a column is the obvious way to get every
+ * signature wrong by one.
+ *
+ * @param array $block Parsed section block.
+ * @return array The block whose children form the arrangement.
+ */
+function ekwa_design_layout_spine( $block ) {
+	$wrappers  = ekwa_design_layout_wrappers();
+	$arrangers = ekwa_design_layout_containers();
+
+	// Section furniture: present alongside the arrangement, never part of it.
+	$aside = array(
+		'core/heading', 'core/paragraph', 'ekwa/text', 'core/list',
+		'core/buttons', 'ekwa/button-group', 'ekwa/button',
+		'core/separator', 'core/spacer',
+	);
+
+	$node = $block;
+
+	// Bounded. No real section is twelve wrappers deep, and an unbounded walk
+	// here would let one pathological page stall every prompt build.
+	for ( $depth = 0; $depth < 12; $depth++ ) {
+		if ( in_array( (string) ( $node['blockName'] ?? '' ), $arrangers, true ) ) {
+			return $node;
+		}
+
+		$body = array();
+		foreach ( (array) ( $node['innerBlocks'] ?? array() ) as $child ) {
+			if ( ! empty( $child['blockName'] ) && ! in_array( (string) $child['blockName'], $aside, true ) ) {
+				$body[] = $child;
+			}
+		}
+
+		// Two or more children of substance IS the arrangement — stop here.
+		// None at all means this is a text section; stop here too.
+		if ( 1 !== count( $body ) ) {
+			return $node;
+		}
+
+		$next = (string) $body[0]['blockName'];
+		if ( ! in_array( $next, $wrappers, true ) && ! in_array( $next, $arrangers, true ) ) {
+			return $node;
+		}
+
+		$node = $body[0];
+	}
+
+	return $node;
+}
+
+/**
+ * How a count of side-by-side children reads in the signature vocabulary.
+ *
+ * @param int $n
+ * @return string
+ */
+function ekwa_design_layout_across( $n ) {
+	$n = (int) $n;
+
+	if ( $n < 2 ) {
+		return 'single column';
+	}
+	if ( 2 === $n ) {
+		return 'two columns';
+	}
+
+	return $n > 6 ? 'multi-column grid' : $n . '-up grid';
+}
+
+/**
+ * A short, stable description of how a section is ARRANGED.
+ *
+ * Not what it says and not what it looks like — how it is laid out: how many
+ * things sit side by side, where the media is, whether it repeats. Two sections
+ * that produce the same string here are, as far as a page looking designed
+ * rather than generated goes, the same section twice.
+ *
+ * The vocabulary is deliberately small and deliberately fixed, because these
+ * strings are COUNTED and COMPARED. "3-up grid" spelled two ways would read as
+ * two different arrangements and defeat the entire point of the census.
+ *
+ * @param array $block Parsed top-level section block.
+ * @return string Empty when the block is not a section at all.
+ */
+function ekwa_design_layout_signature( $block ) {
+	if ( empty( $block['blockName'] ) ) {
+		return '';
+	}
+
+	$census = ekwa_inner_template_census( $block );
+	$counts = isset( $census['blocks'] ) ? (array) $census['blocks'] : array();
+
+	$total = static function ( $names ) use ( $counts ) {
+		$n = 0;
+		foreach ( (array) $names as $name ) {
+			$n += isset( $counts[ $name ] ) ? (int) $counts[ $name ] : 0;
+		}
+		return $n;
+	};
+
+	// Some components ARE the arrangement. A page carrying two accordions is
+	// repetitive no matter how many columns each of them happens to sit in.
+	// These also skip the "text only" note below — an accordion being made of
+	// text is not news, and the extra words only blur the string being counted.
+	$arrangement = '';
+	if ( $total( array( 'ekwa/faq', 'ekwa/faq-container', 'ekwa/faq-item' ) ) ) {
+		$arrangement = 'FAQ accordion';
+	} elseif ( $total( array( 'ekwa/slider', 'ekwa/carousel' ) ) ) {
+		$arrangement = 'slider / carousel';
+	} elseif ( $total( array( 'core/table', 'ekwa/hours' ) ) ) {
+		$arrangement = 'table';
+	} elseif ( $total( array( 'ekwa/related-posts', 'ekwa/recent-posts', 'ekwa/related-articles', 'core/query', 'core/latest-posts' ) ) ) {
+		$arrangement = 'post list';
+	} elseif ( $total( array( 'ekwa/field' ) ) ) {
+		$arrangement = 'form';
+	}
+
+	$component = '' !== $arrangement;
+
+	$spine = ekwa_design_layout_spine( $block );
+	$kids  = array();
+	foreach ( (array) ( $spine['innerBlocks'] ?? array() ) as $child ) {
+		if ( ! empty( $child['blockName'] ) ) {
+			$kids[] = $child;
+		}
+	}
+
+	if ( '' === $arrangement ) {
+		switch ( (string) $spine['blockName'] ) {
+			case 'ekwa/grid':
+				// The block's own column count is the honest answer; the child
+				// count is how many cards happen to be in it today.
+				$cols        = isset( $spine['attrs']['columns'] ) ? (int) $spine['attrs']['columns'] : 0;
+				$arrangement = ekwa_design_layout_across( $cols > 0 ? $cols : count( $kids ) );
+				break;
+
+			case 'core/columns':
+				$arrangement = ekwa_design_layout_across( count( $kids ) );
+				break;
+
+			case 'ekwa/flex':
+				$dir         = isset( $spine['attrs']['direction'] ) ? (string) $spine['attrs']['direction'] : 'row';
+				$arrangement = 0 === strpos( $dir, 'column' )
+					? 'single column'
+					: ekwa_design_layout_across( count( $kids ) );
+				break;
+
+			default:
+				$arrangement = 'single column';
+		}
+	}
+
+	$images = array( 'ekwa/image', 'core/image', 'ekwa/figure' );
+	$videos = array( 'core/video', 'core/embed', 'ekwa/youtube-video', 'ekwa/vimeo-video', 'ekwa/hero-video' );
+
+	// A background image on the wrapper is a design decision of its own — two
+	// sections over photographs feel alike even when their columns differ.
+	$background = ! empty( $block['attrs']['backgroundImage'] );
+
+	$media = '';
+	if ( $total( $videos ) ) {
+		$media = 'with video';
+	} elseif ( $total( array( 'ekwa/map' ) ) ) {
+		$media = 'with a map';
+	} elseif ( $total( $images ) ) {
+		// Two columns is the one arrangement where the side genuinely matters:
+		// image-left and image-right read as different sections.
+		if ( 'two columns' === $arrangement && 2 === count( $kids ) ) {
+			$first = ekwa_inner_template_census( $kids[0] );
+			$media = $first['media'] > 0 ? 'image left' : 'image right';
+		} else {
+			$media = $total( $images ) > 1 ? 'with images' : 'with one image';
+		}
+	} elseif ( $total( array( 'ekwa/icon', 'ekwa/svg' ) ) > 1 ) {
+		$media = 'with icons';
+	} elseif ( ! $background && ! $component ) {
+		$media = 'text only';
+	}
+
+	$parts = array( $arrangement );
+	if ( '' !== $media ) {
+		$parts[] = $media;
+	}
+	if ( $background ) {
+		$parts[] = 'on a background image';
+	}
+
+	return implode( ', ', $parts );
+}
+
+/**
+ * How the page being added to is arranged already, section by section.
+ *
+ * @param int $post_id
+ * @return string[] One signature per top-level section, in page order.
+ */
+function ekwa_page_layout_signatures( $post_id ) {
+	$post = (int) $post_id ? get_post( (int) $post_id ) : null;
+	if ( ! $post || '' === trim( (string) $post->post_content ) ) {
+		return array();
+	}
+
+	// Page chrome. On every page, identical on every page, and therefore no
+	// evidence at all about whether THIS page has become repetitive.
+	$chrome = array(
+		'ekwa/page-banner', 'ekwa/inner-banner', 'ekwa/banner-title', 'ekwa/page-title',
+		'ekwa/breadcrumb', 'ekwa/scroll-top', 'ekwa/mobile-dock', 'ekwa/back-to-category',
+	);
+
+	$out = array();
+	foreach ( parse_blocks( $post->post_content ) as $block ) {
+		if ( empty( $block['blockName'] ) || in_array( (string) $block['blockName'], $chrome, true ) ) {
+			continue;
+		}
+		$signature = ekwa_design_layout_signature( $block );
+		if ( '' !== $signature ) {
+			$out[] = $signature;
+		}
+	}
+
+	return $out;
+}
+
+/**
+ * What is already arranged which way, written into the prompt.
+ *
+ * The vocabulary tells the model what this site's sections LOOK like. It does
+ * not tell it what this site has already done to death — and a model shown six
+ * designs of which four are two-column splits will cheerfully produce a fifth.
+ * This is the other half: the arrangements in use on the page being added to,
+ * in order, plus the tally across the designs it was just shown.
+ *
+ * Read-only and advisory. It adds no markup and changes no rule about colors,
+ * type or component shapes; it only moves the model off an arrangement the page
+ * already has when nothing requires it to stay there.
+ *
+ * @param int   $post_id  Page being added to. 0 skips the page census — which
+ *                        is what an older editor script that sends no post id
+ *                        gets, i.e. exactly the previous behaviour.
+ * @param array $patterns The vocabulary the model was shown, for the tally.
+ * @return string Empty when there is nothing to report.
+ */
+function ekwa_layout_usage_prompt( $post_id = 0, $patterns = array() ) {
+	$page = ekwa_page_layout_signatures( $post_id );
+
+	$site = array();
+	foreach ( (array) $patterns as $pattern ) {
+		// Absent on a vocabulary cached by an older version — those entries sit
+		// out the tally for an hour rather than breaking it. is_string() rather
+		// than a cast because the entry comes back out of an option: whatever is
+		// in there is whatever some past version or filter put there.
+		$signature = isset( $pattern['layout'] ) && is_string( $pattern['layout'] )
+			? trim( $pattern['layout'] )
+			: '';
+		if ( '' !== $signature ) {
+			$site[ $signature ] = isset( $site[ $signature ] ) ? $site[ $signature ] + 1 : 1;
+		}
+	}
+
+	if ( ! $page && ! $site ) {
+		return '';
+	}
+
+	$out = "\n\nARRANGEMENTS ALREADY IN USE — read this before you choose a layout.\n";
+
+	if ( $page ) {
+		$seen  = array();
+		$lines = array();
+		foreach ( $page as $i => $signature ) {
+			$seen[ $signature ] = isset( $seen[ $signature ] ) ? $seen[ $signature ] + 1 : 1;
+			$lines[]            = sprintf(
+				'  %d. %s%s',
+				$i + 1,
+				$signature,
+				$seen[ $signature ] > 1
+					? '   <-- ' . $seen[ $signature ] . ' sections on this page are arranged this way'
+					: ''
+			);
+		}
+		$out .= "\nOn the page you are adding to, top to bottom:\n" . implode( "\n", $lines ) . "\n";
+	}
+
+	if ( $site ) {
+		arsort( $site );
+		$bits = array();
+		foreach ( array_slice( $site, 0, 8, true ) as $signature => $n ) {
+			$bits[] = $signature . ( $n > 1 ? ' ×' . $n : '' );
+		}
+		$out .= "\nAcross the designs listed above: " . implode( '; ', $bits ) . ".\n";
+	}
+
+	$out .= "\nUse it, do not just read it:\n"
+		. "- Choose an arrangement this page does not already have. If the only arrangement that genuinely suits the content is one the page already uses, change something real about it — the column count, which side the media sits on, whether it repeats — rather than shipping that section a second time.\n"
+		. "- The exception is a deliberate series: if what was asked for is a third card row to sit with two that already exist, match them exactly. Repetition someone asked for is not repetition.\n"
+		. "- A page that alternates its arrangements reads as designed. A page of five two-column splits reads as generated, however good each one is on its own.\n";
+
+	return $out;
+}
+
 /**
  * A compact description of the vocabulary, for the model's prompt.
  *
@@ -743,10 +1119,13 @@ function ekwa_inner_template_vocabulary_text() {
  * written against is named, because re-scoping is the one thing that has to
  * happen for a copied design to work under a new wrapper.
  *
- * @param array $pattern One entry from ekwa_design_vocabulary().
+ * @param array $pattern     One entry from ekwa_design_vocabulary().
+ * @param bool  $show_layout Name the entry's arrangement on its header line.
+ *                           Off by default so the import design pass, which
+ *                           does not do the arrangement census, is unchanged.
  * @return string Empty when the entry has no usable markup.
  */
-function ekwa_design_vocabulary_entry( $pattern ) {
+function ekwa_design_vocabulary_entry( $pattern, $show_layout = false ) {
 	$markup = isset( $pattern['markup'] ) ? trim( (string) $pattern['markup'] ) : '';
 	if ( '' === $markup ) {
 		return '';
@@ -782,11 +1161,19 @@ function ekwa_design_vocabulary_entry( $pattern ) {
 	);
 	$source  = isset( $pattern['source'], $sources[ $pattern['source'] ] ) ? $sources[ $pattern['source'] ] : '';
 
+	// Absent on a vocabulary cached by an older version; the entry simply goes
+	// out without the annotation until the transient turns over. Type-checked
+	// rather than cast — this came out of an option, so it could be anything.
+	$layout = $show_layout && ! empty( $pattern['layout'] ) && is_string( $pattern['layout'] )
+		? trim( $pattern['layout'] )
+		: '';
+
 	$out = sprintf(
-		"\n--- DESIGN %s: \"%s\"%s ---\nBLOCK MARKUP:\n%s\n",
+		"\n--- DESIGN %s: \"%s\"%s ---\n%sBLOCK MARKUP:\n%s\n",
 		isset( $pattern['key'] ) ? (string) $pattern['key'] : '?',
 		isset( $pattern['label'] ) ? (string) $pattern['label'] : '',
 		'' !== $source ? '  (from ' . $source . ')' : '',
+		'' !== $layout ? 'ARRANGEMENT: ' . $layout . "\n" : '',
 		$markup
 	);
 
@@ -817,12 +1204,25 @@ function ekwa_design_vocabulary_entry( $pattern ) {
  * and pages came out as flat as they went in. So: reuse when a design fits,
  * adapt it when it nearly fits, and design something new when nothing does.
  *
- * @param array $patterns From ekwa_design_vocabulary().
- * @param int   $budget   Character cap on the markup+CSS shipped, so a site
- *                        with twenty rich sections cannot blow up the request.
+ * The two callers want different things from the same designs, hence $mode:
+ *
+ * - 'reuse' (the import design pass) is rebuilding a page that already exists.
+ *   Matching the rest of the site IS the job, so reuse leads.
+ * - 'create' (the Block Builder) is making something new. Leading with reuse
+ *   there turned the vocabulary into a catalogue to pick from, and output
+ *   converged on whatever the site already had — the more so because the page
+ *   harvest only collects sections carrying scopedCss, which are overwhelmingly
+ *   sections this builder produced earlier. So 'create' splits the inheritance:
+ *   the design LANGUAGE (colors, type, spacing, component shapes) is mandatory,
+ *   the LAYOUT is the model's to choose.
+ *
+ * @param array  $patterns From ekwa_design_vocabulary().
+ * @param int    $budget   Character cap on the markup+CSS shipped, so a site
+ *                         with twenty rich sections cannot blow up the request.
+ * @param string $mode     'reuse' (default, unchanged wording) or 'create'.
  * @return string Empty when there are no designs.
  */
-function ekwa_design_vocabulary_prompt( $patterns, $budget = 48000 ) {
+function ekwa_design_vocabulary_prompt( $patterns, $budget = 48000, $mode = 'reuse' ) {
 	if ( ! is_array( $patterns ) || ! $patterns ) {
 		return '';
 	}
@@ -832,7 +1232,9 @@ function ekwa_design_vocabulary_prompt( $patterns, $budget = 48000 ) {
 	$omitted = 0;
 
 	foreach ( $patterns as $pattern ) {
-		$entry = ekwa_design_vocabulary_entry( $pattern );
+		// Only 'create' is asked to avoid arrangements the site already leans
+		// on, so only 'create' is shown what each design's arrangement is.
+		$entry = ekwa_design_vocabulary_entry( $pattern, 'create' === $mode );
 		if ( '' === $entry ) {
 			continue;
 		}
@@ -850,14 +1252,25 @@ function ekwa_design_vocabulary_prompt( $patterns, $budget = 48000 ) {
 		return '';
 	}
 
-	$out = "\n\nTHIS SITE'S SECTION DESIGNS — build out of these.\n"
-		. "Each entry below is a REAL section from this site: its block markup, and the CSS that gives it its look. They are the reason a rebuilt page looks like it belongs here instead of looking generic.\n"
-		. "- REUSE a design whenever one fits the content you are placing. Copy its markup, keep its classNames, and swap only the copy — headings, paragraphs, list items, image URLs — for the real content.\n"
-		. "- When you reuse one, copy its CSS into your single <style> block and rewrite its scope prefix to .EKWA_SCOPE (the prefix is named on each entry). Drop the old scope class from the markup; your one top-level wrapper already carries EKWA_SCOPE.\n"
-		. "- ADAPT freely: take a two-column design to three, restyle it, borrow the card from one and the header from another. This is a vocabulary, not a cage.\n"
-		. "- DESIGN SOMETHING NEW when nothing here fits the content — following every styling rule above. Never force content into a design that is the wrong shape for it.\n"
-		. "- NEVER reuse a design's WORDING. You are borrowing its layout and its CSS, never its copy.\n"
-		. implode( '', $entries );
+	if ( 'create' === $mode ) {
+		$out = "\n\nTHIS SITE'S SECTION DESIGNS — the visual language to build in.\n"
+			. "Each entry below is a REAL section from this site: its block markup, and the CSS that gives it its look. Read them as this site's house style, NOT as a catalogue to pick from. Two different things are asked of you here, and they pull in opposite directions on purpose:\n"
+			. "- INHERIT THE LANGUAGE — not optional. Take the colors and CSS custom properties, the type scale and weights, the spacing rhythm, the border radii, the shadow and border treatment, and the button/card/icon shapes from the designs below. A new section must look like it was made by whoever made these. Never introduce a new accent color, a new font, or a new button shape when one of these already covers it.\n"
+			. "- DESIGN THE LAYOUT YOURSELF — expected. Structure is yours: how many columns, what order, where the media sits, how the eye moves through it. Let the content you were given decide that, not the designs below. Reuse an existing design's markup wholesale ONLY when the content you are placing genuinely has the same shape; otherwise build a new arrangement in the inherited language. Never bend content to fit a design that is the wrong shape for it.\n"
+			. "- VARY DELIBERATELY. Each entry names its ARRANGEMENT — how it is laid out, independent of how it is styled. If several designs share one arrangement, that is evidence this site has become repetitive; it is not a pattern to continue. The section listing further down tells you which arrangements are on the page you are adding to. A section that is merely competent and familiar is a worse answer than one that is well-made and fresh.\n"
+			. "- When you DO reuse a design's CSS, copy it into your single <style> block and rewrite its scope prefix to .EKWA_SCOPE (the prefix is named on each entry). Drop the old scope class from the markup; your one top-level wrapper already carries EKWA_SCOPE.\n"
+			. "- NEVER reuse a design's WORDING. You are borrowing look and structure, never its copy.\n"
+			. implode( '', $entries );
+	} else {
+		$out = "\n\nTHIS SITE'S SECTION DESIGNS — build out of these.\n"
+			. "Each entry below is a REAL section from this site: its block markup, and the CSS that gives it its look. They are the reason a rebuilt page looks like it belongs here instead of looking generic.\n"
+			. "- REUSE a design whenever one fits the content you are placing. Copy its markup, keep its classNames, and swap only the copy — headings, paragraphs, list items, image URLs — for the real content.\n"
+			. "- When you reuse one, copy its CSS into your single <style> block and rewrite its scope prefix to .EKWA_SCOPE (the prefix is named on each entry). Drop the old scope class from the markup; your one top-level wrapper already carries EKWA_SCOPE.\n"
+			. "- ADAPT freely: take a two-column design to three, restyle it, borrow the card from one and the header from another. This is a vocabulary, not a cage.\n"
+			. "- DESIGN SOMETHING NEW when nothing here fits the content — following every styling rule above. Never force content into a design that is the wrong shape for it.\n"
+			. "- NEVER reuse a design's WORDING. You are borrowing its layout and its CSS, never its copy.\n"
+			. implode( '', $entries );
+	}
 
 	if ( $omitted ) {
 		$out .= sprintf(

@@ -73,6 +73,15 @@ function ekwa_ai_generate_register_routes() {
 				'default'  => 'page',
 				'enum'     => array( 'header', 'footer', 'page' ),
 			),
+			// The page being generated for, so the prompt can name the section
+			// arrangements it already uses and the model can avoid repeating
+			// one. Optional and defaulting to 0: an older editor script that
+			// does not send it gets exactly the previous prompt.
+			'post_id' => array(
+				'required' => false,
+				'type'     => 'integer',
+				'default'  => 0,
+			),
 		),
 	) );
 }
@@ -148,6 +157,21 @@ function ekwa_ai_generate_handle_request( $request ) {
 	$system_prompt = ekwa_ai_generate_build_system_prompt( $context );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
+	}
+
+	// Which section arrangements the page already uses, so a generated section
+	// is not this page's fourth two-column split. Page context only — a header
+	// or footer has no page of sections to be repetitive against.
+	//
+	// The block vocabulary itself is deliberately NOT sent here: this endpoint
+	// returns plain HTML, and showing it block markup to copy would be showing
+	// it the wrong thing. Only the arrangement tally travels, which is prose.
+	$page_id = (int) $request->get_param( 'post_id' );
+	if ( $page_id && 'page' === $context && function_exists( 'ekwa_layout_usage_prompt' ) ) {
+		$system_prompt .= ekwa_layout_usage_prompt(
+			$page_id,
+			function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $page_id ) : array()
+		);
 	}
 
 	// No output cap: a full page of HTML with inline styles is long, and on the

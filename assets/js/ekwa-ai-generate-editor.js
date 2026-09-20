@@ -61,6 +61,20 @@
 
 	// ─── Helpers ────────────────────────────────────────────────────────────
 
+	/**
+	 * The post being edited, or 0 where there is no editor store — the modal is
+	 * also mounted in contexts that have none, and a throw here would take the
+	 * whole generate request down with it.
+	 */
+	function currentPostId() {
+		try {
+			var sel = wp.data && wp.data.select( 'core/editor' );
+			return ( sel && sel.getCurrentPostId ) ? ( sel.getCurrentPostId() || 0 ) : 0;
+		} catch ( e ) {
+			return 0;
+		}
+	}
+
 	function readFileAsBase64( file ) {
 		return new Promise( function ( resolve, reject ) {
 			var reader = new FileReader();
@@ -464,6 +478,9 @@
 					use_child_css: useChildCss,
 					model:         model,
 					context:       context,
+					// Lets the server list the section arrangements this page
+					// already uses, so the result is not more of the same.
+					post_id:       currentPostId(),
 				},
 			} ).then( function ( res ) {
 				var newHistory = historyPayload.concat( [

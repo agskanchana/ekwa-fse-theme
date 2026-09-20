@@ -80,6 +80,14 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'type'     => 'string',
 				'default'  => '',
 			),
+			// The page being built on, so its own sections are kept out of the
+			// inspiration list. Optional and defaulting to 0: an older editor
+			// script that does not send it gets exactly the previous behaviour.
+			'post_id'       => array(
+				'required' => false,
+				'type'     => 'integer',
+				'default'  => 0,
+			),
 		),
 	) );
 
@@ -191,7 +199,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	// pass, which calls that function directly and adds the vocabulary itself,
 	// cannot end up sending it twice.
 	if ( $use_designs && 'section' === $context ) {
-		$system_prompt .= ekwa_ai_blocks_site_designs_context();
+		$system_prompt .= ekwa_ai_blocks_site_designs_context( 24000, (int) $request->get_param( 'post_id' ) );
 	}
 
 	$result = ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model );
@@ -363,15 +371,37 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
  * page and can afford the whole library; this one runs on every turn of an
  * interactive conversation, and the cost is paid every time.
  *
- * @param int $budget Character cap on the markup+CSS shipped.
+ * Sent in 'create' framing: inherit this site's colors, type and component
+ * shapes, but design the layout for the content in hand. @see
+ * ekwa_design_vocabulary_prompt() for why the Block Builder and the import
+ * design pass ask for different things from the same list.
+ *
+ * The designs are followed by an arrangement census — what the page being added
+ * to already uses, and which arrangements recur across the designs just listed.
+ * Without it the model can only guess whether it is about to build this page's
+ * fourth two-column split, and it guesses wrong in the agreeable direction.
+ *
+ * @param int $budget          Character cap on the markup+CSS shipped.
+ * @param int $exclude_post_id Page being built — never offer it its own
+ *                             sections as inspiration for a new one, and the
+ *                             page whose existing arrangements are counted.
  * @return string Prompt fragment, or '' when the site has no designs yet.
  */
-function ekwa_ai_blocks_site_designs_context( $budget = 24000 ) {
+function ekwa_ai_blocks_site_designs_context( $budget = 24000, $exclude_post_id = 0 ) {
 	if ( ! function_exists( 'ekwa_design_vocabulary' ) || ! function_exists( 'ekwa_design_vocabulary_prompt' ) ) {
 		return '';
 	}
 
-	return ekwa_design_vocabulary_prompt( ekwa_design_vocabulary(), $budget );
+	$patterns = ekwa_design_vocabulary( (int) $exclude_post_id );
+	$out      = ekwa_design_vocabulary_prompt( $patterns, $budget, 'create' );
+
+	// Guarded because the census arrived later than the vocabulary: a child
+	// theme or a partial update could have one without the other.
+	if ( function_exists( 'ekwa_layout_usage_prompt' ) ) {
+		$out .= ekwa_layout_usage_prompt( (int) $exclude_post_id, $patterns );
+	}
+
+	return $out;
 }
 
 /**
