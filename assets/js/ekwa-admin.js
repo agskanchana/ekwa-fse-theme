@@ -555,6 +555,7 @@
 		var nonce     = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
 		var strings   = (window.ekwaAdmin && ekwaAdmin.timeoutStrings) || {};
 		var target    = parseInt($('#ekwa-timeout-target').val(), 10) || 120;
+		var keepalive = $('#ekwa-timeout-keepalive').is(':checked');
 
 		if (!endpoint) {
 			$status.text('REST endpoint missing.');
@@ -566,9 +567,12 @@
 		var started = Date.now();
 		var ticker  = null;
 
+		// Appends, so the verdict lands UNDER the milestones the run collected
+		// rather than erasing them — "it got past 60 and then died at 100" is a
+		// more useful thing to be looking at than the death alone.
 		function note(kind, title, body) {
-			$result.html(
-				'<div class="notice notice-' + kind + ' inline" style="margin:0;padding:8px 12px;">' +
+			$result.append(
+				'<div class="notice notice-' + kind + ' inline" style="margin:8px 0 0;padding:8px 12px;">' +
 				'<p style="margin:0 0 4px;"><strong>' + title + '</strong></p>' +
 				'<p style="margin:0;">' + body + '</p></div>'
 			);
@@ -582,20 +586,51 @@
 		$btn.prop('disabled', true);
 		$result.empty();
 
-		// A live count, because a passing test sits silent for the full
-		// duration and an unlabelled two-minute wait reads as a hang.
-		ticker = setInterval(function () {
+		// Milestones worth calling out as they are PASSED, rather than only
+		// reporting at the end. A test that is going to pass sits silent for
+		// two minutes, which is indistinguishable from a hung page — and worse,
+		// the single most useful fact (it got past 60s, so the common LiteSpeed
+		// default is not the problem) is known at 61 seconds and was being
+		// withheld until 120.
+		var marks = [
+			{ at: 30,  note: '' },
+			{ at: 60,  note: ' — the usual LiteSpeed default, so that is not what is cutting you off' },
+			{ at: 90,  note: '' },
+			{ at: 120, note: '' }
+		];
+		var passed = [];
+
+		function progress() {
 			var secs = Math.round((Date.now() - started) / 1000);
-			$status.text((strings.running || 'Waiting %d seconds…').replace('%d', target) +
-				'  (' + secs + 's)');
-		}, 1000);
-		$status.text((strings.running || 'Waiting %d seconds…').replace('%d', target));
+			var pct  = Math.min(100, Math.round((secs / target) * 100));
+
+			marks.forEach(function (m) {
+				if (secs >= m.at && m.at <= target && passed.indexOf(m.at) === -1) {
+					passed.push(m.at);
+					$result.append(
+						'<p style="margin:2px 0;color:#1a7f37;">&#10003; still alive past <strong>' +
+						m.at + ' seconds</strong>' + m.note + '</p>'
+					);
+				}
+			});
+
+			$status.html(
+				'<strong>' + secs + 's</strong> of ' + target + 's &nbsp;' +
+				'<span style="display:inline-block;width:120px;height:8px;background:#dcdcde;' +
+				'border-radius:4px;vertical-align:middle;overflow:hidden;">' +
+				'<span style="display:block;height:100%;width:' + pct + '%;background:#2271b1;"></span>' +
+				'</span> &nbsp;<em>still waiting — this is normal</em>'
+			);
+		}
+
+		ticker = setInterval(progress, 1000);
+		progress();
 
 		$.ajax({
 			url: endpoint,
 			method: 'POST',
 			headers: { 'X-WP-Nonce': nonce },
-			data: { seconds: target },
+			data: { seconds: target, keepalive: keepalive ? 1 : 0 },
 			// Longer than the server is being asked to wait, so that OUR
 			// timeout can never be the thing that fires — otherwise the test
 			// would measure the browser instead of the server.
@@ -604,6 +639,18 @@
 			stop();
 			var lasted = Math.round((Date.now() - started) / 1000);
 			$status.text('');
+
+			if (keepalive) {
+				// The decisive outcome: silent runs die, busy runs survive.
+				// The server is counting idle time, not total time.
+				note('success', 'It survived with the connection kept busy',
+					'The server allowed <strong>' + lasted + ' seconds</strong> when bytes kept flowing, ' +
+					'having cut off a silent request earlier. That means the limit counts <strong>idle</strong> ' +
+					'time, not total time — so this is fixable in the theme without touching the server. ' +
+					'Tell Claude “the keep-alive run survived” and the AI calls can be changed to do the same thing.');
+				return;
+			}
+
 			note('success', strings.good || 'No server limit in the way',
 				'The server allowed a request to run for <strong>' + lasted + ' seconds</strong>. ' +
 				'That is at least as long as the AI features need, so a “Request Timeout” here is not the web server ' +
@@ -626,6 +673,20 @@
 
 			var isLite = !!(window.ekwaAdmin && ekwaAdmin.timeoutIsLiteSpeed);
 
+			if (keepalive) {
+				// Also decisive, the other way: a hard cap on the request, which
+				// no amount of cleverness on our side gets around.
+				note('error', 'Still cut off even with the connection kept busy',
+					'Killed after <strong>' + lasted + ' seconds</strong> despite bytes flowing the whole time. ' +
+					'So this is an absolute cap on how long a request may run, not an idle timeout, and ' +
+					'<strong>the theme cannot work around it</strong> — the server limit has to be raised.<br><br>' +
+					(isLite ? (strings.litespeed || '') : (strings.other || '')) +
+					'<br><br>Until then, set <code>define( \'EKWA_AI_HTTP_TIMEOUT\', ' +
+					Math.max(15, lasted - 10) + ' );</code> in <code>wp-config.php</code> and use a Flash model — ' +
+					'it answers in a fraction of the time and will usually fit inside the limit.');
+				return;
+			}
+
 			note('error', strings.bad || 'The server cut the request off',
 				'The request was killed after <strong>' + lasted + ' seconds</strong>' +
 				(textStatus === 'timeout' ? ' (the browser gave up — the server never answered)' : '') +
@@ -634,7 +695,9 @@
 				(isLite ? (strings.litespeed || '') : (strings.other || '')) +
 				'<br><br>Until that is raised, set <code>define( \'EKWA_AI_HTTP_TIMEOUT\', ' +
 				Math.max(15, lasted - 10) + ' );</code> in <code>wp-config.php</code> — the theme will then give up ' +
-				'first and show a readable message instead of the server’s error page.');
+				'first and show a readable message instead of the server’s error page.' +
+				'<br><br><strong>Next:</strong> tick “Keep the connection busy while waiting” and run it again at the ' +
+				'same ' + target + ' seconds. If that one survives, this is fixable without the host.');
 		});
 	});
 

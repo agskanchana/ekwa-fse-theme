@@ -2527,9 +2527,17 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'seconds', 'ekwa' ); ?>
 									<button type="button" class="button" id="ekwa-timeout-probe-btn"><?php esc_html_e( 'Run the test', 'ekwa' ); ?></button>
 									<span id="ekwa-timeout-probe-status" style="margin-left:8px;"></span>
+									<p style="margin:8px 0 0;">
+										<label>
+											<input type="checkbox" id="ekwa-timeout-keepalive" />
+											<?php esc_html_e( 'Keep the connection busy while waiting', 'ekwa' ); ?>
+										</label>
+									</p>
 									<div id="ekwa-timeout-probe-result" style="margin-top:10px;max-width:760px;"></div>
 									<p class="description">
 										<?php esc_html_e( 'Takes the same path through the web server as the editor’s request. If it comes back, the server allows at least that long; if it is cut off, the time it lasted is the server’s limit. A failure is fast — a pass takes the full time you asked for.', 'ekwa' ); ?>
+										<br>
+										<?php esc_html_e( 'Run it once plain, then once with the box ticked. If the plain run is cut off but the ticked one survives, the server is only counting idle time — which the theme can work around on its own. If both die at the same second, it is a hard limit and only the host can raise it.', 'ekwa' ); ?>
 									</p>
 								</td>
 							</tr>

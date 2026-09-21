@@ -251,6 +251,18 @@ function ekwa_server_timeout_register_route() {
 					'type'     => 'integer',
 					'default'  => 30,
 				),
+				// Trickle whitespace while waiting instead of going silent.
+				// This is the experiment that decides what can be done about a
+				// low ceiling: if the server's limit counts IDLE time, a
+				// connection that keeps producing bytes survives it and the fix
+				// is ours to make; if it is an absolute cap on the request, this
+				// dies at exactly the same second and only the host can help.
+				// @see ekwa_server_timeout_report().
+				'keepalive' => array(
+					'required' => false,
+					'type'     => 'boolean',
+					'default'  => false,
+				),
 			),
 			'callback'            => function ( $request ) {
 				// Capped: a worker held open is a worker not serving the site,
@@ -269,19 +281,72 @@ function ekwa_server_timeout_register_route() {
 				}
 
 				$started = microtime( true );
-				sleep( $seconds );
+
+				if ( $request->get_param( 'keepalive' ) ) {
+					ekwa_server_timeout_trickle( $seconds );
+				} else {
+					sleep( $seconds );
+				}
 
 				return rest_ensure_response( array(
-					'ok'       => true,
-					'asked'    => $seconds,
-					'elapsed'  => round( microtime( true ) - $started, 2 ),
-					'limits'   => ekwa_server_limits(),
+					'ok'        => true,
+					'asked'     => $seconds,
+					'keepalive' => (bool) $request->get_param( 'keepalive' ),
+					'elapsed'   => round( microtime( true ) - $started, 2 ),
+					'limits'    => ekwa_server_limits(),
 				) );
 			},
 		)
 	);
 }
 add_action( 'rest_api_init', 'ekwa_server_timeout_register_route' );
+
+/**
+ * Wait, but keep the connection producing bytes while doing it.
+ *
+ * Whitespace, one space a second, then the JSON body after it. That is safe for
+ * the caller because JSON.parse — and therefore both jQuery and apiFetch —
+ * skips leading whitespace, so the response still parses as the object it
+ * always was. Nothing else on the site consumes this route.
+ *
+ * Every buffer between here and the socket has to be taken out of the way or
+ * the trickle never leaves the server and the test measures nothing. That is
+ * heavy-handed, which is why it happens only on this diagnostic route and only
+ * when explicitly asked for.
+ *
+ * @param int $seconds How long to hold the connection.
+ * @return void
+ */
+function ekwa_server_timeout_trickle( $seconds ) {
+	// Best effort, and expected to fail: the REST server sends Content-Type
+	// before dispatching, so headers are already out by the time a callback
+	// runs and PHP refuses to change these. Kept because it costs nothing and
+	// succeeds on setups that buffer differently — but the buffer draining
+	// below is the part that actually does the work.
+	// phpcs:disable WordPress.PHP.NoSilencedErrors.Discouraged
+	@ini_set( 'zlib.output_compression', 'Off' );
+	@ini_set( 'output_buffering', 'Off' );
+	@ini_set( 'implicit_flush', '1' );
+	// phpcs:enable WordPress.PHP.NoSilencedErrors.Discouraged
+
+	// Drain whatever WordPress or the host has already stacked up; a buffer left
+	// in place swallows the trickle and the connection still looks idle.
+	while ( ob_get_level() > 0 ) {
+		@ob_end_flush(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+	ob_implicit_flush( true );
+
+	for ( $i = 0; $i < (int) $seconds; $i++ ) {
+		echo ' ';
+		// Both, because which one is needed depends on whether a buffer got
+		// re-established underneath us.
+		if ( ob_get_level() > 0 ) {
+			@ob_flush(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+		flush();
+		sleep( 1 );
+	}
+}
 
 /**
  * What a measured ceiling means, in words, for the AI features.
