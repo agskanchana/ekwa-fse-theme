@@ -534,6 +534,111 @@
 	});
 
 	/* ============================================================
+	 *  Server request limit — how long may a request run?
+	 *
+	 *  Measured from the BROWSER on purpose. The failing request the user is
+	 *  chasing goes browser → web server → PHP, and whatever kills it lives in
+	 *  the middle of that path; a loopback request from PHP would take a
+	 *  different route and could easily pass while the real one fails.
+	 *
+	 *  The elapsed time of a FAILED probe is the answer. If the server cuts us
+	 *  off at 60 seconds, the request dies at 60 seconds, and that number is
+	 *  the limit — no ladder or bisection needed.
+	 * ============================================================ */
+	$(document).on('click', '#ekwa-timeout-probe-btn', function (e) {
+		e.preventDefault();
+
+		var $btn      = $(this);
+		var $status   = $('#ekwa-timeout-probe-status');
+		var $result   = $('#ekwa-timeout-probe-result');
+		var endpoint  = window.ekwaAdmin && ekwaAdmin.timeoutProbeUrl;
+		var nonce     = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
+		var strings   = (window.ekwaAdmin && ekwaAdmin.timeoutStrings) || {};
+		var target    = parseInt($('#ekwa-timeout-target').val(), 10) || 120;
+
+		if (!endpoint) {
+			$status.text('REST endpoint missing.');
+			return;
+		}
+
+		target = Math.max(5, Math.min(300, target));
+
+		var started = Date.now();
+		var ticker  = null;
+
+		function note(kind, title, body) {
+			$result.html(
+				'<div class="notice notice-' + kind + ' inline" style="margin:0;padding:8px 12px;">' +
+				'<p style="margin:0 0 4px;"><strong>' + title + '</strong></p>' +
+				'<p style="margin:0;">' + body + '</p></div>'
+			);
+		}
+
+		function stop() {
+			if (ticker) { clearInterval(ticker); ticker = null; }
+			$btn.prop('disabled', false);
+		}
+
+		$btn.prop('disabled', true);
+		$result.empty();
+
+		// A live count, because a passing test sits silent for the full
+		// duration and an unlabelled two-minute wait reads as a hang.
+		ticker = setInterval(function () {
+			var secs = Math.round((Date.now() - started) / 1000);
+			$status.text((strings.running || 'Waiting %d seconds…').replace('%d', target) +
+				'  (' + secs + 's)');
+		}, 1000);
+		$status.text((strings.running || 'Waiting %d seconds…').replace('%d', target));
+
+		$.ajax({
+			url: endpoint,
+			method: 'POST',
+			headers: { 'X-WP-Nonce': nonce },
+			data: { seconds: target },
+			// Longer than the server is being asked to wait, so that OUR
+			// timeout can never be the thing that fires — otherwise the test
+			// would measure the browser instead of the server.
+			timeout: (target + 30) * 1000
+		}).done(function (res) {
+			stop();
+			var lasted = Math.round((Date.now() - started) / 1000);
+			$status.text('');
+			note('success', strings.good || 'No server limit in the way',
+				'The server allowed a request to run for <strong>' + lasted + ' seconds</strong>. ' +
+				'That is at least as long as the AI features need, so a “Request Timeout” here is not the web server ' +
+				'cutting the request off — check the PHP error log for a line starting <code>[ekwa-ai]</code>.');
+		}).fail(function (xhr, textStatus) {
+			stop();
+			var lasted = Math.round((Date.now() - started) / 1000);
+			$status.text('');
+
+			// A permissions or routing failure comes back immediately and is
+			// not a timeout — saying "your server cuts off at 0 seconds" would
+			// be worse than useless.
+			if (lasted < 3 && xhr && xhr.status && xhr.status !== 0) {
+				note('warning', 'The test could not run',
+					'The server answered HTTP ' + xhr.status + ' straight away, so nothing was measured. ' +
+					(xhr.status === 403 ? 'That is a permissions or nonce failure — reload this page and try again.' :
+					 'Something rejected the request before it could start waiting.'));
+				return;
+			}
+
+			var isLite = !!(window.ekwaAdmin && ekwaAdmin.timeoutIsLiteSpeed);
+
+			note('error', strings.bad || 'The server cut the request off',
+				'The request was killed after <strong>' + lasted + ' seconds</strong>' +
+				(textStatus === 'timeout' ? ' (the browser gave up — the server never answered)' : '') +
+				'. Any AI generation that takes longer than that will fail the same way, with the ' +
+				'“Request Timeout” page instead of a result.<br><br>' +
+				(isLite ? (strings.litespeed || '') : (strings.other || '')) +
+				'<br><br>Until that is raised, set <code>define( \'EKWA_AI_HTTP_TIMEOUT\', ' +
+				Math.max(15, lasted - 10) + ' );</code> in <code>wp-config.php</code> — the theme will then give up ' +
+				'first and show a readable message instead of the server’s error page.');
+		});
+	});
+
+	/* ============================================================
 	 *  Nav-menu item image picker (used by mega-menu columns)
 	 * ============================================================ */
 	$(document).on('click', '.ekwa-menu-image-pick', function (e) {

@@ -614,7 +614,13 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 			'Content-Type' => 'application/json',
 		),
 		'body'    => wp_json_encode( $body ),
-		'timeout' => 120,
+		// Was hardcoded 120; ekwa_ai_http_timeout() returns the same 120 by
+		// default. It is configurable because on a server whose own connection
+		// timeout is LOWER than this, we always lose the race — the web server
+		// kills the request and answers the browser with an HTML error page
+		// instead of our JSON. Coming back first turns that into a readable
+		// message. @see ekwa_server_timeout_report().
+		'timeout' => function_exists( 'ekwa_ai_http_timeout' ) ? ekwa_ai_http_timeout() : 120,
 	) );
 
 	// Concise label for the diagnostic log so intermittent failures (rate limits,
@@ -624,6 +630,23 @@ function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, 
 
 	if ( is_wp_error( $response ) ) {
 		error_log( sprintf( '[ekwa-ai] %s (%s) — network error: %s', $feature_label, $model, $response->get_error_message() ) );
+
+		// cURL operation timed out (CURLE_OPERATION_TIMEDOUT, 28) means the
+		// model was still thinking when we gave up. That is a different problem
+		// from "the network is broken", and the way out of it is different too,
+		// so say which it is rather than passing the raw cURL string up.
+		$raw = $response->get_error_message();
+		if ( false !== stripos( $raw, 'timed out' ) || false !== stripos( $raw, 'timeout' ) ) {
+			return new WP_Error(
+				'gemini_timeout',
+				sprintf(
+					/* translators: %d: seconds waited. */
+					__( 'The model was still working after %d seconds, so the request was given up on. Ask for one section at a time, or switch to a Flash model — they answer in a fraction of the time. If this happens on even small requests, the server may be cutting requests off early: Appearance → Ekwa Settings → AI → Server request limit measures it.', 'ekwa' ),
+					function_exists( 'ekwa_ai_http_timeout' ) ? ekwa_ai_http_timeout() : 120
+				)
+			);
+		}
+
 		return $response;
 	}
 

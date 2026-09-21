@@ -73,6 +73,20 @@ function ekwa_admin_enqueue( $hook ) {
 		'webpRestNonce'    => wp_create_nonce( 'wp_rest' ),
 		'interlinkRebuildUrl' => esc_url_raw( rest_url( 'ekwa/v1/interlink-rebuild-keywords' ) ),
 		'aiTestKeyUrl'     => esc_url_raw( rest_url( 'ekwa/v1/ai-test-key' ) ),
+		'timeoutProbeUrl'  => esc_url_raw( rest_url( 'ekwa/v1/server-timeout-probe' ) ),
+		// Read server-side rather than sniffed out of the rendered page: which
+		// web server this is decides which remediation to show.
+		'timeoutIsLiteSpeed' => function_exists( 'ekwa_server_limits' )
+			? (bool) ekwa_server_limits()['is_litespeed']
+			: false,
+		'timeoutStrings'   => array(
+			/* translators: %d: seconds being waited. */
+			'running' => __( 'Holding a request open for %d seconds…', 'ekwa' ),
+			'good'    => __( 'No server limit in the way', 'ekwa' ),
+			'bad'     => __( 'The server cut the request off', 'ekwa' ),
+			'litespeed' => __( 'This is LiteSpeed. Raise Connection Timeout in WebAdmin → Configuration → Server → Tuning (on cPanel: WHM → LiteSpeed Web Server → Configuration), and raise lsapi_max_process_time to match. Most hosts will do this on request.', 'ekwa' ),
+			'other'   => __( 'Raise the web server’s read timeout for PHP requests — ProxyTimeout on Apache with mod_proxy_fcgi, fastcgi_read_timeout on nginx.', 'ekwa' ),
+		),
 		'vimeoTestKeyUrl'  => esc_url_raw( rest_url( 'ekwa/v1/vimeo-test-key' ) ),
 		'askDocsUrl'       => esc_url_raw( rest_url( 'ekwa/v1/ask-docs' ) ),
 		'askDocsStrings'   => array(
@@ -2468,6 +2482,60 @@ function ekwa_render_settings_page() {
 							</tr>
 						</table>
 					</div>
+
+					<?php
+					// ── Server request limit ──────────────────────────────────
+					// Here rather than in Site Health because the measurement
+					// deliberately holds a request open for up to two minutes,
+					// and a Site Health test that did that would be killed by
+					// the very timeout it is trying to measure.
+					$ekwa_srv = function_exists( 'ekwa_server_limits' ) ? ekwa_server_limits() : null;
+					?>
+					<?php if ( $ekwa_srv ) : ?>
+					<div class="ekwa-section">
+						<h2><?php esc_html_e( 'Server request limit', 'ekwa' ); ?></h2>
+						<p class="description" style="max-width:760px;">
+							<?php esc_html_e( 'If generating with AI ends in a “Request Timeout” page instead of a result, the web server is cutting the request off before PHP can answer. That limit is not visible from PHP — it has to be measured. This holds one request open for as long as you ask and reports how far it got.', 'ekwa' ); ?>
+						</p>
+						<table class="form-table">
+							<tr>
+								<th><?php esc_html_e( 'This server', 'ekwa' ); ?></th>
+								<td>
+									<code><?php echo esc_html( $ekwa_srv['software'] ? $ekwa_srv['software'] : __( '(not reported)', 'ekwa' ) ); ?></code>
+									<?php if ( $ekwa_srv['is_litespeed'] ) : ?>
+										<strong><?php esc_html_e( '— LiteSpeed', 'ekwa' ); ?></strong>
+									<?php endif; ?>
+									<p class="description">
+										<?php
+										printf(
+											/* translators: 1: PHP SAPI, 2: max_execution_time, 3: the AI timeout. */
+											esc_html__( 'PHP %1$s · max_execution_time %2$s · the AI features wait up to %3$d seconds for Gemini.', 'ekwa' ),
+											esc_html( $ekwa_srv['sapi'] ),
+											0 === (int) $ekwa_srv['max_execution'] ? esc_html__( 'unlimited', 'ekwa' ) : esc_html( $ekwa_srv['max_execution'] . 's' ),
+											(int) $ekwa_srv['ai_timeout']
+										);
+										?>
+										<br>
+										<em><?php esc_html_e( 'max_execution_time is not the one that bites here: time spent waiting on the network does not count toward it, so a slow Gemini call passes that limit and is still killed by the web server.', 'ekwa' ); ?></em>
+									</p>
+								</td>
+							</tr>
+							<tr>
+								<th><label for="ekwa-timeout-target"><?php esc_html_e( 'Measure', 'ekwa' ); ?></label></th>
+								<td>
+									<input type="number" id="ekwa-timeout-target" value="<?php echo esc_attr( (int) $ekwa_srv['ai_timeout'] ); ?>" min="5" max="300" step="5" style="width:80px;" />
+									<?php esc_html_e( 'seconds', 'ekwa' ); ?>
+									<button type="button" class="button" id="ekwa-timeout-probe-btn"><?php esc_html_e( 'Run the test', 'ekwa' ); ?></button>
+									<span id="ekwa-timeout-probe-status" style="margin-left:8px;"></span>
+									<div id="ekwa-timeout-probe-result" style="margin-top:10px;max-width:760px;"></div>
+									<p class="description">
+										<?php esc_html_e( 'Takes the same path through the web server as the editor’s request. If it comes back, the server allows at least that long; if it is cut off, the time it lasted is the server’s limit. A failure is fast — a pass takes the full time you asked for.', 'ekwa' ); ?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+					<?php endif; ?>
 				</div><!-- /ai -->
 
 			<p class="submit ekwa-main-submit">

@@ -139,6 +139,196 @@ function ekwa_site_health_probe( $content ) {
 	);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * How long this server lets a request run
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * A second failure with the same shape as the WAF one above: the block is
+ * OUTSIDE PHP, so nothing in WordPress can catch it or explain it.
+ *
+ *     Request Timeout
+ *     This request takes too long to process, it is timed out by the server.
+ *     If it should not be timed out, please contact administrator of this web
+ *     site to increase 'Connection Timeout'.
+ *
+ * That page is LiteSpeed's (the wording is verbatim LSWS/OpenLiteSpeed). The
+ * web server gave up waiting on PHP and answered the browser itself, so the
+ * editor gets HTML where it expected JSON — exactly as with a WAF rejection,
+ * and for the same reason: PHP never got to answer.
+ *
+ * It bites the AI features because they are the only requests that hold a
+ * connection open for a long time: one Gemini call can run well past a minute,
+ * and LiteSpeed's Connection Timeout commonly defaults to 60 seconds.
+ *
+ * The limit is not readable from PHP — it lives in the web server's config, not
+ * in php.ini — so the only way to learn it is to measure it.
+ */
+
+/**
+ * How long the theme is willing to wait for one Gemini call, in seconds.
+ *
+ * Pulled out of the call site so the diagnostic and the caller cannot disagree
+ * about the number being tested, and so a site whose server cuts requests off
+ * earlier can lower it — see ekwa_server_timeout_report(). Returning BEFORE the
+ * web server's ceiling is what turns an unexplained HTML error page into a
+ * readable message in the modal.
+ *
+ * @return int
+ */
+function ekwa_ai_http_timeout() {
+	$seconds = defined( 'EKWA_AI_HTTP_TIMEOUT' ) ? (int) EKWA_AI_HTTP_TIMEOUT : 120;
+
+	/**
+	 * Filter the Gemini HTTP timeout.
+	 *
+	 * @param int $seconds Default 120 — the value this was hardcoded to before
+	 *                     it became configurable, so nothing changes by default.
+	 */
+	$seconds = (int) apply_filters( 'ekwa_ai_http_timeout', $seconds );
+
+	// A floor: below this even a small generation cannot finish, and a request
+	// that always times out is worse than one that sometimes does.
+	return max( 15, $seconds );
+}
+
+/**
+ * Facts about this server that cost nothing to read.
+ *
+ * Deliberately separate from the measurement: these are free and instant, and
+ * on a LiteSpeed box they are half the answer on their own.
+ *
+ * @return array<string,mixed>
+ */
+function ekwa_server_limits() {
+	$software = isset( $_SERVER['SERVER_SOFTWARE'] ) ? (string) $_SERVER['SERVER_SOFTWARE'] : '';
+	$sapi     = PHP_SAPI;
+
+	// LiteSpeed shows up in either place depending on whether PHP is running
+	// under LSAPI or as a proxied FPM pool.
+	$is_litespeed = ( false !== stripos( $software, 'litespeed' ) )
+		|| ( false !== stripos( $sapi, 'litespeed' ) );
+
+	return array(
+		'software'       => $software,
+		'sapi'           => $sapi,
+		'is_litespeed'   => $is_litespeed,
+		// PHP's own ceiling. Note this is NOT what produces the LiteSpeed page:
+		// on Unix, time spent blocked on a network read does not count toward
+		// max_execution_time, so a slow Gemini call can sail past this number
+		// and still be killed by the web server.
+		'max_execution'  => (int) ini_get( 'max_execution_time' ),
+		'ai_timeout'     => ekwa_ai_http_timeout(),
+	);
+}
+
+/**
+ * The probe: hold a request open for N seconds, then answer.
+ *
+ * `sleep()` is a faithful stand-in for what a Gemini call does to this server —
+ * PHP sitting idle waiting on I/O, consuming no CPU — which is the case both
+ * LiteSpeed's Connection Timeout and a proxy's read timeout are counting.
+ *
+ * Called from the BROWSER, not over the loopback, and that is the point: it
+ * takes the identical path through the web server as the editor's request, so
+ * whatever kills one kills the other.
+ */
+function ekwa_server_timeout_register_route() {
+	register_rest_route(
+		'ekwa/v1',
+		'/server-timeout-probe',
+		array(
+			'methods'             => 'POST',
+			// An admin-only route that deliberately occupies a PHP worker, so
+			// it is gated on the capability rather than on the derived token the
+			// WAF probe uses — this one is called with cookies, from a logged-in
+			// settings page, and never anonymously.
+			'permission_callback' => function () {
+				return current_user_can( 'manage_options' );
+			},
+			'args'                => array(
+				'seconds' => array(
+					'required' => false,
+					'type'     => 'integer',
+					'default'  => 30,
+				),
+			),
+			'callback'            => function ( $request ) {
+				// Capped: a worker held open is a worker not serving the site,
+				// and nothing is learned past the theme's own ceiling.
+				$seconds = max( 1, min( 300, (int) $request->get_param( 'seconds' ) ) );
+
+				// Take PHP's own limit out of the measurement, so whatever cuts
+				// this off is unambiguously the web server. It matters on
+				// Windows, where sleeping DOES count toward max_execution_time
+				// (on Unix it does not, which is why a blocking Gemini call can
+				// sail past max_execution_time and still be killed upstream).
+				// Suppressed because some hosts disable it, and failing to
+				// raise the limit is not a reason to refuse to measure.
+				if ( function_exists( 'set_time_limit' ) ) {
+					@set_time_limit( $seconds + 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				}
+
+				$started = microtime( true );
+				sleep( $seconds );
+
+				return rest_ensure_response( array(
+					'ok'       => true,
+					'asked'    => $seconds,
+					'elapsed'  => round( microtime( true ) - $started, 2 ),
+					'limits'   => ekwa_server_limits(),
+				) );
+			},
+		)
+	);
+}
+add_action( 'rest_api_init', 'ekwa_server_timeout_register_route' );
+
+/**
+ * What a measured ceiling means, in words, for the AI features.
+ *
+ * @param int $ceiling Seconds the server allowed, or 0 when not yet measured.
+ * @return array{status:string,headline:string,detail:string}
+ */
+function ekwa_server_timeout_report( $ceiling ) {
+	$limits = ekwa_server_limits();
+	$needed = (int) $limits['ai_timeout'];
+	$ceiling = (int) $ceiling;
+
+	if ( $ceiling <= 0 ) {
+		return array(
+			'status'   => 'unknown',
+			'headline' => __( 'Not measured yet.', 'ekwa' ),
+			'detail'   => '',
+		);
+	}
+
+	if ( $ceiling >= $needed ) {
+		return array(
+			'status'   => 'good',
+			'headline' => sprintf(
+				/* translators: 1: measured seconds, 2: the theme's AI timeout. */
+				__( 'This server allowed a request to run for %1$d seconds — longer than the %2$d the AI features are willing to wait. A timeout here is not the web server cutting the request off.', 'ekwa' ),
+				$ceiling,
+				$needed
+			),
+			'detail'   => __( 'If generation still fails, look at the PHP error log for a line starting [ekwa-ai] — a Gemini quota or network error reports there.', 'ekwa' ),
+		);
+	}
+
+	return array(
+		'status'   => 'bad',
+		'headline' => sprintf(
+			/* translators: 1: measured seconds, 2: the theme's AI timeout. */
+			__( 'This server cut the request off after %1$d seconds. The AI features wait up to %2$d, so any generation slower than %1$d is killed by the server before PHP can answer — which is what produces the “Request Timeout” page instead of a result.', 'ekwa' ),
+			$ceiling,
+			$needed
+		),
+		'detail'   => $limits['is_litespeed']
+			? __( 'This is LiteSpeed. Raise it in WebAdmin → Configuration → Server → Tuning → Connection Timeout (or, on cPanel, WHM → LiteSpeed Web Server → Configuration), and on the PHP side raise lsapi_max_process_time to match. Most hosts will do this on request; it is a standard change.', 'ekwa' )
+			: __( 'Raise the web server’s read/connection timeout for PHP requests. On Apache with mod_proxy_fcgi that is ProxyTimeout and the fcgi:// connection timeout; on nginx it is fastcgi_read_timeout.', 'ekwa' ),
+	);
+}
+
 /**
  * Name the WAF from its rejection, when it's recognizable.
  *
