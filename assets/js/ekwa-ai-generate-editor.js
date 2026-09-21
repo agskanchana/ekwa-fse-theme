@@ -26,6 +26,8 @@
 	var Spinner            = wp.components.Spinner;
 	var apiFetch           = wp.apiFetch;
 	var __                 = wp.i18n.__;
+	var _n                 = wp.i18n._n;
+	var sprintf            = wp.i18n.sprintf;
 
 	var PluginMoreMenuItem = ( wp.editor && wp.editor.PluginMoreMenuItem )
 		? wp.editor.PluginMoreMenuItem
@@ -205,6 +207,10 @@
 		var s12 = useState( true );  var showJs       = s12[0]; var setShowJs       = s12[1];
 		var s13 = useState( [] );    var history      = s13[0]; var setHistory      = s13[1];
 		var s14 = useState( true );  var useChildCss  = s14[0]; var setUseChildCss  = s14[1];
+		// Depositphotos comps in place of grey placeholders. Off by default:
+		// this reaches out to a third party, and the previous behaviour was
+		// placeholders, so an untouched modal generates exactly as it used to.
+		var s14b = useState( false ); var useStock = s14b[0]; var setUseStock = s14b[1];
 		var s15 = useState( DEFAULT_MODEL ); var model        = s15[0]; var setModel        = s15[1];
 		var s16 = useState( false );         var isFullscreen = s16[0]; var setIsFullscreen = s16[1];
 		var s17 = useState( 'page' );        var context      = s17[0]; var setContext      = s17[1];
@@ -213,6 +219,9 @@
 		// instead of it, since the partial HTML is still usable as a starting
 		// point.
 		var s18 = useState( [] );            var warnings     = s18[0]; var setWarnings     = s18[1];
+		// Comps placed in the last generation, so the buy-list survives until
+		// the next one. Absent from an older theme build's response → stays [].
+		var s18b = useState( [] );           var stock        = s18b[0]; var setStock        = s18b[1];
 		// Paste handling for the two prompt boxes: the operator's stored opt-out,
 		// and a record of the last rewritten paste so it can be swapped back.
 		var s19 = useState( readPastePref ); var keepPaste    = s19[0]; var setKeepPaste    = s19[1];
@@ -445,6 +454,7 @@
 			setGenerating( true );
 			setError( null );
 			setWarnings( [] );
+			setStock( [] );
 
 			var payloadImages = images.map( function ( img ) {
 				return { mime: img.mime, data_base64: img.data_base64 };
@@ -476,6 +486,7 @@
 					images:        payloadImages,
 					history:       historyPayload,
 					use_child_css: useChildCss,
+					use_stock:     useStock,
 					model:         model,
 					context:       context,
 					// Lets the server list the section arrangements this page
@@ -493,6 +504,7 @@
 				setExtractedJs( res.extracted_js || '' );
 				// Absent on a response from an older theme build — no warning shown.
 				setWarnings( res.warnings || [] );
+				setStock( res.stock || [] );
 
 				// Clear input ready for the next refine turn.
 				setPrompt( '' );
@@ -522,6 +534,7 @@
 			setHistory( [] );
 			setError( null );
 			setWarnings( [] );
+			setStock( [] );
 			setIsFullscreen( false );
 		}
 
@@ -652,6 +665,12 @@
 						help: __( 'Lets the AI reuse classes and CSS variables from your child theme. Turn off for a fresh, theme-agnostic design.', 'ekwa' ),
 						checked: useChildCss,
 						onChange: setUseChildCss,
+					} ),
+					el( ToggleControl, {
+						label: __( 'Use Depositphotos images', 'ekwa' ),
+						help: __( 'Replaces the grey placeholders with real, watermarked photos matched to what each image is meant to show. They are comps — buy and swap them before the page goes live.', 'ekwa' ),
+						checked: useStock,
+						onChange: setUseStock,
 					} )
 				)
 			);
@@ -897,6 +916,11 @@
 							label: __( 'Send child theme stylesheet as context', 'ekwa' ),
 							checked: useChildCss,
 							onChange: setUseChildCss,
+						} ),
+						el( ToggleControl, {
+							label: __( 'Use Depositphotos images', 'ekwa' ),
+							checked: useStock,
+							onChange: setUseStock,
 						} )
 					),
 					el( 'div', { className: 'ekwa-ai-refine-actions' },
@@ -919,6 +943,36 @@
 						el( 'strong', null, __( 'Heads up:', 'ekwa' ) ),
 						el( 'ul', { style: { margin: '4px 0 0', paddingLeft: '18px' } },
 							warnings.map( function ( w, i ) { return el( 'li', { key: i }, w ); } )
+						)
+					)
+				);
+			}
+
+			// The buy-list. Every comp placed in this generation, with the link
+			// to purchase it — the point being that nobody should have to hunt
+			// back through the page to find out what needs replacing.
+			if ( stock && stock.length ) {
+				children.push(
+					el( Notice, { key: 'stock', status: 'info', isDismissible: false },
+						el( 'strong', null,
+							sprintf(
+								/* translators: %d: number of watermarked images placed. */
+								_n(
+									'%d watermarked Depositphotos comp placed — replace before this page goes live:',
+									'%d watermarked Depositphotos comps placed — replace before this page goes live:',
+									stock.length,
+									'ekwa'
+								),
+								stock.length
+							)
+						),
+						el( 'ul', { style: { margin: '4px 0 0', paddingLeft: '18px' } },
+							stock.map( function ( s ) {
+								return el( 'li', { key: s.id },
+									el( 'a', { href: s.page, target: '_blank', rel: 'noopener noreferrer' }, '#' + s.id ),
+									s.title ? ' — ' + s.title : ''
+								);
+							} )
 						)
 					)
 				);

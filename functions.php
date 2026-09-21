@@ -560,6 +560,12 @@ require_once get_template_directory() . '/inc/ekwa-ai-generate-blocks.php';
 require_once get_template_directory() . '/inc/ekwa-ai-convert.php';
 
 /**
+ * Depositphotos comps — watermarked stock imagery for pages still being
+ * designed, plus featured-image suggestions. No API key; opt-in per request.
+ */
+require_once get_template_directory() . '/inc/ekwa-depositphotos.php';
+
+/**
  * AI alt-text generation for the ekwa/image block (Gemini multimodal).
  */
 require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
@@ -1010,6 +1016,24 @@ function ekwa_enqueue_converter_editor_script() {
 				: '',
 		)
 	);
+
+	// "Suggest an image" under Set featured image. Needs uploading rights, not
+	// AI rights — someone who can add media can go and look for a picture.
+	if ( current_user_can( 'upload_files' ) ) {
+		wp_enqueue_script(
+			'ekwa-dp-featured',
+			get_template_directory_uri() . '/assets/js/ekwa-dp-featured.js',
+			array( 'wp-hooks', 'wp-element', 'wp-components', 'wp-data', 'wp-i18n', 'wp-api-fetch' ),
+			filemtime( get_template_directory() . '/assets/js/ekwa-dp-featured.js' ),
+			true
+		);
+		wp_enqueue_style(
+			'ekwa-dp-featured',
+			get_template_directory_uri() . '/assets/css/ekwa-dp-featured.css',
+			array(),
+			filemtime( get_template_directory() . '/assets/css/ekwa-dp-featured.css' )
+		);
+	}
 
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_converter_editor_script' );

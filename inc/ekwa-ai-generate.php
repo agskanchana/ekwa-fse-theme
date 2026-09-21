@@ -82,6 +82,15 @@ function ekwa_ai_generate_register_routes() {
 				'type'     => 'integer',
 				'default'  => 0,
 			),
+			// Swap the generated placeholder images for watermarked
+			// Depositphotos comps. Default false — the previous behaviour is
+			// grey placeholders, and this reaches out to a third party, so it
+			// only happens when someone ticks the box.
+			'use_stock' => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		),
 	) );
 }
@@ -210,11 +219,33 @@ function ekwa_ai_generate_handle_request( $request ) {
 		$warnings[] = __( 'The AI reached its output limit and the response was cut off — this HTML is incomplete, so a tag or CSS rule near the end is probably unfinished. Ask for one section at a time, or press Back to start a fresh conversation (each refine turn resends every earlier turn, which eats the same budget), then generate again.', 'ekwa' );
 	}
 
+	// Placeholder images → watermarked Depositphotos comps, matched to the alt
+	// text the model wrote for each one. Runs AFTER generation rather than
+	// feeding the model a list of URLs to place: the model reliably describes
+	// what each image should be, and much less reliably uses a URL it was
+	// handed. Failure here is silent by design — an unmatched image keeps its
+	// placeholder, so a third-party outage costs grey boxes and nothing else.
+	$stock = array();
+	if ( $request->get_param( 'use_stock' ) && function_exists( 'ekwa_dp_apply_to_html' ) ) {
+		$topic  = $page_id ? get_the_title( $page_id ) : '';
+		$filled = ekwa_dp_apply_to_html( $extracted['html'], '' !== $topic ? $topic : $prompt );
+
+		$extracted['html'] = $filled['html'];
+		$stock             = $filled['used'];
+
+		if ( ! $stock ) {
+			$warnings[] = __( 'No Depositphotos comps could be fetched, so the placeholder images were left as they are. The search may have returned nothing, or the site could not reach depositphotos.com.', 'ekwa' );
+		}
+	}
+
 	return rest_ensure_response( array(
 		'html'          => $extracted['html'],
 		'extracted_css' => $extracted['css'],
 		'extracted_js'  => $extracted['js'],
 		'warnings'      => $warnings,
+		// Ids and links for everything placed, so the comps can be bought and
+		// swapped without going back through the page to find them.
+		'stock'         => $stock,
 	) );
 }
 

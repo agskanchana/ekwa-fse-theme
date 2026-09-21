@@ -1,0 +1,94 @@
+/**
+ * "Suggest an image" panel, under Set featured image in the editor sidebar.
+ *
+ * Sidebar-scoped, so everything sits inside .ekwa-dp-featured — the featured
+ * image panel is core markup and nothing here may leak into it.
+ */
+
+.ekwa-dp-featured {
+	margin-top: 12px;
+}
+
+.ekwa-dp-featured .ekwa-dp-suggest-button {
+	width: 100%;
+	justify-content: center;
+}
+
+.ekwa-dp-featured .components-notice {
+	margin: 8px 0 0;
+}
+
+.ekwa-dp-target,
+.ekwa-dp-hint {
+	margin: 10px 0 0;
+	font-size: 12px;
+	line-height: 1.5;
+	color: #757575;
+}
+
+.ekwa-dp-group {
+	margin-top: 14px;
+}
+
+.ekwa-dp-group__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 6px;
+	font-size: 12px;
+}
+
+.ekwa-dp-group__head strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ekwa-dp-group__head a {
+	flex: none;
+	text-decoration: none;
+}
+
+/* Two across fits the sidebar at its default width without the thumbnails
+   becoming too small to judge a photograph by. */
+.ekwa-dp-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 6px;
+}
+
+.ekwa-dp-suggestion {
+	position: relative;
+	display: block;
+	overflow: hidden;
+	border-radius: 3px;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+	line-height: 0;
+}
+
+.ekwa-dp-suggestion:hover,
+.ekwa-dp-suggestion:focus {
+	box-shadow: 0 0 0 2px var(--wp-admin-theme-color, #3858e9);
+}
+
+.ekwa-dp-suggestion__thumb {
+	width: 100%;
+	height: 84px;
+	object-fit: cover;
+	display: block;
+}
+
+/* The image id, so it can be read off without opening the link — it is what
+   identifies the file to buy later. */
+.ekwa-dp-suggestion__id {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	padding: 1px 4px;
+	background: rgba(0, 0, 0, 0.65);
+	color: #fff;
+	font-size: 10px;
+	line-height: 1.5;
+	border-top-left-radius: 3px;
+}
