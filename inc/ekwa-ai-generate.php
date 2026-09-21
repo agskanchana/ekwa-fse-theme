@@ -93,6 +93,87 @@ function ekwa_ai_generate_register_routes() {
 			),
 		),
 	) );
+
+	// Hand the prompt back as text instead of running it. Cheap and instant —
+	// it never calls Gemini, so it is unaffected by whatever the server's
+	// request ceiling happens to be. @see ekwa_ai_generate_export_prompt().
+	register_rest_route( 'ekwa/v1', '/ai-prompt-export', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_ai_generate_export_prompt',
+		'permission_callback' => 'ekwa_ai_rest_permission',
+		'args'                => array(
+			'prompt'        => array( 'required' => false, 'type' => 'string',  'default' => '' ),
+			'use_child_css' => array( 'required' => false, 'type' => 'boolean', 'default' => true ),
+			'context'       => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => 'page',
+				'enum'     => array( 'header', 'footer', 'page' ),
+			),
+			'post_id'       => array( 'required' => false, 'type' => 'integer', 'default' => 0 ),
+		),
+	) );
+}
+
+/**
+ * The whole prompt as plain text, to run through some other AI by hand.
+ *
+ * The escape hatch for a server that will not hold a request open long enough
+ * to finish a generation: the slow part happens in a chat window somewhere
+ * else, and only the finished HTML comes back — through the Mockup Converter,
+ * which already accepts pasted HTML and CSS.
+ *
+ * Useful beyond that too: it is the only way to SEE what the theme is actually
+ * asking for, which is the first thing worth checking when output is not what
+ * was expected.
+ *
+ * Images are not included. They cannot travel as text, and the note in the
+ * output says to attach them in the other chat instead of leaving the reader
+ * to wonder where they went.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response
+ */
+function ekwa_ai_generate_export_prompt( $request ) {
+	$context = (string) $request->get_param( 'context' );
+	if ( ! in_array( $context, array( 'header', 'footer', 'page' ), true ) ) {
+		$context = 'page';
+	}
+
+	$system = ekwa_ai_generate_assemble_system_prompt(
+		$context,
+		(bool) $request->get_param( 'use_child_css' ),
+		(int) $request->get_param( 'post_id' )
+	);
+
+	$user = trim( (string) $request->get_param( 'prompt' ) );
+
+	$text  = "=====================================================================\n";
+	$text .= "INSTRUCTIONS (paste this whole message into ChatGPT, Claude or Gemini)\n";
+	$text .= "=====================================================================\n\n";
+	$text .= $system;
+	$text .= "\n\n=====================================================================\n";
+	$text .= "WHAT TO BUILD\n";
+	$text .= "=====================================================================\n\n";
+	$text .= '' !== $user
+		? $user
+		: '[Type what you want built here — the prompt box was empty when this was copied.]';
+	$text .= "\n\n=====================================================================\n";
+	$text .= "WHEN YOU HAVE THE ANSWER\n";
+	$text .= "=====================================================================\n";
+	$text .= "Copy the HTML it gives you. In WordPress open the Mockup Converter,\n";
+	$text .= "paste the HTML into the markup box and any <style> rules into the CSS\n";
+	$text .= "box, and convert — the result is the same blocks this feature would\n";
+	$text .= "have produced.\n";
+
+	return rest_ensure_response( array(
+		'text'  => $text,
+		'bytes' => strlen( $text ),
+		// Roughly 4 characters to a token: enough to warn when a prompt will
+		// not fit a smaller context window, without pretending to be exact.
+		'tokens_estimate' => (int) round( strlen( $text ) / 4 ),
+		'has_images'      => false,
+	) );
 }
 
 /**
@@ -163,25 +244,8 @@ function ekwa_ai_generate_handle_request( $request ) {
 		return $contents;
 	}
 
-	$system_prompt = ekwa_ai_generate_build_system_prompt( $context );
-	if ( $use_child_css ) {
-		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
-	}
-
-	// Which section arrangements the page already uses, so a generated section
-	// is not this page's fourth two-column split. Page context only — a header
-	// or footer has no page of sections to be repetitive against.
-	//
-	// The block vocabulary itself is deliberately NOT sent here: this endpoint
-	// returns plain HTML, and showing it block markup to copy would be showing
-	// it the wrong thing. Only the arrangement tally travels, which is prose.
-	$page_id = (int) $request->get_param( 'post_id' );
-	if ( $page_id && 'page' === $context && function_exists( 'ekwa_layout_usage_prompt' ) ) {
-		$system_prompt .= ekwa_layout_usage_prompt(
-			$page_id,
-			function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $page_id ) : array()
-		);
-	}
+	$page_id       = (int) $request->get_param( 'post_id' );
+	$system_prompt = ekwa_ai_generate_assemble_system_prompt( $context, $use_child_css, $page_id );
 
 	// No output cap: a full page of HTML with inline styles is long, and on the
 	// 2.5/3.x models the thinking step is billed against the same allowance, so
@@ -252,6 +316,47 @@ function ekwa_ai_generate_handle_request( $request ) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The COMPLETE system prompt for one generation — base plus every context
+ * block that the request's settings switch on.
+ *
+ * Factored out of the request handler so that the "copy the prompt and run it
+ * somewhere else" export (ekwa_ai_generate_export_prompt()) is assembled by the
+ * same code that assembles the real one. An export that has drifted from what
+ * is actually sent is worse than no export at all: the output comes back shaped
+ * for a prompt the converter was never told about, and the mismatch is silent.
+ *
+ * @param string $context       'header' | 'footer' | 'page'.
+ * @param bool   $use_child_css Append the child stylesheet.
+ * @param int    $page_id       Page being generated for; 0 skips the
+ *                              arrangement census, exactly as before.
+ * @return string
+ */
+function ekwa_ai_generate_assemble_system_prompt( $context = 'page', $use_child_css = true, $page_id = 0 ) {
+	$system_prompt = ekwa_ai_generate_build_system_prompt( $context );
+
+	if ( $use_child_css ) {
+		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
+	}
+
+	// Which section arrangements the page already uses, so a generated section
+	// is not this page's fourth two-column split. Page context only — a header
+	// or footer has no page of sections to be repetitive against.
+	//
+	// The block vocabulary itself is deliberately NOT sent here: this endpoint
+	// returns plain HTML, and showing it block markup to copy would be showing
+	// it the wrong thing. Only the arrangement tally travels, which is prose.
+	$page_id = (int) $page_id;
+	if ( $page_id && 'page' === $context && function_exists( 'ekwa_layout_usage_prompt' ) ) {
+		$system_prompt .= ekwa_layout_usage_prompt(
+			$page_id,
+			function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $page_id ) : array()
+		);
+	}
+
+	return $system_prompt;
+}
 
 /**
  * Build the system prompt that biases Gemini toward converter-friendly HTML.

@@ -222,6 +222,9 @@
 		// Comps placed in the last generation, so the buy-list survives until
 		// the next one. Absent from an older theme build's response → stays [].
 		var s18b = useState( [] );           var stock        = s18b[0]; var setStock        = s18b[1];
+		// The prompt, handed back as text to run through another AI by hand.
+		var s18c = useState( false );        var exporting    = s18c[0]; var setExporting    = s18c[1];
+		var s18d = useState( null );         var exported     = s18d[0]; var setExported     = s18d[1];
 		// Paste handling for the two prompt boxes: the operator's stored opt-out,
 		// and a record of the last rewritten paste so it can be swapped back.
 		var s19 = useState( readPastePref ); var keepPaste    = s19[0]; var setKeepPaste    = s19[1];
@@ -445,6 +448,39 @@
 		}
 
 		// ── Generate ───────────────────────────────────────────────────
+
+		/**
+		 * Fetch the assembled prompt as text and show it for copying.
+		 *
+		 * Assembled server-side by the same function that builds the real one,
+		 * so what is copied is what would have been sent — not an approximation
+		 * of it.
+		 */
+		function handleExportPrompt() {
+			setExporting( true );
+			setError( null );
+
+			apiFetch( {
+				path:   '/ekwa/v1/ai-prompt-export',
+				method: 'POST',
+				data:   {
+					prompt:        prompt,
+					use_child_css: useChildCss,
+					context:       context,
+					post_id:       currentPostId(),
+				},
+			} ).then( function ( res ) {
+				setExported( res );
+				setExporting( false );
+				// Straight to the clipboard, because the whole point is to
+				// paste it somewhere else; the textarea below is the fallback
+				// for when the browser refuses clipboard access.
+				copyToClipboard( res.text || '', function () {} );
+			} ).catch( function ( err ) {
+				setError( ( err && err.message ) || __( 'Could not build the prompt.', 'ekwa' ) );
+				setExporting( false );
+			} );
+		}
 
 		function handleGenerate() {
 			if ( ! prompt.trim() ) {
@@ -693,9 +729,51 @@
 					}, generating
 						? el( Fragment, null, el( Spinner, null ), __( ' Generating...', 'ekwa' ) )
 						: __( 'Generate HTML', 'ekwa' )
-					)
+					),
+					// The way out when the server will not hold a request open
+					// long enough to finish one. Never calls Gemini, so it works
+					// regardless of any timeout.
+					el( Button, {
+						variant: 'secondary',
+						disabled: exporting,
+						onClick: handleExportPrompt,
+					}, exporting ? __( 'Preparing…', 'ekwa' ) : __( 'Copy prompt for another AI', 'ekwa' ) )
 				)
 			);
+
+			if ( exported ) {
+				children.push(
+					el( 'div', { key: 'exported', className: 'ekwa-ai-exported' },
+						el( Notice, { status: 'success', isDismissible: true,
+							onRemove: function () { setExported( null ); }
+						},
+							el( 'strong', null, __( 'Copied to the clipboard.', 'ekwa' ) ),
+							' ',
+							sprintf(
+								/* translators: 1: character count, 2: rough token count. */
+								__( '%1$s characters, roughly %2$s tokens.', 'ekwa' ),
+								Number( exported.bytes || 0 ).toLocaleString(),
+								Number( exported.tokens_estimate || 0 ).toLocaleString()
+							),
+							el( 'ol', { style: { margin: '6px 0 0', paddingLeft: '18px' } },
+								el( 'li', null, __( 'Paste it into ChatGPT, Claude or the Gemini web app.', 'ekwa' ) ),
+								el( 'li', null, __( 'Attach any reference images there — they cannot travel in the text.', 'ekwa' ) ),
+								el( 'li', null, __( 'Copy the HTML it gives back, open the Mockup Converter and paste it in. Any <style> rules go in the CSS box.', 'ekwa' ) )
+							)
+						),
+						el( 'textarea', {
+							className: 'ekwa-mc-textarea',
+							readOnly: true,
+							rows: 8,
+							value: exported.text || '',
+							onClick: function ( e ) { e.target.select(); },
+							style: { width: '100%', fontFamily: 'monospace', fontSize: '11px' },
+						} ),
+						el( 'p', { className: 'description' },
+							__( 'If the clipboard copy did not take, click inside the box and copy it by hand.', 'ekwa' ) )
+					)
+				);
+			}
 		} else {
 			// ── Preview step ───────────────────────────────────────────
 

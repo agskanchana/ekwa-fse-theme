@@ -2527,6 +2527,7 @@ function ekwa_render_settings_page() {
 									<?php esc_html_e( 'seconds', 'ekwa' ); ?>
 									<button type="button" class="button" id="ekwa-timeout-probe-btn"><?php esc_html_e( 'Run the test', 'ekwa' ); ?></button>
 									<span id="ekwa-timeout-probe-status" style="margin-left:8px;"></span>
+									<button type="button" class="button" id="ekwa-htaccess-check-btn"><?php esc_html_e( 'Check my .htaccess rule', 'ekwa' ); ?></button>
 									<p style="margin:8px 0 0;">
 										<label>
 											<input type="checkbox" id="ekwa-timeout-keepalive" />

@@ -294,12 +294,50 @@ function ekwa_server_timeout_register_route() {
 					'keepalive' => (bool) $request->get_param( 'keepalive' ),
 					'elapsed'   => round( microtime( true ) - $started, 2 ),
 					'limits'    => ekwa_server_limits(),
+					// Whether the .htaccess rule reached this request. Only
+					// meaningful on a probe SHORT enough to come back — a run
+					// that gets killed never delivers this at all, which is why
+					// the UI checks it with a quick one first.
+					'htaccess'  => ekwa_htaccess_marker_seen(),
 				) );
 			},
 		)
 	);
 }
 add_action( 'rest_api_init', 'ekwa_server_timeout_register_route' );
+
+/**
+ * Did the .htaccess rule actually match this request?
+ *
+ * "I added the rule and it still times out" has two completely different
+ * causes — the rule never matched (wrong folder, below the WordPress block,
+ * hidden files not shown, a typo in the module name, which fails SILENTLY),
+ * or it matched and the host ignores noconntimeout. They need opposite
+ * remedies, so guessing between them wastes a round trip.
+ *
+ * The rule therefore sets a marker variable of our own alongside the LiteSpeed
+ * ones. Unlike noconntimeout/noabort — which LiteSpeed consumes internally and
+ * may never expose — a custom variable is just passed through, so SEEING it is
+ * proof the rule ran. (Not seeing it is weaker evidence: a server could still
+ * strip it. The message says so rather than overclaiming.)
+ *
+ * Apache and LiteSpeed prefix env vars with REDIRECT_ on each internal
+ * redirect, and WordPress's own rewrite to index.php is one — so the name
+ * arrives as REDIRECT_EKWA_HTACCESS_OK, or REDIRECT_REDIRECT_… after two.
+ * Matching on the suffix is what survives that.
+ *
+ * @return bool
+ */
+function ekwa_htaccess_marker_seen() {
+	foreach ( array_keys( $_SERVER ) as $key ) {
+		if ( 'EKWA_HTACCESS_OK' === $key
+			|| ( is_string( $key ) && 0 === substr_compare( $key, '_EKWA_HTACCESS_OK', -17 ) ) ) {
+			return true;
+		}
+	}
+
+	return false !== getenv( 'EKWA_HTACCESS_OK' );
+}
 
 /**
  * Wait, but keep the connection producing bytes while doing it.

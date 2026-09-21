@@ -533,6 +533,48 @@
 		});
 	});
 
+	/**
+	 * The cPanel-level fix, ready to copy.
+	 *
+	 * LiteSpeed lets a SITE lift its own connection timeout for named scripts
+	 * via env vars in .htaccess, which an ordinary cPanel user can edit — so
+	 * this needs no root, no WHM and no support ticket.
+	 *
+	 * Scoped to the theme's slow routes rather than `.*` on purpose: LiteSpeed's
+	 * own docs warn that applying noabort broadly can tie up an account that is
+	 * hitting CloudLinux LVE limits. These routes are all admin-gated and all
+	 * wait on Gemini.
+	 *
+	 * EKWA_HTACCESS_OK is ours, not LiteSpeed's. noconntimeout and noabort are
+	 * consumed internally and may never be visible to PHP, so they cannot tell
+	 * us whether the rule ran; a plain custom variable is passed straight
+	 * through, which is what makes "did this rule match?" answerable at all.
+	 *
+	 * <IfModule Litespeed> makes the whole thing inert elsewhere, so it is safe
+	 * to leave in place if the site ever moves off LiteSpeed.
+	 *
+	 * Shared by both handlers below — the timeout verdict and the rule check.
+	 */
+	function htaccessBlock() {
+		var routes = '(ai-|edit-block-ai|apply-block-edit|generate-alt|ask-docs|interlink-|' +
+			'mockup-check|convert-markup|dp-suggest|server-timeout-probe)';
+		var vars   = '[E=noconntimeout:1,E=noabort:1,E=EKWA_HTACCESS_OK:1]';
+		var lines  = [
+			'&lt;IfModule Litespeed&gt;',
+			'  RewriteEngine On',
+			'  RewriteRule ^wp-json/ekwa/v1/' + routes + ' - ' + vars,
+			'  RewriteCond %{QUERY_STRING} rest_route=/ekwa/v1/' + routes,
+			'  RewriteRule ^index\\.php$ - ' + vars,
+			'&lt;/IfModule&gt;'
+		];
+		return '<textarea readonly rows="7" onclick="this.select()" ' +
+			'style="width:100%;font-family:monospace;font-size:11px;margin-top:8px;' +
+			'white-space:pre;overflow-x:auto;">' + lines.join('\n') + '</textarea>' +
+			'<p style="margin:4px 0 0;font-style:italic;">Back the file up first, and put it ABOVE ' +
+			'<code># BEGIN WordPress</code>. The second rule is only needed on plain permalinks; ' +
+			'it is harmless either way.</p>';
+	}
+
 	/* ============================================================
 	 *  Server request limit — how long may a request run?
 	 *
@@ -691,13 +733,85 @@
 				'The request was killed after <strong>' + lasted + ' seconds</strong>' +
 				(textStatus === 'timeout' ? ' (the browser gave up — the server never answered)' : '') +
 				'. Any AI generation that takes longer than that will fail the same way, with the ' +
-				'“Request Timeout” page instead of a result.<br><br>' +
+				'“Request Timeout” page instead of a result.' +
+				(isLite ? '<br><br><strong>Try this first — you can do it from cPanel, without your host.</strong> ' +
+					'LiteSpeed lets a site lift this limit for named scripts. Put this at the <em>top</em> of ' +
+					'<code>.htaccess</code> in <code>public_html</code>, above <code># BEGIN WordPress</code>, ' +
+					'then run this test again — if it passes, generation is fixed too:' +
+					htaccessBlock() : '') +
+				'<br><br>' + (isLite ? 'If that does not shift it, the limit is set at server level: ' : '') +
 				(isLite ? (strings.litespeed || '') : (strings.other || '')) +
-				'<br><br>Until that is raised, set <code>define( \'EKWA_AI_HTTP_TIMEOUT\', ' +
+				'<br><br>Meanwhile, set <code>define( \'EKWA_AI_HTTP_TIMEOUT\', ' +
 				Math.max(15, lasted - 10) + ' );</code> in <code>wp-config.php</code> — the theme will then give up ' +
-				'first and show a readable message instead of the server’s error page.' +
-				'<br><br><strong>Next:</strong> tick “Keep the connection busy while waiting” and run it again at the ' +
-				'same ' + target + ' seconds. If that one survives, this is fixable without the host.');
+				'first and show a readable message instead of the server’s error page.');
+		});
+	});
+
+	/* ============================================================
+	 *  Did the .htaccess rule actually take effect?
+	 *
+	 *  Deliberately a 2-second probe. The marker travels in the probe's
+	 *  RESPONSE, and a run that gets killed by the timeout never delivers one —
+	 *  so asking this question with a long probe cannot work. A short one
+	 *  always comes back, and answers it in two seconds instead of two minutes.
+	 * ============================================================ */
+	$(document).on('click', '#ekwa-htaccess-check-btn', function (e) {
+		e.preventDefault();
+
+		var $btn    = $(this);
+		var $result = $('#ekwa-timeout-probe-result');
+		var nonce   = window.ekwaAdmin && ekwaAdmin.webpRestNonce;
+
+		$btn.prop('disabled', true);
+		$result.html('<p style="margin:0;">Checking…</p>');
+
+		$.ajax({
+			url: (window.ekwaAdmin && ekwaAdmin.timeoutProbeUrl),
+			method: 'POST',
+			headers: { 'X-WP-Nonce': nonce },
+			data: { seconds: 2, keepalive: 0 },
+			timeout: 30000
+		}).done(function (res) {
+			$btn.prop('disabled', false);
+
+			if (res && res.htaccess) {
+				$result.html(
+					'<div class="notice notice-success inline" style="margin:0;padding:8px 12px;">' +
+					'<p style="margin:0 0 4px;"><strong>The .htaccess rule is working</strong></p>' +
+					'<p style="margin:0;">The marker reached PHP, so the rule matched this request and LiteSpeed read it. ' +
+					'If the 120-second test still gets cut off, then this host does not honour ' +
+					'<code>noconntimeout</code> at site level and the limit has to be raised at server level — ' +
+					'that part needs WHM or your host.</p></div>'
+				);
+			} else {
+				$result.html(
+					'<div class="notice notice-warning inline" style="margin:0;padding:8px 12px;">' +
+					'<p style="margin:0 0 4px;"><strong>The rule did not reach this request</strong></p>' +
+					'<p style="margin:0 0 6px;">No marker came back, so the block almost certainly is not being read. ' +
+					'The usual reasons, in the order they catch people:</p>' +
+					'<ol style="margin:0 0 6px 18px;">' +
+					'<li><strong>Wrong folder.</strong> It has to be the <code>.htaccess</code> sitting next to ' +
+					'<code>wp-config.php</code>. On an addon domain that is <em>not</em> <code>public_html</code>.</li>' +
+					'<li><strong>Edited a different file.</strong> With “Show Hidden Files” off, File Manager will ' +
+					'happily create a new visible <code>htaccess</code> with no dot.</li>' +
+					'<li><strong>Placed below <code># END WordPress</code></strong> — WordPress’s catch-all rule ends ' +
+					'processing before it gets there. It must go above <code># BEGIN WordPress</code>.</li>' +
+					'<li><strong>Older snippet.</strong> The rule needs the <code>EKWA_HTACCESS_OK</code> marker — ' +
+					'if you pasted an earlier version it has no marker to find. Re-copy the block below.</li>' +
+					'</ol>' +
+					'<p style="margin:0;"><em>One caveat: a server could strip the marker while still honouring the ' +
+					'rest, so this is strong evidence rather than proof.</em></p>' +
+					htaccessBlock() + '</div>'
+				);
+			}
+		}).fail(function (xhr) {
+			$btn.prop('disabled', false);
+			$result.html(
+				'<div class="notice notice-error inline" style="margin:0;padding:8px 12px;">' +
+				'<p style="margin:0;">Could not reach the probe (HTTP ' + ((xhr && xhr.status) || 0) + '). ' +
+				'If the site is returning 500 errors, rename <code>.htaccess-backup</code> back over ' +
+				'<code>.htaccess</code> — the snippet has a typo.</p></div>'
+			);
 		});
 	});
 
