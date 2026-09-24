@@ -2,11 +2,15 @@
 /**
  * Build with AI (Blocks) — replicate a pattern.
  *
- * The last choice in the modal's Creativity select. Instead of designing a
- * section, the model is handed one pattern the author picked — a saved pattern,
- * a theme or child-theme pattern, or a section of the Inner Page Template — and
- * pours the author's content into that exact structure: the same blocks, the
- * same attributes, the same classNames.
+ * Instead of designing a section, the model is handed one pattern the author
+ * picked — a saved pattern, a theme or child-theme pattern, or a section of the
+ * Inner Page Template — and pours content into that exact structure: the same
+ * blocks, the same attributes, the same classNames. Two ways in:
+ *
+ *   Build with AI → Creativity → "Replicate a pattern": the content is what
+ *     the author pastes into the prompt.
+ *   Edit with AI → "Redo in a pattern's design": the content is the selected
+ *     blocks, and the replica replaces them — same content, the pattern's look.
  *
  * The pattern's CSS never goes through the model. It is lifted out of the
  * `scopedCss` attributes before the call and re-attached to the matching blocks
@@ -553,17 +557,65 @@ function ekwa_ai_pattern_user_message( $label, $markup, $content ) {
 }
 
 /**
+ * Edit with AI's first-turn message: the pattern, then the existing section
+ * whose content moves into it, then anything the author added.
+ *
+ * @param string $label        Pattern title.
+ * @param string $markup       Prepared pattern markup (CSS lifted out).
+ * @param string $source       The selected blocks, from ekwa_ai_pattern_content_source().
+ * @param string $instructions The author's prompt.
+ * @return string
+ */
+function ekwa_ai_pattern_restyle_message( $label, $markup, $source, $instructions ) {
+	return 'PATTERN TO APPLY — "' . $label . "\" (its CSS has been lifted out and is re-attached automatically; this markup is everything you work from):\n\n"
+		. $markup
+		. "\n\n---\nCONTENT SOURCE — the existing section being redone in the pattern's design. Take its CONTENT only; its structure, classNames and styling are being replaced:\n\n"
+		. $source
+		. "\n\n---\nADDITIONAL INSTRUCTIONS:\n\n"
+		. $instructions;
+}
+
+/**
+ * The selected blocks, reduced to what matters as a content source.
+ *
+ * Their CSS is dropped: the design is being replaced, and a stylesheet in the
+ * middle of the content only gives the model something to copy by mistake.
+ *
+ * @param string $markup Serialized selection (base_markup).
+ * @return string '' when it holds no blocks.
+ */
+function ekwa_ai_pattern_content_source( $markup ) {
+	$discard = array();
+	$blocks  = ekwa_ai_pattern_strip_walk( parse_blocks( (string) $markup ), $discard, true );
+
+	foreach ( $blocks as $block ) {
+		if ( ! empty( $block['blockName'] ) ) {
+			return trim( serialize_blocks( $blocks ) );
+		}
+	}
+
+	return '';
+}
+
+/**
  * System-prompt rules for the first turn of a replication.
  *
  * Appended after the normal Block Builder prompt, and said to override it where
  * they disagree: the normal prompt asks for a fresh EKWA_SCOPE wrapper and one
  * <style> block of new CSS, both of which are wrong when copying a pattern.
  *
+ * @param bool $from_section The content is an existing section (Edit with AI),
+ *                           not text the author pasted.
  * @return string
  */
-function ekwa_ai_pattern_system_prompt() {
+function ekwa_ai_pattern_system_prompt( $from_section = false ) {
+	$source_rule = $from_section
+		? "- CONTENT SOURCE: the content comes from an EXISTING section's block markup, not from pasted text. Take ALL of its content across exactly — headings, paragraphs, list items, FAQ questions and answers, button and link labels with their URLs, image URLs, ids and alt text — and discard its structure, classNames and styling entirely: only the pattern's design survives. Every data block it contained (phone, address, hours, map, social…) comes across too, in the pattern's equivalent slot or beside related content. Drop nothing. Then apply the ADDITIONAL INSTRUCTIONS, if they ask for anything beyond redoing the section in this design.\n"
+		: '';
+
 	return "\n\nPATTERN REPLICATION MODE — these rules OVERRIDE the layout and styling rules above wherever the two disagree.\n"
 		. "The user picked an existing pattern from this site as the EXACT design for this section. The user message holds that pattern's block markup, then the content to put into it. Pour the content into the pattern; do not design anything.\n"
+		. $source_rule
 		. "- STRUCTURE: reproduce the pattern's blocks exactly — the same block types, the same nesting and order, the same attributes, and the same className values character for character. Change only what carries content: heading and paragraph text, list items, button and link labels and their URLs, image URLs and alt text, FAQ questions and answers, and attributes of that kind.\n"
 		. "- REPEATING UNITS (FAQ items, cards, list items, slides, repeated columns): emit one unit per item in the content by cloning the pattern's unit markup exactly, classNames included — even when that gives more or fewer units than the pattern has. Never merge items to fit the pattern's count, and never drop content to fit it.\n"
 		. "- MAPPING: each piece of content goes into the pattern's slot of the same kind — the section heading into its heading, intro copy into its intro paragraph(s), questions and answers into FAQ items. When a slot receives more text than it holds, repeat that slot's block (same block type, same className) in the same place. When the content has something with no slot of its kind anywhere in the pattern, add it using the closest block the pattern already uses, beside the related content.\n"

@@ -89,10 +89,11 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'type'     => 'integer',
 				'default'  => 0,
 			),
-			// A pattern to replicate (the Creativity select's "Replicate a
-			// pattern"), as a reference from /ai-blocks-patterns. Empty — the
-			// default, and all an older editor script can send — means build as
-			// before. Section context, create mode only.
+			// A pattern to replicate — the Creativity select's "Replicate a
+			// pattern" (create), or Edit with AI's "Redo in a pattern's design"
+			// (edit) — as a reference from /ai-blocks-patterns. Empty — the
+			// default, and all an older editor script can send — means build or
+			// edit as before. Section context only.
 			// @see inc/ekwa-ai-blocks-pattern.php
 			'pattern'       => array(
 				'required' => false,
@@ -180,10 +181,11 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	if ( ! in_array( $mode, array( 'create', 'edit' ), true ) ) {
 		$mode = 'create';
 	}
-	// Replicating a pattern is for building a new page section. A header or
-	// footer carries its own strict rules (and data-driven content that has
-	// nothing to pour in), and edit mode already has a section to work from.
-	$replicating = '' !== $pattern_ref && 'create' === $mode && 'section' === $context;
+	// Replicating a pattern is for page sections: a new one (create mode, the
+	// content is the prompt) or an existing one redone in the pattern's design
+	// (edit mode, the content is the selected blocks). A header or footer
+	// carries its own strict rules and data-driven content with nothing to pour.
+	$replicating = '' !== $pattern_ref && 'section' === $context;
 	$replica     = null;
 
 	$model = ekwa_ai_resolve_model( $model, 'pro' );
@@ -211,7 +213,18 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	// Replicating: on the FIRST turn, show the model the chosen pattern (its CSS
 	// lifted out and kept aside for re-attaching) ahead of the content. Later
 	// refine turns carry the replica forward through $history, as edit mode does.
+	// In edit mode the content is the selection, and this replaces the "apply
+	// this change" message above — the section's design is being swapped out,
+	// so its own CSS is deliberately not sent.
 	if ( $replicating && empty( $history ) ) {
+		$content_source = '';
+		if ( 'edit' === $mode ) {
+			$content_source = ekwa_ai_pattern_content_source( $base_markup );
+			if ( '' === $content_source ) {
+				return new WP_Error( 'empty_selection', __( 'The selected blocks have no content to move into the pattern.', 'ekwa' ), array( 'status' => 400 ) );
+			}
+		}
+
 		$source = ekwa_ai_pattern_resolve( $pattern_ref );
 		if ( is_wp_error( $source ) ) {
 			return $source;
@@ -227,7 +240,9 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 				array( 'status' => 400 )
 			);
 		}
-		$effective_prompt = ekwa_ai_pattern_user_message( $source['label'], $replica['markup'], $prompt );
+		$effective_prompt = 'edit' === $mode
+			? ekwa_ai_pattern_restyle_message( $source['label'], $replica['markup'], $content_source, $prompt )
+			: ekwa_ai_pattern_user_message( $source['label'], $replica['markup'], $prompt );
 	}
 
 	// Reuse the multimodal contents builder from the HTML generator (handles
@@ -237,7 +252,9 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		return $contents;
 	}
 
-	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $mode );
+	// A replica is built fresh even in edit mode: the edit rules ("preserve the
+	// structure, classNames and scope") are exactly what it must not do.
+	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $replica ? 'create' : $mode );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
 	}
@@ -250,7 +267,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		$system_prompt .= ekwa_ai_blocks_site_designs_context( 24000, (int) $request->get_param( 'post_id' ) );
 	}
 	if ( $replica ) {
-		$system_prompt .= ekwa_ai_pattern_system_prompt();
+		$system_prompt .= ekwa_ai_pattern_system_prompt( 'edit' === $mode );
 	} elseif ( $replicating ) {
 		$system_prompt .= ekwa_ai_pattern_refine_prompt();
 	}

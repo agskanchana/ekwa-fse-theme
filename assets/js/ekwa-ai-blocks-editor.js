@@ -334,6 +334,13 @@
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
 
+		// Edit with AI → "Redo in a pattern's design": the selected section's
+		// content poured into a pattern, replacing its layout and CSS. Offered
+		// while the selection is untouched — "Back" returns there to try another.
+		var s25 = useState( false );         var restyleOpen  = s25[0]; var setRestyleOpen  = s25[1];
+		var canRestyle = editMode && 'section' === context && history.length === 0;
+		var restyling  = canRestyle && restyleOpen && !! patternRef;
+
 		// Persistent conversation memory (create mode only — an edit session is
 		// tied to a specific existing selection, not a reusable conversation).
 		var ss1 = useState( null ); var sessionId   = ss1[0]; var setSessionId   = ss1[1];
@@ -361,16 +368,17 @@
 			} );
 		}, [] );
 
-		// Fetch the replicable patterns the first time that option is chosen.
+		// Fetch the replicable patterns the first time either picker is opened.
+		var wantPatterns = replicating || ( editMode && restyleOpen );
 		useEffect( function () {
-			if ( ! replicating || null !== patternList ) { return; }
+			if ( ! wantPatterns || null !== patternList ) { return; }
 			apiFetch( { path: '/ekwa/v1/ai-blocks-patterns' } ).then( function ( res ) {
 				setPatternList( ( res && Array.isArray( res.patterns ) ) ? res.patterns : [] );
 			} ).catch( function () {
 				setPatternList( [] );
 				setError( __( 'Could not load the pattern list.', 'ekwa' ) );
 			} );
-		}, [ replicating ] );
+		}, [ wantPatterns ] );
 
 		// Load the recent-sessions index once when the modal mounts.
 		useEffect( function () {
@@ -650,7 +658,12 @@
 		// ── Generate ───────────────────────────────────────────────────
 
 		function handleGenerate() {
-			if ( ! prompt.trim() ) {
+			// Redoing a section in a pattern's design needs no words — the
+			// pattern and the selection say it all — so the box is optional there.
+			var promptText = ( restyling && ! prompt.trim() )
+				? __( 'Redo this section in the chosen pattern’s design, keeping all of its content.', 'ekwa' )
+				: prompt;
+			if ( ! promptText.trim() ) {
 				setError( __( 'Please describe what you want to build.', 'ekwa' ) );
 				return;
 			}
@@ -682,15 +695,16 @@
 				path: '/ekwa/v1/ai-generate-blocks',
 				method: 'POST',
 				data: {
-					prompt:        prompt,
+					prompt:        promptText,
 					images:        payloadImages,
 					history:       historyPayload,
 					use_child_css: useChildCss,
 					use_site_designs: useDesigns,
-					temperature:   replicating ? REPLICATE_TEMP : ( parseFloat( creativity ) || 0.3 ),
-					// Sent on refine turns too: the server then keeps the replica's
-					// design instead of offering the site-wide vocabulary.
-					pattern:       replicating ? patternRef : '',
+					temperature:   ( replicating || restyling ) ? REPLICATE_TEMP : ( parseFloat( creativity ) || 0.3 ),
+					// Sent on refine turns too when building: the server then keeps
+					// the replica's design instead of offering the site-wide
+					// vocabulary. Edit mode sends it on the first turn only.
+					pattern:       ( replicating || restyling ) ? patternRef : '',
 					// Keeps this page's own sections out of the inspiration list,
 					// so a new section is not modelled on the ones beside it.
 					post_id:       currentPostId(),
@@ -705,7 +719,7 @@
 				},
 			} ).then( function ( res ) {
 				var newHistory = historyPayload.concat( [
-					{ role: 'user',  text: prompt, images: payloadImages },
+					{ role: 'user',  text: promptText, images: payloadImages },
 					{ role: 'model', html: res.block_markup || '', css: res.extracted_css || '', js: '' },
 				] );
 				setHistory( newHistory );
@@ -785,9 +799,10 @@
 
 		// ── Render ─────────────────────────────────────────────────────
 
-		// The "Replicate a pattern" picker, grouped by where each pattern lives.
-		// Its help line names what the chosen one is made of.
-		function renderPatternPicker() {
+		// The pattern picker, grouped by where each pattern lives. Its help line
+		// names what the chosen one is made of. Shared by "Replicate a pattern"
+		// (build) and "Redo in a pattern's design" (edit).
+		function renderPatternPicker( label, emptyHelp ) {
 			if ( null === patternList ) {
 				return el( 'div', { key: 'pattern', className: 'ekwa-ai-pattern-loading' },
 					el( Spinner, null ), el( 'span', null, __( 'Loading patterns…', 'ekwa' ) ) );
@@ -800,8 +815,8 @@
 			patternList.forEach( function ( p ) { if ( p.value === patternRef ) { chosen = p; } } );
 			return el( SelectControl, {
 				key: 'pattern',
-				label: __( 'Pattern to replicate', 'ekwa' ),
-				help: chosen && chosen.summary ? chosen.summary : __( 'Pick the section design to copy.', 'ekwa' ),
+				label: label || __( 'Pattern to replicate', 'ekwa' ),
+				help: chosen && chosen.summary ? chosen.summary : ( emptyHelp || __( 'Pick the section design to copy.', 'ekwa' ) ),
 				value: patternRef,
 				onChange: setPatternRef,
 				className: 'ekwa-ai-pattern-select',
@@ -1193,26 +1208,42 @@
 								turnCount === 1 ? __( '1 turn so far', 'ekwa' ) : turnCount + ' ' + __( 'turns so far', 'ekwa' ) )
 							: null
 					),
+					// Edit only, and only while the selection is untouched.
+					canRestyle && ( restyleOpen
+						? renderPatternPicker(
+							__( 'Redo in this pattern’s design', 'ekwa' ),
+							__( 'The selected section keeps all of its content but takes on the chosen pattern’s blocks, classes and CSS. Its current layout and styling are replaced.', 'ekwa' )
+						)
+						: el( Button, {
+							variant: 'link',
+							className: 'ekwa-ai-restyle-link',
+							onClick: function () { setRestyleOpen( true ); },
+						}, __( 'Redo this section in a pattern’s design…', 'ekwa' ) )
+					),
 					el( TextareaControl, {
 						value: prompt,
 						onChange: setPrompt,
 						onPaste: handlePromptPaste,
 						rows: 3,
 						className: 'ekwa-ai-refine-prompt',
-						placeholder: editMode
-							? __( 'e.g. "Make the buttons larger, and add more spacing between the cards."', 'ekwa' )
-							: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ),
+						placeholder: restyling
+							? __( 'Optional — anything else to change while applying the pattern, e.g. "Use Book a Visit as the button text."', 'ekwa' )
+							: ( editMode
+								? __( 'e.g. "Make the buttons larger, and add more spacing between the cards."', 'ekwa' )
+								: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ) ),
 					} ),
 					el( PasteNote, pasteNoteProps( 'paste-note' ) ),
 					el( 'div', { className: 'ekwa-ai-refine-actions' },
 						el( Button, {
 							variant: 'secondary',
 							isBusy: generating,
-							disabled: generating || ! prompt.trim(),
+							disabled: generating || ( ! prompt.trim() && ! restyling ),
 							onClick: handleGenerate,
 						}, generating
 							? el( Fragment, null, el( Spinner, null ), editMode ? __( ' Updating...', 'ekwa' ) : __( ' Refining...', 'ekwa' ) )
-							: ( editMode ? __( 'Update', 'ekwa' ) : __( 'Refine', 'ekwa' ) )
+							: ( restyling
+								? __( 'Apply pattern design', 'ekwa' )
+								: ( editMode ? __( 'Update', 'ekwa' ) : __( 'Refine', 'ekwa' ) ) )
 						)
 					)
 				)

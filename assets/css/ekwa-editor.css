@@ -1096,8 +1096,14 @@
 	font-size: 12px;
 	color: #646970;
 }
-.ekwa-ai-options .ekwa-ai-pattern-select {
+.ekwa-ai-options .ekwa-ai-pattern-select,
+.ekwa-ai-refine .ekwa-ai-pattern-select {
 	margin-bottom: 12px;
+}
+/* Edit with AI → "Redo this section in a pattern's design…" */
+.ekwa-ai-refine .ekwa-ai-restyle-link {
+	display: inline-block;
+	margin: 0 0 10px;
 }
 
 /* AI Block Builder — conversation thread (visible chat history) */
