@@ -76,6 +76,18 @@
 		{ value: '0.9', label: __( 'Bold — takes real design risks', 'ekwa' ) },
 	];
 
+	// The last Creativity choice isn't a temperature: it copies one pattern the
+	// author picks — blocks, classes and CSS — and only swaps in their content.
+	// Page sections only (the server ignores it anywhere else).
+	var REPLICATE           = 'pattern';
+	var REPLICATE_OPTION    = { value: REPLICATE, label: __( 'Replicate a pattern — its exact blocks and CSS, your content', 'ekwa' ) };
+	var REPLICATE_TEMP      = 0.2;
+	var PATTERN_GROUPS      = [
+		[ 'saved',    __( 'Saved patterns', 'ekwa' ) ],
+		[ 'theme',    __( 'Theme patterns', 'ekwa' ) ],
+		[ 'template', __( 'Inner Page Template sections', 'ekwa' ) ],
+	];
+
 	// ─── Helpers ────────────────────────────────────────────────────────────
 
 	/**
@@ -312,6 +324,12 @@
 		// Sampling temperature. '0.3' is what the server defaulted to before this
 		// control existed, so an untouched modal behaves exactly as it used to.
 		var s22 = useState( '0.3' );         var creativity   = s22[0]; var setCreativity   = s22[1];
+		// "Replicate a pattern": the chosen reference, and the picker's list —
+		// null until first needed, so the modal makes no extra request unless
+		// someone actually picks that option.
+		var s23 = useState( '' );            var patternRef   = s23[0]; var setPatternRef   = s23[1];
+		var s24 = useState( null );          var patternList  = s24[0]; var setPatternList  = s24[1];
+		var replicating = REPLICATE === creativity && 'section' === context;
 
 		var editMode      = !! props.editMode;
 		var editClientIds = props.editClientIds || [];
@@ -342,6 +360,17 @@
 				setRenderedHtml( function ( prev ) { return prev ? prev : html; } );
 			} );
 		}, [] );
+
+		// Fetch the replicable patterns the first time that option is chosen.
+		useEffect( function () {
+			if ( ! replicating || null !== patternList ) { return; }
+			apiFetch( { path: '/ekwa/v1/ai-blocks-patterns' } ).then( function ( res ) {
+				setPatternList( ( res && Array.isArray( res.patterns ) ) ? res.patterns : [] );
+			} ).catch( function () {
+				setPatternList( [] );
+				setError( __( 'Could not load the pattern list.', 'ekwa' ) );
+			} );
+		}, [ replicating ] );
 
 		// Load the recent-sessions index once when the modal mounts.
 		useEffect( function () {
@@ -625,6 +654,10 @@
 				setError( __( 'Please describe what you want to build.', 'ekwa' ) );
 				return;
 			}
+			if ( replicating && ! patternRef ) {
+				setError( __( 'Choose the pattern to replicate.', 'ekwa' ) );
+				return;
+			}
 			setGenerating( true );
 			setError( null );
 			setInserted( false );
@@ -654,7 +687,10 @@
 					history:       historyPayload,
 					use_child_css: useChildCss,
 					use_site_designs: useDesigns,
-					temperature:   parseFloat( creativity ) || 0.3,
+					temperature:   replicating ? REPLICATE_TEMP : ( parseFloat( creativity ) || 0.3 ),
+					// Sent on refine turns too: the server then keeps the replica's
+					// design instead of offering the site-wide vocabulary.
+					pattern:       replicating ? patternRef : '',
 					// Keeps this page's own sections out of the inspiration list,
 					// so a new section is not modelled on the ones beside it.
 					post_id:       currentPostId(),
@@ -748,6 +784,40 @@
 		}
 
 		// ── Render ─────────────────────────────────────────────────────
+
+		// The "Replicate a pattern" picker, grouped by where each pattern lives.
+		// Its help line names what the chosen one is made of.
+		function renderPatternPicker() {
+			if ( null === patternList ) {
+				return el( 'div', { key: 'pattern', className: 'ekwa-ai-pattern-loading' },
+					el( Spinner, null ), el( 'span', null, __( 'Loading patterns…', 'ekwa' ) ) );
+			}
+			if ( ! patternList.length ) {
+				return el( Notice, { key: 'pattern', status: 'info', isDismissible: false },
+					__( 'This site has no patterns to replicate yet. Save a section as a pattern (select it → ⋮ → Create pattern), add one to the child theme’s patterns folder, or set an Inner Page Template.', 'ekwa' ) );
+			}
+			var chosen = null;
+			patternList.forEach( function ( p ) { if ( p.value === patternRef ) { chosen = p; } } );
+			return el( SelectControl, {
+				key: 'pattern',
+				label: __( 'Pattern to replicate', 'ekwa' ),
+				help: chosen && chosen.summary ? chosen.summary : __( 'Pick the section design to copy.', 'ekwa' ),
+				value: patternRef,
+				onChange: setPatternRef,
+				className: 'ekwa-ai-pattern-select',
+			},
+				el( 'option', { value: '' }, __( '— Choose a pattern —', 'ekwa' ) ),
+				PATTERN_GROUPS.map( function ( g ) {
+					var items = patternList.filter( function ( p ) { return p.group === g[0]; } );
+					if ( ! items.length ) { return null; }
+					return el( 'optgroup', { key: g[0], label: g[1] },
+						items.map( function ( p ) {
+							return el( 'option', { key: p.value, value: p.value }, p.label );
+						} )
+					);
+				} )
+			);
+		}
 
 		var children = [];
 
@@ -873,7 +943,9 @@
 						? __( 'e.g. "Logo on the left, centered main menu, and on the right a search icon, a click-to-call new-patient phone, and a Book Appointment button."', 'ekwa' )
 						: ( context === 'footer'
 							? __( 'e.g. "Four columns: address + hours, quick links menu, social icons, and a Google map. Below them a copyright bar. Add a back-to-top button."', 'ekwa' )
-							: __( 'e.g. "A 3-column services section. Each card has an icon, a heading, two lines of copy, and a Read More link."', 'ekwa' ) ),
+							: ( replicating
+								? __( 'Paste the content for this section — e.g. the heading, the intro, and each question with its answer. It goes into the chosen pattern word for word.', 'ekwa' )
+								: __( 'e.g. "A 3-column services section. Each card has an icon, a heading, two lines of copy, and a Read More link."', 'ekwa' ) ) ),
 				} )
 			);
 
@@ -911,12 +983,15 @@
 					} ),
 					el( SelectControl, {
 						label: __( 'Creativity', 'ekwa' ),
-						help: __( 'Colors, fonts and component shapes come from this site either way — this only controls how freely the layout is designed.', 'ekwa' ),
+						help: replicating
+							? __( 'The new section copies the chosen pattern’s blocks, classes and CSS exactly — only the content changes. Repeating items (FAQ entries, cards) grow or shrink to fit your content.', 'ekwa' )
+							: __( 'Colors, fonts and component shapes come from this site either way — this only controls how freely the layout is designed.', 'ekwa' ),
 						value: creativity,
-						options: CREATIVITY_OPTIONS,
+						options: context === 'section' ? CREATIVITY_OPTIONS.concat( [ REPLICATE_OPTION ] ) : CREATIVITY_OPTIONS,
 						onChange: setCreativity,
 						className: 'ekwa-ai-creativity-select',
 					} ),
+					replicating && renderPatternPicker(),
 					el( ToggleControl, {
 						label: __( 'Send child theme stylesheet as context', 'ekwa' ),
 						help: __( 'Lets the AI reuse classes and CSS variables from your child theme.', 'ekwa' ),
@@ -924,8 +999,9 @@
 						onChange: setUseChildCss,
 					} ),
 					// Header/footer generation ignores this server-side — the
-					// vocabulary is page sections — so don't offer it there.
-					context === 'section' && el( ToggleControl, {
+					// vocabulary is page sections — so don't offer it there. Nor
+					// when replicating: the chosen pattern is the design.
+					context === 'section' && ! replicating && el( ToggleControl, {
 						label: __( 'Match this site’s existing sections', 'ekwa' ),
 						help: __( 'Shows the AI the sections already on this site — saved patterns, the Inner Page Template, and your pages — so a new one inherits their colors, type and component shapes. The layout is still designed for your content. Turn off only for something deliberately unlike the rest of the site.', 'ekwa' ),
 						checked: useDesigns,
@@ -947,11 +1023,11 @@
 					el( Button, {
 						variant: 'primary',
 						isBusy: generating,
-						disabled: generating || ! prompt.trim(),
+						disabled: generating || ! prompt.trim() || ( replicating && ! patternRef ),
 						onClick: handleGenerate,
 					}, generating
 						? el( Fragment, null, el( Spinner, null ), __( ' Building...', 'ekwa' ) )
-						: __( 'Build blocks', 'ekwa' )
+						: ( replicating ? __( 'Replicate pattern', 'ekwa' ) : __( 'Build blocks', 'ekwa' ) )
 					)
 				)
 			);

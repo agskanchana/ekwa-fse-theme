@@ -22,6 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once get_template_directory() . '/inc/ekwa-ai-shared.php';
 require_once get_template_directory() . '/inc/ekwa-ai-generate.php';
 require_once get_template_directory() . '/inc/ekwa-ai-block-specs.php';
+require_once get_template_directory() . '/inc/ekwa-ai-blocks-pattern.php';
 
 add_action( 'rest_api_init', 'ekwa_ai_generate_blocks_register_routes' );
 
@@ -88,7 +89,24 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'type'     => 'integer',
 				'default'  => 0,
 			),
+			// A pattern to replicate (the Creativity select's "Replicate a
+			// pattern"), as a reference from /ai-blocks-patterns. Empty — the
+			// default, and all an older editor script can send — means build as
+			// before. Section context, create mode only.
+			// @see inc/ekwa-ai-blocks-pattern.php
+			'pattern'       => array(
+				'required' => false,
+				'type'     => 'string',
+				'default'  => '',
+			),
 		),
+	) );
+
+	// The patterns the modal can replicate. Read-only, no AI call.
+	register_rest_route( 'ekwa/v1', '/ai-blocks-patterns', array(
+		'methods'             => WP_REST_Server::READABLE,
+		'callback'            => 'ekwa_ai_blocks_patterns_request',
+		'permission_callback' => function () { return current_user_can( 'edit_posts' ); },
 	) );
 
 	// Front-end render of arbitrary block markup, for the modal's preview pane.
@@ -155,12 +173,18 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$mode          = (string) $request->get_param( 'mode' );
 	$base_markup   = (string) $request->get_param( 'base_markup' );
 	$base_css      = (string) $request->get_param( 'base_css' );
+	$pattern_ref   = trim( (string) $request->get_param( 'pattern' ) );
 	if ( ! in_array( $context, array( 'header', 'footer', 'section' ), true ) ) {
 		$context = 'section';
 	}
 	if ( ! in_array( $mode, array( 'create', 'edit' ), true ) ) {
 		$mode = 'create';
 	}
+	// Replicating a pattern is for building a new page section. A header or
+	// footer carries its own strict rules (and data-driven content that has
+	// nothing to pour in), and edit mode already has a section to work from.
+	$replicating = '' !== $pattern_ref && 'create' === $mode && 'section' === $context;
+	$replica     = null;
 
 	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
@@ -184,6 +208,28 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		$effective_prompt .= "\n\n---\nApply this change and return the COMPLETE updated section:\n\n" . $prompt;
 	}
 
+	// Replicating: on the FIRST turn, show the model the chosen pattern (its CSS
+	// lifted out and kept aside for re-attaching) ahead of the content. Later
+	// refine turns carry the replica forward through $history, as edit mode does.
+	if ( $replicating && empty( $history ) ) {
+		$source = ekwa_ai_pattern_resolve( $pattern_ref );
+		if ( is_wp_error( $source ) ) {
+			return $source;
+		}
+		$replica = ekwa_ai_pattern_prepare( $source['markup'] );
+		if ( '' === $replica['markup'] ) {
+			return new WP_Error( 'pattern_empty', __( 'That pattern has no blocks in it to replicate.', 'ekwa' ), array( 'status' => 400 ) );
+		}
+		if ( strlen( $replica['markup'] ) > EKWA_AI_PATTERN_MAX_CHARS ) {
+			return new WP_Error(
+				'pattern_too_large',
+				__( 'That pattern is too large to replicate in one request — the reply would be cut off. Pick a smaller pattern, or save just the section you want as its own pattern.', 'ekwa' ),
+				array( 'status' => 400 )
+			);
+		}
+		$effective_prompt = ekwa_ai_pattern_user_message( $source['label'], $replica['markup'], $prompt );
+	}
+
 	// Reuse the multimodal contents builder from the HTML generator (handles
 	// history reconstruction + image validation identically).
 	$contents = ekwa_ai_generate_build_contents( $effective_prompt, $images, $history );
@@ -198,8 +244,15 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	// Appended here rather than inside the system prompt so the import design
 	// pass, which calls that function directly and adds the vocabulary itself,
 	// cannot end up sending it twice.
-	if ( $use_designs && 'section' === $context ) {
+	// Not when replicating: the chosen pattern IS the design, and a catalogue
+	// of other sections would only compete with it.
+	if ( $use_designs && 'section' === $context && ! $replicating ) {
 		$system_prompt .= ekwa_ai_blocks_site_designs_context( 24000, (int) $request->get_param( 'post_id' ) );
+	}
+	if ( $replica ) {
+		$system_prompt .= ekwa_ai_pattern_system_prompt();
+	} elseif ( $replicating ) {
+		$system_prompt .= ekwa_ai_pattern_refine_prompt();
 	}
 
 	$result = ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model );
@@ -274,7 +327,14 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		$scope = '';
 	}
 
-	if ( '' !== trim( $css ) ) {
+	if ( $replica ) {
+		// The pattern's own CSS goes back onto the blocks it was lifted from;
+		// $css is only whatever the model added (normally nothing).
+		$attached     = ekwa_ai_pattern_attach_css( $block_markup, $replica['styles'], $css );
+		$block_markup = $attached['markup'];
+		$css          = $attached['css'];
+		$warnings     = array_merge( $warnings, $attached['warnings'] );
+	} elseif ( '' !== trim( $css ) ) {
 		$embed        = ekwa_ai_blocks_embed_scoped_css( $block_markup, $css, $scope );
 		$block_markup = $embed['markup'];
 		$warnings     = array_merge( $warnings, $embed['warnings'] );

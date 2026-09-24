@@ -1087,6 +1087,18 @@
 	margin: 10px 0 0;
 	padding: 8px 12px;
 }
+/* "Replicate a pattern" picker (Creativity select → last option). */
+.ekwa-ai-pattern-loading {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 4px 0 12px;
+	font-size: 12px;
+	color: #646970;
+}
+.ekwa-ai-options .ekwa-ai-pattern-select {
+	margin-bottom: 12px;
+}
 
 /* AI Block Builder — conversation thread (visible chat history) */
 .ekwa-ai-thread {
