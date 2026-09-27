@@ -4421,15 +4421,19 @@ function ekwa_render_image_block( $attrs ) {
 
 	// SEO/no-JS fallback so crawlers and JS-disabled clients still see the image.
 	if ( $use_lazysizes ) {
-		$noscript = '<noscript><img src="' . $src . '"';
-		if ( $srcset ) { $noscript .= ' srcset="' . esc_attr( $srcset ) . '"'; }
-		if ( $sizes )  { $noscript .= ' sizes="' . esc_attr( $sizes ) . '"'; }
-		$noscript .= ' alt="' . $alt . '"';
-		if ( $width )  { $noscript .= ' width="' . $width . '"'; }
-		if ( $height ) { $noscript .= ' height="' . $height . '"'; }
-		if ( $no_webp ) { $noscript .= ' data-ekwa-no-webp="1"'; }
-		$noscript .= ' loading="lazy"></noscript>';
-		$html .= $noscript;
+		$fallback = '<img src="' . $src . '"';
+		if ( $srcset ) { $fallback .= ' srcset="' . esc_attr( $srcset ) . '"'; }
+		if ( $sizes )  { $fallback .= ' sizes="' . esc_attr( $sizes ) . '"'; }
+		$fallback .= ' alt="' . $alt . '"';
+		if ( $width )  { $fallback .= ' width="' . $width . '"'; }
+		if ( $height ) { $fallback .= ' height="' . $height . '"'; }
+		if ( $no_webp ) { $fallback .= ' data-ekwa-no-webp="1"'; }
+		$fallback .= ' loading="lazy">';
+		// Stamped so core's later content-tags passes don't lazysize the copy
+		// and nest it in another <noscript>. @see ekwa_perf_noscript_fallback()
+		$html .= function_exists( 'ekwa_perf_noscript_fallback' )
+			? ekwa_perf_noscript_fallback( $fallback )
+			: '<noscript>' . $fallback . '</noscript>';
 	}
 
 	// One link, one field. Link Settings says WHERE the image points; the

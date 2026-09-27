@@ -435,8 +435,13 @@ function ekwa_video_render_thumbnail_inner( $thumbnail_url, $alt, $dims, $disabl
 	$html .= ' alt="' . esc_attr( $alt ) . '" width="' . esc_attr( $dims['width'] ) . '" height="' . esc_attr( $dims['height'] ) . '">';
 
 	if ( $use_lazysizes ) {
-		$html .= '<noscript><img class="ekwa-video-embed__thumb-img" src="' . esc_url( $thumbnail_url ) . '"'
-			. ' alt="' . esc_attr( $alt ) . '" width="' . esc_attr( $dims['width'] ) . '" height="' . esc_attr( $dims['height'] ) . '"></noscript>';
+		$fallback = '<img class="ekwa-video-embed__thumb-img" src="' . esc_url( $thumbnail_url ) . '"'
+			. ' alt="' . esc_attr( $alt ) . '" width="' . esc_attr( $dims['width'] ) . '" height="' . esc_attr( $dims['height'] ) . '">';
+		// Stamped so core's later content-tags passes don't lazysize the copy
+		// and nest it in another <noscript>. @see ekwa_perf_noscript_fallback()
+		$html .= function_exists( 'ekwa_perf_noscript_fallback' )
+			? ekwa_perf_noscript_fallback( $fallback )
+			: '<noscript>' . $fallback . '</noscript>';
 	}
 
 	$html .= '<span class="ekwa-video-embed__play-icon" aria-hidden="true"><svg width="68" height="48" viewBox="0 0 68 48" focusable="false">'

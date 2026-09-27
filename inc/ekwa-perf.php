@@ -736,6 +736,30 @@ function ekwa_perf_lazysize_placeholder() {
 }
 
 /**
+ * Wrap an <img> in the no-JS <noscript> fallback, stamped so it is never
+ * lazysized itself.
+ *
+ * ekwa_perf_lazysize_html() keeps the render_block pass out of <noscript>, but
+ * core's wp_filter_content_tags() finds <img> tags with a regex that knows
+ * nothing about <noscript> — and it runs again for every template part, for
+ * the post content and for the whole template. Each pass handed the pristine
+ * fallback copy to wp_content_img_tag, where it passed every guard, was
+ * lazysized and wrapped in yet another <noscript>: three nested copies of every
+ * image on a normal page, and blank placeholder boxes for no-JS visitors.
+ *
+ * The data-ekwa-noscript stamp is what ekwa_perf_lazysize_img_tag() checks to
+ * leave the copy alone. It has to stay in the output — there is no hook after
+ * the template's final content-tags pass to strip it — but it only ever sits
+ * inside <noscript>.
+ *
+ * @param string $img A single <img> tag.
+ * @return string
+ */
+function ekwa_perf_noscript_fallback( $img ) {
+	return '<noscript>' . preg_replace( '/<img\b/i', '<img data-ekwa-noscript="1"', $img, 1 ) . '</noscript>';
+}
+
+/**
  * Rewrite a single <img> tag for lazysizes. Idempotent and hero-safe.
  */
 function ekwa_perf_lazysize_img_tag( $tag ) {
@@ -759,6 +783,10 @@ function ekwa_perf_lazysize_img_tag( $tag ) {
 		return $tag;
 	}
 	if ( preg_match( '/\sclass=["\'][^"\']*\blazyload\b/i', $tag ) ) {
+		return $tag;
+	}
+	// The no-JS copy inside our own <noscript> fallback. @see ekwa_perf_noscript_fallback()
+	if ( preg_match( '/\sdata-ekwa-noscript\b/i', $tag ) ) {
 		return $tag;
 	}
 
@@ -821,7 +849,7 @@ function ekwa_perf_lazysize_img_tag( $tag ) {
 
 	// noscript fallback uses the unmutated tag so SEO crawlers and
 	// JS-disabled clients still see a working image.
-	return $tag . '<noscript>' . $original . '</noscript>';
+	return $tag . ekwa_perf_noscript_fallback( $original );
 }
 
 /**
@@ -854,6 +882,8 @@ add_filter( 'render_block', 'ekwa_perf_lazysize_block_html', 25, 2 );
  * rewritten again on each pass, so an image five containers deep came out as
  * five duplicated <img> tags wrapped in five nested <noscript> elements.
  * (Converted mockup headers nest that deeply as a matter of course.)
+ * The core content-tags passes that run afterwards can't be split this way —
+ * they are covered by the stamp from ekwa_perf_noscript_fallback().
  *
  * @param string $html Rendered HTML.
  * @return string

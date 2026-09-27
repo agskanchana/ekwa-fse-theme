@@ -483,9 +483,9 @@ function ekwa_save_settings() {
 		update_option( 'ekwa_analytics', ekwa_sanitize_analytics( $ga_input ) );
 	}
 
-	// Google Analytics placement (footer is the default; header is opt-in).
+	// Google Analytics placement (footer is the default; header and delay are opt-in).
 	$ga_location = isset( $_POST['ekwa_analytics_location'] ) ? sanitize_text_field( wp_unslash( $_POST['ekwa_analytics_location'] ) ) : 'footer';
-	if ( ! in_array( $ga_location, array( 'header', 'footer' ), true ) ) {
+	if ( ! in_array( $ga_location, array( 'header', 'footer', 'delay' ), true ) ) {
 		$ga_location = 'footer';
 	}
 	update_option( 'ekwa_analytics_location', $ga_location );
@@ -1565,7 +1565,7 @@ function ekwa_render_settings_page() {
 									<textarea id="ekwa_analytics" name="ekwa_analytics" rows="3" class="large-text code" autocomplete="off" spellcheck="false" placeholder="G-NWNDT72C1E"><?php echo esc_textarea( $analytics ); ?></textarea>
 									<input type="hidden" id="ekwa_analytics_b64" name="ekwa_analytics_b64" value="" />
 									<p class="description">
-										<?php esc_html_e( 'Enter just your Measurement ID (e.g. G-NWNDT72C1E) and the standard Google tag is added for you. To use a custom snippet, paste the full <script> code instead and it is output verbatim. The tag is printed high in the <head>; the gtag loader is async so it never blocks rendering. Leave empty to disable.', 'ekwa' ); ?>
+										<?php esc_html_e( 'Enter just your Measurement ID (e.g. G-NWNDT72C1E) and the standard Google tag is added for you. To use a custom snippet, paste the full <script> code instead and it is output verbatim. Where the tag is printed is set by Placement below; the gtag loader is async so it never blocks rendering. Leave empty to disable.', 'ekwa' ); ?>
 									</p>
 									<script>
 										document.addEventListener( 'DOMContentLoaded', function () {
@@ -1597,9 +1597,13 @@ function ekwa_render_settings_page() {
 									<select id="ekwa_analytics_location" name="ekwa_analytics_location">
 										<option value="footer" <?php selected( $analytics_loc, 'footer' ); ?>><?php esc_html_e( 'Footer (recommended)', 'ekwa' ); ?></option>
 										<option value="header" <?php selected( $analytics_loc, 'header' ); ?>><?php esc_html_e( 'Header', 'ekwa' ); ?></option>
+										<option value="delay" <?php selected( $analytics_loc, 'delay' ); ?>><?php esc_html_e( 'Delay until page load', 'ekwa' ); ?></option>
 									</select>
 									<p class="description">
 										<?php esc_html_e( 'Where to print the tag. Footer keeps it out of the critical <head> for better load performance; choose Header to load it as early as possible.', 'ekwa' ); ?>
+									</p>
+									<p class="description">
+										<?php esc_html_e( 'Delay until page load waits for the page to finish loading before fetching Google\'s script, so it no longer competes with the page while it renders. Trade-off: visitors who leave before the page finishes loading are not counted. Applies when a Measurement ID is entered; a pasted custom snippet is printed as-is in the footer.', 'ekwa' ); ?>
 									</p>
 								</td>
 							</tr>
