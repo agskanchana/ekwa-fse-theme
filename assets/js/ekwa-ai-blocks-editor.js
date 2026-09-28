@@ -61,6 +61,11 @@
 		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = cfg.defaultModel || MODEL_OPTIONS[0].value;
 
+	// "Images and videos to use" picker (assets/js/ekwa-ai-media.js). Optional:
+	// without it the modal is exactly what it was.
+	var aiMedia     = window.ekwaAiMedia || null;
+	var MEDIA_EMPTY = { images: [], videos: [] };
+
 	var CONTEXT_LABELS = {
 		header:  __( 'Header', 'ekwa' ),
 		footer:  __( 'Footer', 'ekwa' ),
@@ -340,6 +345,11 @@
 		var s25 = useState( false );         var restyleOpen  = s25[0]; var setRestyleOpen  = s25[1];
 		var canRestyle = editMode && 'section' === context && history.length === 0;
 		var restyling  = canRestyle && restyleOpen && !! patternRef;
+
+		// Images and videos to place, for the next turn only — a sent turn keeps
+		// its own list in the history, and numbering carries on from there.
+		var s26 = useState( MEDIA_EMPTY );   var media        = s26[0]; var setMedia        = s26[1];
+		var mediaStart = aiMedia ? aiMedia.startNumbers( history ) : { image: 0, video: 0 };
 
 		// Persistent conversation memory (create mode only — an edit session is
 		// tied to a specific existing selection, not a reusable conversation).
@@ -678,6 +688,7 @@
 			var payloadImages = images.map( function ( img ) {
 				return { mime: img.mime, data_base64: img.data_base64 };
 			} );
+			var payloadMedia = aiMedia ? aiMedia.toPayload( media, mediaStart ) : [];
 
 			// When refining, splice the user's currently-edited markup/css into the
 			// last model turn so the AI evolves from what they see now.
@@ -697,6 +708,8 @@
 				data: {
 					prompt:        promptText,
 					images:        payloadImages,
+					// Media Library images and video links to place in the section.
+					media:         payloadMedia,
 					history:       historyPayload,
 					use_child_css: useChildCss,
 					use_site_designs: useDesigns,
@@ -718,8 +731,12 @@
 					base_css:      editMode ? ( props.seedCss || '' ) : '',
 				},
 			} ).then( function ( res ) {
+				var userTurn = { role: 'user', text: promptText, images: payloadImages };
+				// Kept on the turn so every later request repeats the list to the
+				// model — "make Image 2 larger" must still mean something.
+				if ( payloadMedia.length ) { userTurn.media = payloadMedia; }
 				var newHistory = historyPayload.concat( [
-					{ role: 'user',  text: promptText, images: payloadImages },
+					userTurn,
 					{ role: 'model', html: res.block_markup || '', css: res.extracted_css || '', js: '' },
 				] );
 				setHistory( newHistory );
@@ -729,15 +746,19 @@
 				setWarnings( res.warnings || [] );
 
 				// Persist this turn to conversation memory (best-effort). Drop the
-				// heavy base64 image payloads from stored turns to stay small.
+				// heavy base64 image payloads from stored turns to stay small. The
+				// media list stays: it is ids and links, not image data.
 				var storedHistory = newHistory.map( function ( t ) {
-					if ( t.role === 'user' ) { return { role: 'user', text: t.text }; }
+					if ( t.role === 'user' ) {
+						return t.media ? { role: 'user', text: t.text, media: t.media } : { role: 'user', text: t.text };
+					}
 					return t;
 				} );
 				persistSession( storedHistory, res.block_markup || '', res.extracted_css || '' );
 
 				setPrompt( '' );
 				setLastPaste( null );
+				setMedia( MEDIA_EMPTY );
 				images.forEach( function ( img ) {
 					if ( img.previewUrl ) {
 						try { URL.revokeObjectURL( img.previewUrl ); } catch ( e ) { /* noop */ }
@@ -966,6 +987,17 @@
 
 			children.push( el( PasteNote, pasteNoteProps( 'paste-note' ) ) );
 
+			// Content to PLACE — above the screenshots, which are only looked at.
+			if ( aiMedia ) {
+				children.push( el( aiMedia.MediaPicker, {
+					key: 'media',
+					value: media,
+					onChange: setMedia,
+					start: mediaStart,
+					disabled: generating,
+				} ) );
+			}
+
 			children.push(
 				el( 'div', { key: 'images', className: 'ekwa-ai-image-picker' },
 					el( 'label', { className: 'ekwa-ai-image-label' },
@@ -1179,7 +1211,13 @@
 					if ( turn.role === 'user' ) {
 						return el( 'div', { key: i, className: 'ekwa-ai-msg ekwa-ai-msg--user' },
 							el( 'span', { className: 'ekwa-ai-msg__who' }, __( 'You', 'ekwa' ) ),
-							el( 'div', { className: 'ekwa-ai-msg__body' }, turn.text || '' )
+							el( 'div', { className: 'ekwa-ai-msg__body' },
+								turn.text || '',
+								( aiMedia && turn.media && turn.media.length )
+									? el( 'span', { className: 'ekwa-ai-msg__media' },
+										__( 'With: ', 'ekwa' ) + aiMedia.describe( turn.media ) )
+									: null
+							)
 						);
 					}
 					return el( 'div', { key: i, className: 'ekwa-ai-msg ekwa-ai-msg--ai' },
@@ -1233,6 +1271,14 @@
 								: __( 'e.g. "Left-align the menu, add a thin top utility bar with the phone and address."', 'ekwa' ) ),
 					} ),
 					el( PasteNote, pasteNoteProps( 'paste-note' ) ),
+					// e.g. "swap the photo for Image 3", "add Video 1 below the intro".
+					aiMedia && el( aiMedia.MediaPicker, {
+						value: media,
+						onChange: setMedia,
+						start: mediaStart,
+						compact: true,
+						disabled: generating,
+					} ),
 					el( 'div', { className: 'ekwa-ai-refine-actions' },
 						el( Button, {
 							variant: 'secondary',

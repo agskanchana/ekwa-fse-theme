@@ -53,6 +53,11 @@
 		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = bridgeCfg.defaultModel || MODEL_OPTIONS[0].value;
 
+	// "Images and videos to use" picker (assets/js/ekwa-ai-media.js). Optional:
+	// without it the modal is exactly what it was.
+	var aiMedia     = window.ekwaAiMedia || null;
+	var MEDIA_EMPTY = { images: [], videos: [] };
+
 	// Context drives the BLOCK MARKUP HINTS section of the server-side prompt
 	// so the AI emits detector-friendly patterns for the right scope.
 	var CONTEXT_OPTIONS = [
@@ -229,12 +234,17 @@
 		// and a record of the last rewritten paste so it can be swapped back.
 		var s19 = useState( readPastePref ); var keepPaste    = s19[0]; var setKeepPaste    = s19[1];
 		var s20 = useState( null );          var lastPaste    = s20[0]; var setLastPaste    = s20[1];
+		// Images and videos to place, for the next turn only — a sent turn keeps
+		// its own list in the history, and numbering carries on from there.
+		var s21 = useState( MEDIA_EMPTY );   var media        = s21[0]; var setMedia        = s21[1];
 		// step is derived: 'generate' before HTML, 'preview' after.
 
 		var fileRef  = useRef( null );
 		var caretRef = useRef( null );
 
 		var step = html ? 'preview' : 'generate';
+
+		var mediaStart = aiMedia ? aiMedia.startNumbers( history ) : { image: 0, video: 0 };
 
 		// ── Image handling ─────────────────────────────────────────────
 
@@ -468,6 +478,8 @@
 					use_child_css: useChildCss,
 					context:       context,
 					post_id:       currentPostId(),
+					// Links travel as text, so the copied prompt carries them.
+					media:         aiMedia ? aiMedia.toPayload( media, mediaStart ) : [],
 				},
 			} ).then( function ( res ) {
 				setExported( res );
@@ -495,6 +507,7 @@
 			var payloadImages = images.map( function ( img ) {
 				return { mime: img.mime, data_base64: img.data_base64 };
 			} );
+			var payloadMedia = aiMedia ? aiMedia.toPayload( media, mediaStart ) : [];
 
 			// When refining, splice the user's currently-edited html/css/js
 			// into the last model turn so the AI sees those edits as the
@@ -520,6 +533,8 @@
 				data: {
 					prompt:        prompt,
 					images:        payloadImages,
+					// Media Library images and video links to place in the design.
+					media:         payloadMedia,
 					history:       historyPayload,
 					use_child_css: useChildCss,
 					use_stock:     useStock,
@@ -530,8 +545,12 @@
 					post_id:       currentPostId(),
 				},
 			} ).then( function ( res ) {
+				var userTurn = { role: 'user', text: prompt, images: payloadImages };
+				// Kept on the turn so every later request repeats the list to the
+				// model — "make Image 2 larger" must still mean something.
+				if ( payloadMedia.length ) { userTurn.media = payloadMedia; }
 				var newHistory = historyPayload.concat( [
-					{ role: 'user',  text: prompt, images: payloadImages },
+					userTurn,
 					{ role: 'model', html: res.html || '', css: res.extracted_css || '', js: res.extracted_js || '' },
 				] );
 				setHistory( newHistory );
@@ -545,6 +564,7 @@
 				// Clear input ready for the next refine turn.
 				setPrompt( '' );
 				setLastPaste( null );
+				setMedia( MEDIA_EMPTY );
 				images.forEach( function ( img ) {
 					if ( img.previewUrl ) {
 						try { URL.revokeObjectURL( img.previewUrl ); } catch ( e ) { /* noop */ }
@@ -657,6 +677,17 @@
 			);
 
 			children.push( el( PasteNote, pasteNoteProps( 'paste-note' ) ) );
+
+			// Content to PLACE — above the screenshots, which are only looked at.
+			if ( aiMedia ) {
+				children.push( el( aiMedia.MediaPicker, {
+					key: 'media',
+					value: media,
+					onChange: setMedia,
+					start: mediaStart,
+					disabled: generating,
+				} ) );
+			}
 
 			children.push(
 				el( 'div', { key: 'images', className: 'ekwa-ai-image-picker' },
@@ -958,6 +989,14 @@
 						placeholder: __( 'e.g. "Make it 4 columns instead of 3, add a Font Awesome icon to each card, use the brand primary color for the headings."', 'ekwa' ),
 					} ),
 					el( PasteNote, pasteNoteProps( 'paste-note' ) ),
+					// e.g. "swap the photo for Image 3", "add Video 1 below the intro".
+					aiMedia && el( aiMedia.MediaPicker, {
+						value: media,
+						onChange: setMedia,
+						start: mediaStart,
+						compact: true,
+						disabled: generating,
+					} ),
 					el( 'div', { className: 'ekwa-ai-image-picker ekwa-ai-image-picker--compact' },
 						el( 'label', { className: 'ekwa-ai-image-label' },
 							el( 'span', null, __( 'Add screenshots (optional)', 'ekwa' ) ),

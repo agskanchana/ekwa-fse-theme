@@ -405,6 +405,17 @@ function ekwa_mc_detect_token( $node, $depth, $token ) {
 				return null;
 			}
 
+			// Written by "Generate with AI" for a video the author picked
+			// (inc/ekwa-ai-media.php): the link as pasted, and nothing else.
+			// That is the state the paste-a-link transform leaves the block in —
+			// it fills in its own id, title, thumbnail and duration when the
+			// editor first loads it — so the block holds only the link. The
+			// importer never writes this attribute; its path below is unchanged.
+			$video_url = trim( $node->getAttribute( 'data-ekwa-video-url' ) );
+			if ( '' !== $video_url ) {
+				return $leaf( 'youtube' === $provider ? 'ekwa/youtube-video' : 'ekwa/vimeo-video', array( 'videoUrl' => $video_url ) );
+			}
+
 			$attrs = array( 'videoId' => $video_id );
 
 			foreach ( array(

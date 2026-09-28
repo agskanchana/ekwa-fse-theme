@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require_once get_template_directory() . '/inc/ekwa-ai-shared.php';
+require_once get_template_directory() . '/inc/ekwa-ai-media.php';
 
 add_action( 'rest_api_init', 'ekwa_ai_generate_register_routes' );
 
@@ -91,6 +92,14 @@ function ekwa_ai_generate_register_routes() {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			// Media Library images and YouTube / Vimeo links to place in the
+			// design. Empty by default — and an older editor script sends none —
+			// so the prompt is exactly what it was. @see inc/ekwa-ai-media.php
+			'media' => array(
+				'required' => false,
+				'type'     => 'array',
+				'default'  => array(),
+			),
 		),
 	) );
 
@@ -111,6 +120,9 @@ function ekwa_ai_generate_register_routes() {
 				'enum'     => array( 'header', 'footer', 'page' ),
 			),
 			'post_id'       => array( 'required' => false, 'type' => 'integer', 'default' => 0 ),
+			// Same meaning, and same empty default, as on /ai-generate-html —
+			// so the copied prompt is the one that would have been sent.
+			'media'         => array( 'required' => false, 'type' => 'array', 'default' => array() ),
 		),
 	) );
 }
@@ -143,10 +155,17 @@ function ekwa_ai_generate_export_prompt( $request ) {
 	$system = ekwa_ai_generate_assemble_system_prompt(
 		$context,
 		(bool) $request->get_param( 'use_child_css' ),
-		(int) $request->get_param( 'post_id' )
+		(int) $request->get_param( 'post_id' ),
+		// As on every generation: the page banner is never built.
+		array( 'no_banner' => true )
 	);
 
 	$user = trim( (string) $request->get_param( 'prompt' ) );
+
+	// Chosen images and videos are links, so unlike screenshots they DO travel
+	// as text: the other AI places them by URL exactly as this one would.
+	$media    = function_exists( 'ekwa_ai_media_normalize' ) ? ekwa_ai_media_normalize( $request->get_param( 'media' ) ) : array();
+	$manifest = $media ? ekwa_ai_media_manifest( $media, 'html', false ) : '';
 
 	$text  = "=====================================================================\n";
 	$text .= "INSTRUCTIONS (paste this whole message into ChatGPT, Claude or Gemini)\n";
@@ -158,6 +177,7 @@ function ekwa_ai_generate_export_prompt( $request ) {
 	$text .= '' !== $user
 		? $user
 		: '[Type what you want built here — the prompt box was empty when this was copied.]';
+	$text .= $manifest;
 	$text .= "\n\n=====================================================================\n";
 	$text .= "WHEN YOU HAVE THE ANSWER\n";
 	$text .= "=====================================================================\n";
@@ -239,13 +259,30 @@ function ekwa_ai_generate_handle_request( $request ) {
 		);
 	}
 
+	// Images from the Media Library and video links to place in the design.
+	// Earlier turns carry their own list in the history; this turn's list, with
+	// a look at each image, goes in after the prompt. @see inc/ekwa-ai-media.php
+	$media_warnings = array();
+	$media          = ekwa_ai_media_normalize( $request->get_param( 'media' ), $media_warnings );
+	$history        = ekwa_ai_media_expand_history( $history, 'html' );
+
 	$contents = ekwa_ai_generate_build_contents( $prompt, $images, $history );
 	if ( is_wp_error( $contents ) ) {
 		return $contents;
 	}
+	if ( $media ) {
+		$contents = ekwa_ai_media_attach( $contents, $media, 'html' );
+	}
 
 	$page_id       = (int) $request->get_param( 'post_id' );
-	$system_prompt = ekwa_ai_generate_assemble_system_prompt( $context, $use_child_css, $page_id );
+	// The page banner comes from the page template, never from generated
+	// content (page context only — see ekwa_ai_no_banner_rules()).
+	$system_prompt = ekwa_ai_generate_assemble_system_prompt(
+		$context,
+		$use_child_css,
+		$page_id,
+		array( 'no_banner' => true )
+	);
 
 	// No output cap: a full page of HTML with inline styles is long, and on the
 	// 2.5/3.x models the thinking step is billed against the same allowance, so
@@ -302,6 +339,12 @@ function ekwa_ai_generate_handle_request( $request ) {
 		}
 	}
 
+	// Chosen media that could not be used, and any the model left out.
+	$warnings = array_merge( $warnings, $media_warnings );
+	if ( $media ) {
+		$warnings = array_merge( $warnings, ekwa_ai_media_check_html( $extracted['html'], $extracted['css'], $media ) );
+	}
+
 	return rest_ensure_response( array(
 		'html'          => $extracted['html'],
 		'extracted_css' => $extracted['css'],
@@ -331,10 +374,24 @@ function ekwa_ai_generate_handle_request( $request ) {
  * @param bool   $use_child_css Append the child stylesheet.
  * @param int    $page_id       Page being generated for; 0 skips the
  *                              arrangement census, exactly as before.
+ * @param array  $options       Optional. 'no_banner' => true adds the rules that
+ *                              keep a page banner out of the result (page
+ *                              context only) — the generator always passes it.
+ *                              Empty — the default — assembles exactly the
+ *                              previous prompt.
  * @return string
  */
-function ekwa_ai_generate_assemble_system_prompt( $context = 'page', $use_child_css = true, $page_id = 0 ) {
+function ekwa_ai_generate_assemble_system_prompt( $context = 'page', $use_child_css = true, $page_id = 0, $options = array() ) {
+	$page_id   = (int) $page_id;
+	$no_banner = 'page' === $context && ! empty( $options['no_banner'] );
+
 	$system_prompt = ekwa_ai_generate_build_system_prompt( $context );
+
+	// Straight after the base rules rather than after a stylesheet that can run
+	// to 80 KB, so it reads as one of the rules and not as a footnote.
+	if ( $no_banner ) {
+		$system_prompt .= ekwa_ai_no_banner_rules( 'html', $page_id ? get_the_title( $page_id ) : '' );
+	}
 
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
@@ -347,15 +404,129 @@ function ekwa_ai_generate_assemble_system_prompt( $context = 'page', $use_child_
 	// The block vocabulary itself is deliberately NOT sent here: this endpoint
 	// returns plain HTML, and showing it block markup to copy would be showing
 	// it the wrong thing. Only the arrangement tally travels, which is prose.
-	$page_id = (int) $page_id;
 	if ( $page_id && 'page' === $context && function_exists( 'ekwa_layout_usage_prompt' ) ) {
-		$system_prompt .= ekwa_layout_usage_prompt(
-			$page_id,
-			function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $page_id ) : array()
-		);
+		$designs = function_exists( 'ekwa_design_vocabulary' ) ? ekwa_design_vocabulary( $page_id ) : array();
+		if ( $no_banner ) {
+			$designs = ekwa_ai_designs_without_banners( $designs );
+		}
+		$system_prompt .= ekwa_layout_usage_prompt( $page_id, $designs );
 	}
 
 	return $system_prompt;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAGE BANNER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/*
+ * An inner page's template (templates/page.html) already renders the page
+ * banner — ekwa/inner-banner, with the page title as the page's only <h1>, the
+ * breadcrumb and the featured image — and a post's template renders its own
+ * title. A generated section lands BELOW that, so a banner or hero the model
+ * adds on its own initiative is a second banner and a second <h1>.
+ *
+ * So both builders never build one: every new page section they make gets
+ * these rules. The helpers still take it as an OPTION, because the other
+ * callers of the same prompt functions — the import design pass and the AI
+ * converter, which must turn a mockup's banner into the banner blocks — rely on
+ * getting exactly the prompt they always had.
+ */
+
+/**
+ * The blocks that ARE a page banner — the banner itself and its parts.
+ *
+ * @return string[]
+ */
+function ekwa_ai_banner_block_names() {
+	return array( 'ekwa/page-banner', 'ekwa/inner-banner', 'ekwa/banner-title', 'ekwa/page-title', 'ekwa/breadcrumb' );
+}
+
+/**
+ * The blocks that build a top-of-page hero. Not banners by name, but on an
+ * inner page a hero is the same thing twice.
+ *
+ * @return string[]
+ */
+function ekwa_ai_hero_block_names() {
+	return array( 'ekwa/slider', 'ekwa/slide', 'ekwa/slide-content', 'ekwa/hero-video' );
+}
+
+/**
+ * The rules that keep a banner out of the result.
+ *
+ * @param string $format     'blocks' (Block Builder) or 'html' (HTML generator).
+ * @param string $page_title Title of the page being built for, when known —
+ *                           naming it is what stops the model opening the
+ *                           content with that same title as a heading.
+ * @return string
+ */
+function ekwa_ai_no_banner_rules( $format = 'blocks', $page_title = '' ) {
+	$page_title = trim( wp_strip_all_tags( html_entity_decode( (string) $page_title, ENT_QUOTES, 'UTF-8' ) ) );
+
+	$out  = "\n\nNO PAGE BANNER — never build one. On this site a page's banner — its title as the page's only <h1>, the breadcrumb trail and the banner's background image — comes from the page template, never from content like the section you are building. So:\n";
+	$out .= "- Do not build a page banner, a page-title band, a hero or a slider of any kind — no opening full-width band that carries the page's title, a breadcrumb, or a headline over a background photo. Start with the first real content section.\n";
+	$out .= "- Never use an h1: the page's h1 belongs to its banner, not to a content section. Section headings start at h2.\n";
+	$out .= '' !== $page_title
+		? '- Do not open with the page\'s own title ("' . $page_title . "\") as a heading, and never add a breadcrumb.\n"
+		: "- Do not open with the page's own title as a heading, and never add a breadcrumb.\n";
+
+	if ( 'blocks' === $format ) {
+		$out .= '- Never emit ' . implode( ', ', array_merge( ekwa_ai_banner_block_names(), ekwa_ai_hero_block_names() ) ) . ".\n";
+	}
+
+	return $out;
+}
+
+/**
+ * The site's section designs, minus the ones that are a banner or a hero.
+ *
+ * The design vocabulary harvests the site's own pages, front page first, so a
+ * home-page hero or a banner someone built into a page is offered to the model
+ * as "one of this site's sections" — which it then reproduces at the top of an
+ * inner page. A design is dropped when it contains a banner or hero block, or
+ * an h1 (on this theme an h1 in content only ever belongs to a hero).
+ *
+ * @param array $patterns From ekwa_design_vocabulary().
+ * @return array Same entries, re-keyed P1, P2… so the prompt's labels run on.
+ */
+function ekwa_ai_designs_without_banners( $patterns ) {
+	$names = array_merge( ekwa_ai_banner_block_names(), ekwa_ai_hero_block_names() );
+	$kept  = array();
+
+	foreach ( (array) $patterns as $pattern ) {
+		$markup = is_array( $pattern ) && isset( $pattern['markup'] ) ? (string) $pattern['markup'] : '';
+		if ( '' === $markup || ekwa_ai_blocks_have_banner( parse_blocks( $markup ), $names ) ) {
+			continue;
+		}
+		$pattern['key'] = 'P' . ( count( $kept ) + 1 );
+		$kept[]         = $pattern;
+	}
+
+	return $kept;
+}
+
+/**
+ * Whether a block tree holds a banner/hero block or an h1 heading.
+ *
+ * @param array    $blocks Parsed blocks.
+ * @param string[] $names  Block names that count.
+ * @return bool
+ */
+function ekwa_ai_blocks_have_banner( $blocks, $names ) {
+	foreach ( (array) $blocks as $block ) {
+		$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+		if ( '' !== $name && in_array( $name, $names, true ) ) {
+			return true;
+		}
+		if ( 'core/heading' === $name && isset( $block['attrs']['level'] ) && 1 === (int) $block['attrs']['level'] ) {
+			return true;
+		}
+		if ( ! empty( $block['innerBlocks'] ) && ekwa_ai_blocks_have_banner( $block['innerBlocks'], $names ) ) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /**

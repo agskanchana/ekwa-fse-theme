@@ -100,6 +100,15 @@ function ekwa_ai_generate_blocks_register_routes() {
 				'type'     => 'string',
 				'default'  => '',
 			),
+			// Media Library images and YouTube / Vimeo links to place in the
+			// section. Empty by default — and an older editor script sends
+			// none — so the prompt is exactly what it was.
+			// @see inc/ekwa-ai-media.php
+			'media'         => array(
+				'required' => false,
+				'type'     => 'array',
+				'default'  => array(),
+			),
 		),
 	) );
 
@@ -188,6 +197,12 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	$replicating = '' !== $pattern_ref && 'section' === $context;
 	$replica     = null;
 
+	// A new page section never builds the page banner — the page template
+	// renders it. Only for a NEW section: an edit keeps whatever the selection
+	// already has, and a replica is the pattern the author chose, banner or not.
+	$post_id   = (int) $request->get_param( 'post_id' );
+	$no_banner = 'section' === $context && 'create' === $mode && ! $replicating;
+
 	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	if ( '' === $prompt ) {
@@ -245,16 +260,30 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 			: ekwa_ai_pattern_user_message( $source['label'], $replica['markup'], $prompt );
 	}
 
+	// Images from the Media Library and video links to place in the section.
+	// Earlier turns carry their own list in the history; this turn's list, with
+	// a look at each image, goes in after the prompt. @see inc/ekwa-ai-media.php
+	$media_warnings = array();
+	$media          = ekwa_ai_media_normalize( $request->get_param( 'media' ), $media_warnings );
+	$history        = ekwa_ai_media_expand_history( $history, 'blocks' );
+
 	// Reuse the multimodal contents builder from the HTML generator (handles
 	// history reconstruction + image validation identically).
 	$contents = ekwa_ai_generate_build_contents( $effective_prompt, $images, $history );
 	if ( is_wp_error( $contents ) ) {
 		return $contents;
 	}
+	if ( $media ) {
+		$contents = ekwa_ai_media_attach( $contents, $media, 'blocks' );
+	}
+
+	$prompt_options = $no_banner
+		? array( 'no_banner' => true, 'page_title' => $post_id ? get_the_title( $post_id ) : '' )
+		: array();
 
 	// A replica is built fresh even in edit mode: the edit rules ("preserve the
 	// structure, classNames and scope") are exactly what it must not do.
-	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $replica ? 'create' : $mode );
+	$system_prompt = ekwa_ai_generate_blocks_system_prompt( $context, $replica ? 'create' : $mode, $prompt_options );
 	if ( $use_child_css ) {
 		$system_prompt .= ekwa_ai_generate_child_stylesheet_context();
 	}
@@ -264,7 +293,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	// Not when replicating: the chosen pattern IS the design, and a catalogue
 	// of other sections would only compete with it.
 	if ( $use_designs && 'section' === $context && ! $replicating ) {
-		$system_prompt .= ekwa_ai_blocks_site_designs_context( 24000, (int) $request->get_param( 'post_id' ) );
+		$system_prompt .= ekwa_ai_blocks_site_designs_context( 24000, $post_id, $prompt_options );
 	}
 	if ( $replica ) {
 		$system_prompt .= ekwa_ai_pattern_system_prompt( 'edit' === $mode );
@@ -330,6 +359,21 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		);
 	}
 
+	// No page banner: the banner blocks are off the spec and named in the rules,
+	// but one that comes back anyway is taken out here — before the CSS is
+	// embedded, because a banner beside the wrapper would also stop that.
+	if ( $no_banner ) {
+		$stripped     = ekwa_ai_blocks_strip_banners( $block_markup );
+		$block_markup = $stripped['markup'];
+		if ( $stripped['removed'] ) {
+			$warnings[] = sprintf(
+				/* translators: %s: block names, e.g. "ekwa/page-banner". */
+				__( 'Removed the page banner the AI added (%s) — the page template already shows one.', 'ekwa' ),
+				implode( ', ', $stripped['removed'] )
+			);
+		}
+	}
+
 	// Replace the AI's scoping sentinel with a real unique section id in BOTH the
 	// CSS and the markup, then embed the (scoped) CSS into the wrapper block's
 	// scopedCss attribute so the section becomes self-contained — its CSS inlines
@@ -365,6 +409,15 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 	if ( 'section' === $context && function_exists( 'ekwa_phone_replace_in_blocks' ) ) {
 		$block_markup = ekwa_phone_replace_in_blocks( $block_markup, $phones );
 		$warnings     = array_merge( $warnings, ekwa_ai_blocks_phone_warnings( $phones ) );
+	}
+
+	// The chosen images: link each placed one to its attachment (srcset, WebP),
+	// and say which of the chosen items the model left out.
+	$warnings = array_merge( $warnings, $media_warnings );
+	if ( $media ) {
+		$applied      = ekwa_ai_media_apply_to_blocks( $block_markup, $css, $media );
+		$block_markup = $applied['markup'];
+		$warnings     = array_merge( $warnings, $applied['warnings'] );
 	}
 
 	// Validate that every referenced block is registered, and (best-effort)
@@ -437,6 +490,98 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
 }
 
 /**
+ * Take page-banner blocks out of generated markup, wherever they sit.
+ *
+ * Run on every new page section the Block Builder makes (never on an edit or a
+ * replicated pattern — see the request handler). Removes the banner blocks by name
+ * — ekwa/page-banner with everything inside it, and a stray banner title,
+ * page title or breadcrumb on its own. A hand-built band of ordinary blocks is
+ * left alone: telling that apart from real content is the prompt's job, and
+ * guessing here could delete content.
+ *
+ * @param string $markup Block markup.
+ * @return array{markup:string,removed:string[]} Markup unchanged when nothing
+ *                                              was removed.
+ */
+function ekwa_ai_blocks_strip_banners( $markup ) {
+	$markup = (string) $markup;
+	$names  = ekwa_ai_banner_block_names();
+
+	// Cheap test first — nearly every result has no banner in it at all, and
+	// then the markup is handed back byte for byte.
+	$present = false;
+	foreach ( $names as $name ) {
+		if ( false !== strpos( $markup, 'wp:' . $name ) ) {
+			$present = true;
+			break;
+		}
+	}
+	if ( ! $present ) {
+		return array( 'markup' => $markup, 'removed' => array() );
+	}
+
+	$removed = array();
+	$blocks  = ekwa_ai_blocks_strip_walk( parse_blocks( $markup ), $names, $removed );
+	if ( ! $removed ) {
+		return array( 'markup' => $markup, 'removed' => array() );
+	}
+
+	return array( 'markup' => serialize_blocks( $blocks ), 'removed' => array_values( array_unique( $removed ) ) );
+}
+
+/**
+ * Recursive worker for ekwa_ai_blocks_strip_banners().
+ *
+ * A parent's innerContent holds one null per inner block, in order, and
+ * serialize_block() pairs them up — so dropping a child means dropping its
+ * null too, or every later sibling is written into the wrong slot.
+ *
+ * @param array    $blocks  Parsed blocks.
+ * @param string[] $names   Block names to remove.
+ * @param string[] $removed By reference: names removed.
+ * @return array
+ */
+function ekwa_ai_blocks_strip_walk( $blocks, $names, &$removed ) {
+	$out = array();
+
+	foreach ( $blocks as $block ) {
+		$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+		if ( '' !== $name && in_array( $name, $names, true ) ) {
+			$removed[] = $name;
+			continue;
+		}
+
+		if ( ! empty( $block['innerBlocks'] ) ) {
+			$children = array();
+			$content  = array();
+			$index    = 0;
+			foreach ( (array) $block['innerContent'] as $chunk ) {
+				if ( null !== $chunk ) {
+					$content[] = $chunk;
+					continue;
+				}
+				$child = isset( $block['innerBlocks'][ $index ] ) ? $block['innerBlocks'][ $index ] : null;
+				$index++;
+				if ( null === $child ) {
+					continue;
+				}
+				$kept = ekwa_ai_blocks_strip_walk( array( $child ), $names, $removed );
+				if ( $kept ) {
+					$children[] = $kept[0];
+					$content[]  = null;
+				}
+			}
+			$block['innerBlocks']  = $children;
+			$block['innerContent'] = $content;
+		}
+
+		$out[] = $block;
+	}
+
+	return $out;
+}
+
+/**
  * The sections this site already has, as prompt context for a new one.
  *
  * The same vocabulary the import design pass uses — saved patterns, the Inner
@@ -458,18 +603,27 @@ function ekwa_ai_blocks_embed_scoped_css( $markup, $css, $scope ) {
  * Without it the model can only guess whether it is about to build this page's
  * fourth two-column split, and it guesses wrong in the agreeable direction.
  *
- * @param int $budget          Character cap on the markup+CSS shipped.
- * @param int $exclude_post_id Page being built — never offer it its own
- *                             sections as inspiration for a new one, and the
- *                             page whose existing arrangements are counted.
+ * @param int   $budget          Character cap on the markup+CSS shipped.
+ * @param int   $exclude_post_id Page being built — never offer it its own
+ *                               sections as inspiration for a new one, and the
+ *                               page whose existing arrangements are counted.
+ * @param array $options         Optional. 'no_banner' => true leaves banner and
+ *                               hero designs out. Empty (the default) offers
+ *                               every design, as before.
  * @return string Prompt fragment, or '' when the site has no designs yet.
  */
-function ekwa_ai_blocks_site_designs_context( $budget = 24000, $exclude_post_id = 0 ) {
+function ekwa_ai_blocks_site_designs_context( $budget = 24000, $exclude_post_id = 0, $options = array() ) {
 	if ( ! function_exists( 'ekwa_design_vocabulary' ) || ! function_exists( 'ekwa_design_vocabulary_prompt' ) ) {
 		return '';
 	}
 
 	$patterns = ekwa_design_vocabulary( (int) $exclude_post_id );
+	// The harvest starts at the front page, so its hero is usually among these —
+	// and a hero shown as "one of this site's sections" is the first thing the
+	// model copies to the top of a page that already has a banner.
+	if ( ! empty( $options['no_banner'] ) ) {
+		$patterns = ekwa_ai_designs_without_banners( $patterns );
+	}
 	$out      = ekwa_design_vocabulary_prompt( $patterns, $budget, 'create' );
 
 	// Guarded because the census arrived later than the vocabulary: a child
@@ -527,9 +681,18 @@ function ekwa_ai_blocks_phone_warnings( $report ) {
  * @param string $context One of: 'header', 'footer', 'section'.
  * @param string $mode    'create' (generate from scratch) or 'edit' (modify an
  *                        existing section supplied in the user message).
+ * @param array  $options Optional, section context only:
+ *                        'no_banner'  => true — no hero cue, the banner and hero
+ *                                        blocks off the spec, and the rules that
+ *                                        keep a banner out;
+ *                        'page_title' => the page's title, named in those rules.
+ *                        Empty (the default) builds exactly the previous prompt —
+ *                        which is what the import design pass still calls it with.
  * @return string
  */
-function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'create' ) {
+function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'create', $options = array() ) {
+	$no_banner = 'section' === $context && ! empty( $options['no_banner'] );
+
 	// Site breakpoints (Ekwa Settings) so generated media queries match the
 	// theme's responsive visibility bands.
 	$bp          = function_exists( 'ekwa_responsive_breakpoints' ) ? ekwa_responsive_breakpoints() : array( 'tablet' => 1199, 'mobile' => 599 );
@@ -560,8 +723,12 @@ function ekwa_ai_generate_blocks_system_prompt( $context = 'section', $mode = 'c
 			. "3. DEFAULT ELEMENTS — unless the brief explicitly excludes them, a complete Ekwa footer includes ekwa/social (the social icon row) and ekwa/map (the Google map embed) alongside ekwa/address and ekwa/hours. Never hand-build social icon links or an <iframe> map — those two blocks render the real data.\n"
 			. "4. Never repeat the same dynamic element (social row, address, phone) twice within the footer.\n\n";
 	} else {
-		$context_cue = "SECTION CONTEXT — build an in-content page section (it sits inside the main content column). Use headings/paragraphs/lists, grids/flex for layout, and ekwa content blocks as needed. "
-			. "HERO sections (top-of-page banners): build them with ekwa/slider (1–3 ekwa/slide, each with ekwa/slide-content groups) — or ekwa/hero-video when a background video URL is supplied. Do not hand-build a static hero div, custom slider chrome, or CSS animations the slider already provides.\n\n";
+		// The hero cue invites exactly the page banner the no-banner option is
+		// there to prevent, so that option drops it; the rules added below say why.
+		$context_cue = "SECTION CONTEXT — build an in-content page section (it sits inside the main content column). Use headings/paragraphs/lists, grids/flex for layout, and ekwa content blocks as needed."
+			. ( $no_banner
+				? "\n\n"
+				: " HERO sections (top-of-page banners): build them with ekwa/slider (1–3 ekwa/slide, each with ekwa/slide-content groups) — or ekwa/hero-video when a background video URL is supplied. Do not hand-build a static hero div, custom slider chrome, or CSS animations the slider already provides.\n\n" );
 	}
 
 	$prompt = <<<PROMPT
@@ -607,6 +774,10 @@ CONTENT RULES:
 - If the user attaches screenshots, treat them as layout references unless the prompt says otherwise.
 PROMPT;
 
+	if ( $no_banner ) {
+		$prompt .= ekwa_ai_no_banner_rules( 'blocks', isset( $options['page_title'] ) ? (string) $options['page_title'] : '' );
+	}
+
 	if ( 'edit' === $mode ) {
 		$prompt .= "\n\nEDIT MODE — you are MODIFYING an existing section supplied in the user message (its current block markup, and its CSS, which may appear as a <style> block or inside the wrapper's scopedCss attribute):\n"
 			. "- First read the existing markup and CSS carefully, then apply ONLY the change the user asks for. Preserve all other text, structure, classNames, attributes, and styles exactly as they are.\n"
@@ -615,7 +786,11 @@ PROMPT;
 			. "- Do not drop, reorder, or rename existing blocks unless the user explicitly asks you to.";
 	}
 
-	$prompt .= ekwa_ai_build_block_spec_section( $context );
+	$prompt .= ekwa_ai_build_block_spec_section(
+		$context,
+		false,
+		$no_banner ? array_merge( ekwa_ai_banner_block_names(), ekwa_ai_hero_block_names() ) : array()
+	);
 
 	// Section context only. The shortcode advice inside it is true for page
 	// content, which renders through the_content() and therefore gets

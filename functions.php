@@ -931,6 +931,24 @@ function ekwa_enqueue_converter_editor_script() {
 		true
 	);
 
+	// "Images and videos to use" — the Media Library / video-link picker both
+	// AI modals share (window.ekwaAiMedia). Its stylesheet is its own file,
+	// versioned by file time like the scripts, so a change to it is never held
+	// back by a cached ekwa-editor.css.
+	wp_enqueue_script(
+		'ekwa-ai-media',
+		get_template_directory_uri() . '/assets/js/ekwa-ai-media.js',
+		array( 'wp-element', 'wp-components', 'wp-i18n', 'wp-api-fetch' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-ai-media.js' ),
+		true
+	);
+	wp_enqueue_style(
+		'ekwa-ai-media',
+		get_template_directory_uri() . '/assets/css/ekwa-ai-media.css',
+		array(),
+		filemtime( get_template_directory() . '/assets/css/ekwa-ai-media.css' )
+	);
+
 	// AI HTML generator — separate plugin entry point that hands off HTML to the converter.
 	wp_enqueue_script(
 		'ekwa-ai-generate-editor',
@@ -938,6 +956,7 @@ function ekwa_enqueue_converter_editor_script() {
 		array(
 			'ekwa-converter-editor',
 			'ekwa-rich-paste',
+			'ekwa-ai-media',
 			'wp-plugins',
 			'wp-editor',
 			'wp-components',
@@ -988,6 +1007,7 @@ function ekwa_enqueue_converter_editor_script() {
 		get_template_directory_uri() . '/assets/js/ekwa-ai-blocks-editor.js',
 		array(
 			'ekwa-rich-paste',
+			'ekwa-ai-media',
 			'wp-plugins',
 			'wp-editor',
 			'wp-blocks',

@@ -611,16 +611,26 @@ function ekwa_ai_block_spec_registry() {
 /**
  * Build the "BLOCK SPEC" section appended to the AI system prompt.
  *
- * @param string $context One of: 'header', 'footer', 'section'. Anything else
- *                        falls back to 'section'.
+ * @param string   $context One of: 'header', 'footer', 'section'. Anything else
+ *                          falls back to 'section'.
+ * @param bool     $allow_inline_style Advertise the inlineStyle attribute.
+ * @param string[] $exclude Block names to leave out of the spec — e.g. the page
+ *                          banner family when the builder was asked not to make
+ *                          one. Empty (the default) lists every applicable block.
  * @return string Empty string when no specs apply.
  */
-function ekwa_ai_build_block_spec_section( $context, $allow_inline_style = false ) {
+function ekwa_ai_build_block_spec_section( $context, $allow_inline_style = false, $exclude = array() ) {
 	$context = in_array( $context, array( 'header', 'footer', 'section' ), true ) ? $context : 'section';
 	$all     = ekwa_ai_block_spec_registry();
+	$exclude = (array) $exclude;
 
 	$applicable = array();
 	foreach ( $all as $key => $spec ) {
+		// "Only the blocks below are allowed" — so a block that must not be
+		// used is taken off the list, not listed and then forbidden.
+		if ( $exclude && isset( $spec['block'] ) && in_array( $spec['block'], $exclude, true ) ) {
+			continue;
+		}
 		if ( empty( $spec['contexts'] ) || in_array( $context, $spec['contexts'], true ) ) {
 			$applicable[ $key ] = $spec;
 		}
