@@ -917,7 +917,7 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_editor_assets' );
  * Conditions (evaluated in this order):
  *   1. Page visibility   – show/hide on specific page IDs
  *   2. Content type      – post, page, front page, archive, search, 404,
- *                          pages with related articles…
+ *                          has related articles (ekwa_related_articles_found)…
  *   3. Device type       – mobile / desktop (wp_is_mobile)
  *   4. User state        – logged-in / logged-out  (+optional role filter)
  *   5. Ad tracking       – adward_number cookie or ?ads URL param
@@ -994,7 +994,7 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 			if ( ! $is_post && ! $is_cornerstone ) { return ''; }
 			break;
 		case 'has_related_articles':
-			if ( ! ekwa_conditional_page_has_related_articles() ) { return ''; }
+			if ( null === ekwa_related_articles_found() ) { return ''; }
 			break;
 	}
 
@@ -1073,47 +1073,6 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 
 	/* All conditions passed — output the inner blocks. */
 	return $content;
-}
-
-/**
- * Whether the page being viewed has related articles — the test behind the
- * ekwa/conditional "Pages with related articles" content type.
- *
- * Follows the same link as ekwa/related-articles: the page slug is looked up
- * as a category slug (page "bridges" → category "bridges"), and the page has
- * related articles when that category holds at least one post the block would
- * list — published, including posts filed under a child category.
- *
- * Pages only: single posts, archives, search, 404 and the blog home are always
- * false. A static front page is checked by its own slug like any other page —
- * the featured-articles fallback ekwa/related-articles shows there is not that
- * page's related articles.
- *
- * @return bool
- */
-function ekwa_conditional_page_has_related_articles() {
-	if ( ! is_page() ) {
-		return false;
-	}
-
-	$page = get_queried_object();
-	if ( ! $page || empty( $page->post_name ) ) {
-		return false;
-	}
-
-	$term = get_term_by( 'slug', $page->post_name, 'category' );
-	if ( ! $term || is_wp_error( $term ) ) {
-		return false;
-	}
-
-	$posts = get_posts( array(
-		'post_type'      => 'post',
-		'posts_per_page' => 1,
-		'cat'            => $term->term_id,
-		'fields'         => 'ids',
-	) );
-
-	return ! empty( $posts );
 }
 
 /**
@@ -5572,6 +5531,46 @@ function ekwa_related_posts_resolve_category( $featured_slug ) {
 	}
 
 	return null;
+}
+
+/**
+ * What ekwa/related-articles has to list on the current request, without
+ * rendering it. Shared by the [related_articles_heading] shortcode and the
+ * ekwa/conditional "has_related_articles" content type, so the three agree.
+ *
+ * Same resolution as the block: on a page, the category whose slug matches the
+ * page slug (page "bridges" → category "bridges"); on the front page / blog
+ * home, the featured-articles category. Counts the posts the block would list —
+ * published, child categories included — up to two: enough to tell one from
+ * several.
+ *
+ * @param string $featured_slug Category used on the front page / blog home.
+ * @return array|null { term: WP_Term, featured: bool, plural: bool }, or null
+ *                    when there is nothing to list.
+ */
+function ekwa_related_articles_found( $featured_slug = 'featured-articles' ) {
+	$featured_slug = sanitize_title( $featured_slug );
+
+	$term = ekwa_related_posts_resolve_category( $featured_slug );
+	if ( ! $term ) {
+		return null;
+	}
+
+	$ids = get_posts( array(
+		'post_type'      => 'post',
+		'posts_per_page' => 2,
+		'cat'            => $term->term_id,
+		'fields'         => 'ids',
+	) );
+	if ( empty( $ids ) ) {
+		return null;
+	}
+
+	return array(
+		'term'     => $term,
+		'featured' => ( $term->slug === $featured_slug ),
+		'plural'   => count( $ids ) > 1,
+	);
 }
 
 /**

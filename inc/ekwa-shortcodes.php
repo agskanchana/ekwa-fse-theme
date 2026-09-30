@@ -822,3 +822,58 @@ function ekwa_social_shortcode( $atts ) {
 	return $out;
 }
 add_shortcode( 'ekwa_social', 'ekwa_social_shortcode' );
+
+/**
+ * [related_articles_heading] shortcode.
+ *
+ * Heading text for the Ekwa Related Articles section, worked out the same way
+ * the block finds its posts (see ekwa_related_articles_found()):
+ *   - on a page whose slug matches a category with posts (page "bridges" →
+ *     category "bridges"): "Related Articles", or "Related Article" for one
+ *   - on the front page / blog home, from the featured-articles category:
+ *     "Featured Articles", or "Featured Article" for one
+ *   - anywhere else, or with no posts: nothing
+ *
+ * Returns the text only, for use inside a Heading block. Wrap that heading in
+ * an Ekwa Conditional set to "Pages with related articles" so the empty
+ * heading never renders where there are no articles.
+ *
+ * Attributes:
+ *   singular           (string) Default: 'Related Article'
+ *   plural             (string) Default: 'Related Articles'
+ *   featured_singular  (string) Default: 'Featured Article'
+ *   featured_plural    (string) Default: 'Featured Articles'
+ *   featured_slug      (string) Category shown on the front page / blog home.
+ *                               Default: 'featured-articles'
+ *
+ * Usage examples:
+ *   [related_articles_heading]
+ *   [related_articles_heading singular="Article on this topic" plural="Articles on this topic"]
+ */
+function ekwa_related_articles_heading_shortcode( $atts ) {
+	$atts = shortcode_atts(
+		array(
+			'singular'          => __( 'Related Article', 'ekwa' ),
+			'plural'            => __( 'Related Articles', 'ekwa' ),
+			'featured_singular' => __( 'Featured Article', 'ekwa' ),
+			'featured_plural'   => __( 'Featured Articles', 'ekwa' ),
+			'featured_slug'     => 'featured-articles',
+		),
+		$atts,
+		'related_articles_heading'
+	);
+
+	$found = ekwa_related_articles_found( $atts['featured_slug'] );
+	if ( null === $found ) {
+		return '';
+	}
+
+	if ( $found['featured'] ) {
+		$text = $found['plural'] ? $atts['featured_plural'] : $atts['featured_singular'];
+	} else {
+		$text = $found['plural'] ? $atts['plural'] : $atts['singular'];
+	}
+
+	return esc_html( $text );
+}
+add_shortcode( 'related_articles_heading', 'ekwa_related_articles_heading_shortcode' );

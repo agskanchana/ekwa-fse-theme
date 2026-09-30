@@ -222,7 +222,7 @@
 					} ),
 					attrs.contentType === 'has_related_articles' &&
 						el( 'p', { style: { fontSize: 12, color: '#757575', margin: '4px 0 0' } },
-							__( 'Shows on a page when a category has the same slug as the page and at least one published post in it — the same link Ekwa Related Articles uses (page "bridges" → category "bridges").', 'ekwa' )
+							__( 'Shows wherever Ekwa Related Articles has posts to list: on a page when a category has the same slug as the page and at least one published post in it (page "bridges" → category "bridges"), and on the front page when the "featured-articles" category has posts.', 'ekwa' )
 						)
 				),
 

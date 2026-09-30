@@ -267,6 +267,55 @@ function ekwa_render_shortcode_builder_page() {
 			'description' => __( 'Renders the site copyright line — no attributes needed.', 'ekwa' ),
 			'attrs'       => array(),
 		),
+
+		/* ------------------------------------------------------------------ */
+		'related_articles_heading' => array(
+			'label'       => __( 'Related Articles Heading', 'ekwa' ),
+			'icon'        => 'fa-solid fa-heading',
+			'description' => __( 'Heading text for Ekwa Related Articles. On a page whose slug matches a category with posts: "Related Articles", or "Related Article" for one. On the front page: "Featured Articles" / "Featured Article". Nothing anywhere else — put it in a Heading block inside an Ekwa Conditional set to "Pages with related articles".', 'ekwa' ),
+			'attrs'       => array(
+				array(
+					'key'         => 'singular',
+					'label'       => __( 'One Article', 'ekwa' ),
+					'type'        => 'text',
+					'default'     => 'Related Article',
+					'placeholder' => 'Related Article',
+					'help'        => __( 'Shown when the page has exactly one related article.', 'ekwa' ),
+				),
+				array(
+					'key'         => 'plural',
+					'label'       => __( 'Several Articles', 'ekwa' ),
+					'type'        => 'text',
+					'default'     => 'Related Articles',
+					'placeholder' => 'Related Articles',
+					'help'        => __( 'Shown when the page has more than one.', 'ekwa' ),
+				),
+				array(
+					'key'         => 'featured_singular',
+					'label'       => __( 'One Featured Article', 'ekwa' ),
+					'type'        => 'text',
+					'default'     => 'Featured Article',
+					'placeholder' => 'Featured Article',
+					'help'        => __( 'Front page, when the featured category has one post.', 'ekwa' ),
+				),
+				array(
+					'key'         => 'featured_plural',
+					'label'       => __( 'Several Featured Articles', 'ekwa' ),
+					'type'        => 'text',
+					'default'     => 'Featured Articles',
+					'placeholder' => 'Featured Articles',
+					'help'        => __( 'Front page, when it has more than one.', 'ekwa' ),
+				),
+				array(
+					'key'         => 'featured_slug',
+					'label'       => __( 'Featured Category Slug', 'ekwa' ),
+					'type'        => 'text',
+					'default'     => 'featured-articles',
+					'placeholder' => 'featured-articles',
+					'help'        => __( 'Category listed on the front page. Match the Related Articles block\'s setting.', 'ekwa' ),
+				),
+			),
+		),
 	);
 	?>
 	<div class="wrap ekwa-sc-builder-wrap">
