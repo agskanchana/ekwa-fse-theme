@@ -916,7 +916,8 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_enqueue_editor_assets' );
  *
  * Conditions (evaluated in this order):
  *   1. Page visibility   – show/hide on specific page IDs
- *   2. Content type      – post, page, front page, archive, search, 404…
+ *   2. Content type      – post, page, front page, archive, search, 404,
+ *                          pages with related articles…
  *   3. Device type       – mobile / desktop (wp_is_mobile)
  *   4. User state        – logged-in / logged-out  (+optional role filter)
  *   5. Ad tracking       – adward_number cookie or ?ads URL param
@@ -991,6 +992,9 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 			$is_post        = is_singular( 'post' );
 			$is_cornerstone = is_singular() && '1' === (string) get_post_meta( get_the_ID(), '_yoast_wpseo_is_cornerstone', true );
 			if ( ! $is_post && ! $is_cornerstone ) { return ''; }
+			break;
+		case 'has_related_articles':
+			if ( ! ekwa_conditional_page_has_related_articles() ) { return ''; }
 			break;
 	}
 
@@ -1069,6 +1073,47 @@ function ekwa_render_conditional_block( $attrs, $content ) {
 
 	/* All conditions passed — output the inner blocks. */
 	return $content;
+}
+
+/**
+ * Whether the page being viewed has related articles — the test behind the
+ * ekwa/conditional "Pages with related articles" content type.
+ *
+ * Follows the same link as ekwa/related-articles: the page slug is looked up
+ * as a category slug (page "bridges" → category "bridges"), and the page has
+ * related articles when that category holds at least one post the block would
+ * list — published, including posts filed under a child category.
+ *
+ * Pages only: single posts, archives, search, 404 and the blog home are always
+ * false. A static front page is checked by its own slug like any other page —
+ * the featured-articles fallback ekwa/related-articles shows there is not that
+ * page's related articles.
+ *
+ * @return bool
+ */
+function ekwa_conditional_page_has_related_articles() {
+	if ( ! is_page() ) {
+		return false;
+	}
+
+	$page = get_queried_object();
+	if ( ! $page || empty( $page->post_name ) ) {
+		return false;
+	}
+
+	$term = get_term_by( 'slug', $page->post_name, 'category' );
+	if ( ! $term || is_wp_error( $term ) ) {
+		return false;
+	}
+
+	$posts = get_posts( array(
+		'post_type'      => 'post',
+		'posts_per_page' => 1,
+		'cat'            => $term->term_id,
+		'fields'         => 'ids',
+	) );
+
+	return ! empty( $posts );
 }
 
 /**

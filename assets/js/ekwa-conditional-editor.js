@@ -6,7 +6,8 @@
  *
  * Conditions supported:
  *   • Page visibility   — show/hide on specific pages
- *   • Content type      — posts, pages, front page, archive, search, 404…
+ *   • Content type      — posts, pages, front page, archive, search, 404,
+ *                         pages with related articles…
  *   • Device type       — all / mobile / desktop
  *   • User state        — all / logged-in (+ role filter) / logged-out
  *   • Ad tracking       — ignore / show only when tracking / hide when tracking
@@ -215,9 +216,14 @@
 							{ label: __( 'Hide on pages',      'ekwa' ), value: 'hide_on_pages' },
 							{ label: __( 'Cornerstone content only (Yoast)',    'ekwa' ), value: 'cornerstone_only'     },
 							{ label: __( 'Cornerstone content + blog posts',    'ekwa' ), value: 'cornerstone_or_posts' },
+							{ label: __( 'Pages with related articles',         'ekwa' ), value: 'has_related_articles' },
 						],
 						onChange : function ( v ) { setAttrs( { contentType: v } ); },
-					} )
+					} ),
+					attrs.contentType === 'has_related_articles' &&
+						el( 'p', { style: { fontSize: 12, color: '#757575', margin: '4px 0 0' } },
+							__( 'Shows on a page when a category has the same slug as the page and at least one published post in it — the same link Ekwa Related Articles uses (page "bridges" → category "bridges").', 'ekwa' )
+						)
 				),
 
 				/* --- Device Type --- */
