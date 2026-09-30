@@ -834,11 +834,13 @@ add_shortcode( 'ekwa_social', 'ekwa_social_shortcode' );
  *     "Featured Articles", or "Featured Article" for one
  *   - anywhere else, or with no posts: nothing
  *
- * Returns the text only, for use inside a Heading block. Wrap that heading in
- * an Ekwa Conditional set to "Pages with related articles" so the empty
- * heading never renders where there are no articles.
+ * Renders <h2 class="ekwa-related-heading">…</h2> by default — put it in a
+ * Shortcode block. With nothing to list, nothing is rendered at all, not even
+ * the tag. tag="none" returns the bare text, for use inside a Heading block.
  *
  * Attributes:
+ *   tag                (string) h1–h6, p, div, span, or "none" for text only.
+ *                               Default: 'h2'
  *   singular           (string) Default: 'Related Article'
  *   plural             (string) Default: 'Related Articles'
  *   featured_singular  (string) Default: 'Featured Article'
@@ -848,11 +850,14 @@ add_shortcode( 'ekwa_social', 'ekwa_social_shortcode' );
  *
  * Usage examples:
  *   [related_articles_heading]
+ *   [related_articles_heading tag="h3"]
+ *   [related_articles_heading tag="none"]
  *   [related_articles_heading singular="Article on this topic" plural="Articles on this topic"]
  */
 function ekwa_related_articles_heading_shortcode( $atts ) {
 	$atts = shortcode_atts(
 		array(
+			'tag'               => 'h2',
 			'singular'          => __( 'Related Article', 'ekwa' ),
 			'plural'            => __( 'Related Articles', 'ekwa' ),
 			'featured_singular' => __( 'Featured Article', 'ekwa' ),
@@ -873,7 +878,16 @@ function ekwa_related_articles_heading_shortcode( $atts ) {
 	} else {
 		$text = $found['plural'] ? $atts['plural'] : $atts['singular'];
 	}
+	$text = esc_html( $text );
 
-	return esc_html( $text );
+	$tag = strtolower( trim( (string) $atts['tag'] ) );
+	if ( 'none' === $tag ) {
+		return $text;
+	}
+	if ( ! in_array( $tag, array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span' ), true ) ) {
+		$tag = 'h2';
+	}
+
+	return '<' . $tag . ' class="ekwa-related-heading">' . $text . '</' . $tag . '>';
 }
 add_shortcode( 'related_articles_heading', 'ekwa_related_articles_heading_shortcode' );

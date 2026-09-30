@@ -272,8 +272,27 @@ function ekwa_render_shortcode_builder_page() {
 		'related_articles_heading' => array(
 			'label'       => __( 'Related Articles Heading', 'ekwa' ),
 			'icon'        => 'fa-solid fa-heading',
-			'description' => __( 'Heading text for Ekwa Related Articles. On a page whose slug matches a category with posts: "Related Articles", or "Related Article" for one. On the front page: "Featured Articles" / "Featured Article". Nothing anywhere else — put it in a Heading block inside an Ekwa Conditional set to "Pages with related articles".', 'ekwa' ),
+			'description' => __( 'Heading for Ekwa Related Articles. On a page whose slug matches a category with posts: "Related Articles", or "Related Article" for one. On the front page: "Featured Articles" / "Featured Article". Renders nothing anywhere else — place it in a Shortcode block.', 'ekwa' ),
 			'attrs'       => array(
+				array(
+					'key'     => 'tag',
+					'label'   => __( 'HTML Tag', 'ekwa' ),
+					'type'    => 'select',
+					'options' => array(
+						'h1'   => 'H1',
+						'h2'   => 'H2',
+						'h3'   => 'H3',
+						'h4'   => 'H4',
+						'h5'   => 'H5',
+						'h6'   => 'H6',
+						'p'    => 'Paragraph (p)',
+						'div'  => 'div',
+						'span' => 'span',
+						'none' => 'None — text only',
+					),
+					'default' => 'h2',
+					'help'    => __( 'Element wrapped around the text (class "ekwa-related-heading"). Use "None" when the shortcode sits inside a Heading block.', 'ekwa' ),
+				),
 				array(
 					'key'         => 'singular',
 					'label'       => __( 'One Article', 'ekwa' ),
