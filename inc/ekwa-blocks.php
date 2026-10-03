@@ -4406,13 +4406,31 @@ function ekwa_render_image_block( $attrs ) {
 		$style = 'object-fit:' . $object_fit . ';';
 	}
 
-	// The lazysizes placeholder is a 1×1 GIF. Under height:auto its square
-	// shape would beat the width/height ratio until the real file swaps in, so
-	// hand the stylesheet the real ratio for that window.
-	$w_px = ekwa_image_px( $width );
-	$h_px = ekwa_image_px( $height );
-	if ( $responsive && $use_lazysizes && $w_px && $h_px ) {
-		$style .= '--ekwa-ratio:' . $w_px . '/' . $h_px . ';';
+	// The image's real proportions, where the width/height attributes can't
+	// carry them:
+	// - fields that aren't two pixel numbers ("100%", "auto", a width alone).
+	//   WordPress still adds sizes="auto" to the lazy <img> — it only checks
+	//   that a width attribute exists — and for sizes=auto the browser applies
+	//   `contain: size`: the file's own ratio is ignored and the height falls
+	//   back to core's contain-intrinsic-size, 1500px. Taken from the
+	//   attachment, so a Media Library image always has one.
+	// - lazysizes mode: the placeholder is a 1×1 GIF, whose square shape would
+	//   set the height until the real file swaps in.
+	$w_px  = ekwa_image_px( $width );
+	$h_px  = ekwa_image_px( $height );
+	$ratio = '';
+	if ( $w_px && $h_px ) {
+		if ( $use_lazysizes ) {
+			$ratio = $w_px . '/' . $h_px;
+		}
+	} elseif ( $media_id ) {
+		$meta = wp_get_attachment_metadata( $media_id );
+		if ( is_array( $meta ) && ! empty( $meta['width'] ) && ! empty( $meta['height'] ) ) {
+			$ratio = (int) $meta['width'] . '/' . (int) $meta['height'];
+		}
+	}
+	if ( $responsive && '' !== $ratio ) {
+		$style .= '--ekwa-ratio:' . $ratio . ';';
 	}
 
 	// Build the class list — append `lazyload` when lazysizes mode is active.
