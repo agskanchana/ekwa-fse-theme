@@ -4287,6 +4287,36 @@ function ekwa_inline_style_blocks() {
 
 
 /**
+ * A width/height field as whole pixels, or 0 when it isn't one.
+ *
+ * The ekwa/image fields take free text ("600", "600px", "100%", "auto"); only
+ * plain pixel values describe a size other code can do arithmetic with.
+ *
+ * @param mixed $value Attribute value.
+ * @return int
+ */
+function ekwa_image_px( $value ) {
+	return preg_match( '/^\s*(\d+)\s*(?:px)?\s*$/i', (string) $value, $m ) ? (int) $m[1] : 0;
+}
+
+/**
+ * The `sizes` attribute for an ekwa/image srcset, from its width field.
+ *
+ * Shared with the hero <link rel=preload> (ekwa_perf_emit_hero_preloads) so
+ * the preload picks the same file the <img> does. A width that isn't pixels
+ * ("100%", "auto") says nothing about the rendered size, so it falls back to
+ * 100vw — read as a number, "100%" used to claim a 100px slot and the browser
+ * downloaded the smallest file in the srcset.
+ *
+ * @param mixed $width Width field value.
+ * @return string
+ */
+function ekwa_image_sizes_attr( $width ) {
+	$w = ekwa_image_px( $width );
+	return $w > 0 ? '(max-width: ' . $w . 'px) 100vw, ' . $w . 'px' : '100vw';
+}
+
+/**
  * Server-side render callback for the ekwa/image block.
  *
  * Outputs a clean <img> tag with no figure wrapper. Builds attributes
@@ -4353,10 +4383,7 @@ function ekwa_render_image_block( $attrs ) {
 	if ( $media_id && function_exists( 'ekwa_perf_srcset_enabled' ) && ekwa_perf_srcset_enabled() ) {
 		$srcset = wp_get_attachment_image_srcset( $media_id, 'full' );
 		if ( $srcset ) {
-			$w_int = (int) $width;
-			$sizes = $w_int > 0
-				? '(max-width: ' . $w_int . 'px) 100vw, ' . $w_int . 'px'
-				: '100vw';
+			$sizes = ekwa_image_sizes_attr( $width );
 		}
 	}
 
@@ -4364,9 +4391,28 @@ function ekwa_render_image_block( $attrs ) {
 	$decoding_async = function_exists( 'ekwa_perf_decoding_async_enabled' ) ? ekwa_perf_decoding_async_enabled() : true;
 	$use_lazysizes  = ( $lazy_mode === 'lazysizes' && ! $hero );
 
+	// Keep the image's proportions when it's narrower than its width attribute.
+	// width/height are printed so the browser reserves the slot before the file
+	// arrives, but CSS that caps the width (a child theme's
+	// `img { max-width: 100% }`) without releasing the height leaves the height
+	// attribute in charge: a 900×600 image in a 400px column renders 400×600,
+	// stretched. data-ekwa-image hooks the zero-specificity `height: auto` in
+	// blocks/ekwa-image/style.css. Not when Object Fit is set — there
+	// width × height is a deliberate box the image is cropped into.
+	$responsive = '' === $object_fit;
+
 	$style = '';
 	if ( $object_fit ) {
 		$style = 'object-fit:' . $object_fit . ';';
+	}
+
+	// The lazysizes placeholder is a 1×1 GIF. Under height:auto its square
+	// shape would beat the width/height ratio until the real file swaps in, so
+	// hand the stylesheet the real ratio for that window.
+	$w_px = ekwa_image_px( $width );
+	$h_px = ekwa_image_px( $height );
+	if ( $responsive && $use_lazysizes && $w_px && $h_px ) {
+		$style .= '--ekwa-ratio:' . $w_px . '/' . $h_px . ';';
 	}
 
 	// Build the class list — append `lazyload` when lazysizes mode is active.
@@ -4421,6 +4467,7 @@ function ekwa_render_image_block( $attrs ) {
 	$html .= ekwa_render_inline_style_attr( $attrs, $style );
 	if ( $anchor )         { $html .= ' id="' . esc_attr( $anchor ) . '"'; }
 	if ( $no_webp )        { $html .= ' data-ekwa-no-webp="1"'; }
+	if ( $responsive )     { $html .= ' data-ekwa-image'; }
 	$html .= '>';
 
 	// SEO/no-JS fallback so crawlers and JS-disabled clients still see the image.
@@ -4432,6 +4479,7 @@ function ekwa_render_image_block( $attrs ) {
 		if ( $width )  { $fallback .= ' width="' . $width . '"'; }
 		if ( $height ) { $fallback .= ' height="' . $height . '"'; }
 		if ( $no_webp ) { $fallback .= ' data-ekwa-no-webp="1"'; }
+		if ( $responsive ) { $fallback .= ' data-ekwa-image'; }
 		$fallback .= ' loading="lazy">';
 		// Stamped so core's later content-tags passes don't lazysize the copy
 		// and nest it in another <noscript>. @see ekwa_perf_noscript_fallback()
@@ -4655,7 +4703,14 @@ function ekwa_render_video_block( $attrs ) {
 		return '';
 	}
 
-	$lazy           = ! empty( $attrs['lazyLoad'] );
+	// High fetch priority, for a video above the fold. Browsers ignore
+	// fetchpriority on <video>, so it goes where the page actually waits: the
+	// poster — what PageSpeed measures as the LCP — gets a
+	// <link rel=preload fetchpriority=high> just before the element, and the
+	// video file is fetched up front (preload="auto"). Lazy loading would defeat
+	// both, so it is skipped for this video.
+	$priority       = ! empty( $attrs['fetchPriorityHigh'] );
+	$lazy           = ! empty( $attrs['lazyLoad'] ) && ! $priority;
 	$lazy_mode      = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
 	$use_lazysizes  = $lazy && $lazy_mode === 'lazysizes';
 
@@ -4687,6 +4742,8 @@ function ekwa_render_video_block( $attrs ) {
 		// `data-src` on inner <source> is NOT processed, so we put the URL
 		// here and drop the <source> child entirely.
 		$video .= ' data-src="' . $src . '"';
+	} elseif ( $priority ) {
+		$video .= ' preload="auto"';
 	} elseif ( $lazy && ! $autoplay ) {
 		// Native lazy fallback: preload="none" only honored when autoplay is off.
 		$video .= ' preload="none"';
@@ -4696,6 +4753,10 @@ function ekwa_render_video_block( $attrs ) {
 		$video .= '<source src="' . $src . '" type="video/mp4">';
 	}
 	$video .= '</video>';
+
+	if ( $priority && $poster ) {
+		$video = '<link rel="preload" as="image" href="' . $poster . '" fetchpriority="high">' . $video;
+	}
 
 	// No transcript → identical to the legacy output.
 	$transcript = isset( $attrs['transcript'] ) ? trim( (string) $attrs['transcript'] ) : '';

@@ -131,9 +131,18 @@
 					el( PanelBody, { title: __( 'Performance' ), initialOpen: false },
 						el( ToggleControl, {
 							label: __( 'Lazy load' ),
-							help: __( 'With Performance → Lazy mode = lazysizes, the video file is fetched only when the wrapper enters the viewport (works alongside Autoplay). With Native mode, applies preload="none" — ignored if Autoplay is on.' ),
-							checked: !! attributes.lazyLoad,
+							help: attributes.fetchPriorityHigh
+								? __( 'Off while High fetch priority is on.', 'ekwa' )
+								: __( 'With Performance → Lazy mode = lazysizes, the video file is fetched only when the wrapper enters the viewport (works alongside Autoplay). With Native mode, applies preload="none" — ignored if Autoplay is on.' ),
+							checked: !! attributes.lazyLoad && ! attributes.fetchPriorityHigh,
+							disabled: !! attributes.fetchPriorityHigh,
 							onChange: function ( val ) { setAttributes( { lazyLoad: val } ); },
+						} ),
+						el( ToggleControl, {
+							label: __( 'High fetch priority', 'ekwa' ),
+							help: __( 'For a video at the top of the page. Preloads the poster image with high priority (the image PageSpeed measures as the LCP) and starts loading the video right away. Set a poster image for the full effect.', 'ekwa' ),
+							checked: !! attributes.fetchPriorityHigh,
+							onChange: function ( val ) { setAttributes( { fetchPriorityHigh: val } ); },
 						} )
 					),
 					el( PanelBody, { title: __( 'Transcript' ), initialOpen: false },

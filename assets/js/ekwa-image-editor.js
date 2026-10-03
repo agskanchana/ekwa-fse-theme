@@ -469,6 +469,9 @@
 						width: width || undefined,
 						height: height || undefined,
 						style: imgStyle,
+						// Same hook as the front end (blocks/ekwa-image/style.css,
+						// loaded in the editor too) so the preview keeps proportions.
+						'data-ekwa-image': objectFit ? undefined : '',
 					} ),
 					el( 'div', { style: { marginTop: '8px', display: 'flex', gap: '8px' } },
 						el( MediaUploadCheck, null,

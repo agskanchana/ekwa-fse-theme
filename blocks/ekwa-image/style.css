@@ -1,0 +1,25 @@
+/* Ekwa Image — inlined once per page when an ekwa/image block renders
+   (see ekwa_inline_asset_map()).
+
+   The block prints the image's pixel size as width/height so the browser can
+   reserve its slot before the file arrives. CSS that caps the width without
+   releasing the height (e.g. a child theme's `img { max-width: 100% }`)
+   leaves the height attribute in charge and the image stretches. height:auto
+   hands the height back to the aspect ratio, which browsers still take from
+   width/height — the slot is reserved exactly as before.
+
+   :where() keeps both rules at zero specificity, so anything a theme or child
+   theme sets on these images — even a bare `img {}` rule — wins. Images with
+   an Object Fit setting don't carry data-ekwa-image: their width × height is
+   a deliberate box. */
+
+:where(img[data-ekwa-image]) {
+	max-width: 100%;
+	height: auto;
+}
+
+/* lazysizes mode: until the real file swaps in, the src is a 1×1 GIF whose
+   square shape would set the height. The block passes the real ratio. */
+:where(img[data-ekwa-image][style*="--ekwa-ratio"]:is(.lazyload, .lazyloading)) {
+	aspect-ratio: var(--ekwa-ratio);
+}

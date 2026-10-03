@@ -183,10 +183,7 @@ function ekwa_perf_emit_hero_preloads() {
 		if ( $srcset_on ) {
 			$srcset = wp_get_attachment_image_srcset( $media_id, 'full' );
 			if ( $srcset ) {
-				$width = isset( $attrs['width'] ) ? (int) $attrs['width'] : 0;
-				$sizes = $width > 0
-					? '(max-width: ' . $width . 'px) 100vw, ' . $width . 'px'
-					: '100vw';
+				$sizes = ekwa_image_sizes_attr( $attrs['width'] ?? '' );
 			}
 		}
 
