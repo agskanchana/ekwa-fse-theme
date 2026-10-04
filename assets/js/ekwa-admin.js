@@ -337,7 +337,15 @@
 		{ name: 'Podcast',          cls: 'fa-solid fa-podcast' },
 	];
 
+	// Shown per open/keystroke. The full Font Awesome set is ~2,100 icons;
+	// typing narrows it, so the grid never has to draw them all at once.
+	var EKWA_ICON_LIMIT = 150;
+
 	function ekwaIconSearch(query) {
+		// Full Font Awesome set (assets/js/ekwa-icon-library.js), the list above first.
+		if (window.ekwaIconLibrary) {
+			return window.ekwaIconLibrary.search(query, EKWA_ICONS, EKWA_ICON_LIMIT);
+		}
 		var q = query.toLowerCase().trim();
 		if (!q) return EKWA_ICONS;
 		return EKWA_ICONS.filter(function (icon) {
@@ -350,7 +358,11 @@
 		var $field    = $input.closest('.ekwa-icon-field');
 		var $dropdown = $field.find('.ekwa-icon-picker-dropdown');
 		var results   = ekwaIconSearch($input.val());
-		var html      = '<div class="ekwa-icon-grid">';
+		var html      = '';
+		if (results.total && results.total > results.length) {
+			html += '<div class="ekwa-icon-more">Showing ' + results.length + ' of ' + results.total + ' icons — type to search all of them.</div>';
+		}
+		html += '<div class="ekwa-icon-grid">';
 
 		if (results.length) {
 			$.each(results, function (i, icon) {

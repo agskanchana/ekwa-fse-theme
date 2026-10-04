@@ -34,7 +34,7 @@ function ekwa_enqueue_nav_menu_admin_assets( $hook ) {
 	wp_enqueue_script(
 		'ekwa-admin-js',
 		get_template_directory_uri() . '/assets/js/ekwa-admin.js',
-		array( 'jquery', 'media-editor', 'media-views' ),
+		array( 'jquery', 'media-editor', 'media-views', 'ekwa-icon-library' ),
 		filemtime( get_template_directory() . '/assets/js/ekwa-admin.js' ),
 		true
 	);

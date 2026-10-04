@@ -123,6 +123,11 @@
 	];
 
 	function iconSearch( query ) {
+		// Full Font Awesome set (assets/js/ekwa-icon-library.js), the list above
+		// first; capped so the sidebar grid stays quick — typing narrows it.
+		if ( window.ekwaIconLibrary ) {
+			return window.ekwaIconLibrary.search( query, EKWA_ICONS, 150 );
+		}
 		var q = ( query || '' ).toLowerCase().trim();
 		if ( ! q ) { return EKWA_ICONS; }
 		return EKWA_ICONS.filter( function ( icon ) {

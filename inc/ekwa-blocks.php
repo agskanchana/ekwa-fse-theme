@@ -86,11 +86,29 @@ function ekwa_register_blocks() {
 		)
 	);
 
+	// The full Font Awesome icon list for every icon picker (generated from the
+	// bundled all.min.css + webfonts) and its search helper. Registered here
+	// on init so the admin pickers (ekwa-admin-js) can depend on it too.
+	wp_register_script(
+		'ekwa-fa-icon-data',
+		get_template_directory_uri() . '/assets/fontawesome/icons.js',
+		array(),
+		filemtime( get_template_directory() . '/assets/fontawesome/icons.js' ),
+		true
+	);
+	wp_register_script(
+		'ekwa-icon-library',
+		get_template_directory_uri() . '/assets/js/ekwa-icon-library.js',
+		array( 'ekwa-fa-icon-data' ),
+		filemtime( get_template_directory() . '/assets/js/ekwa-icon-library.js' ),
+		true
+	);
+
 	// Icon block (standalone FA icon element).
 	wp_register_script(
 		'ekwa-icon-editor',
 		get_theme_file_uri( 'assets/js/ekwa-icon-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-inline-style-control' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-link-source-control', 'ekwa-inline-style-control', 'ekwa-icon-library' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-icon-editor.js' ) ),
 		true
 	);
@@ -106,7 +124,7 @@ function ekwa_register_blocks() {
 	wp_register_script(
 		'ekwa-icon-format',
 		get_theme_file_uri( 'assets/js/ekwa-icon-format.js' ),
-		array( 'wp-rich-text', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
+		array( 'wp-rich-text', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'ekwa-icon-library' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);
@@ -2245,12 +2263,29 @@ function ekwa_render_hamburger_menu_block( $attrs ) {
 			$mmenu_css .= $var_name . ':' . $var_value . ';';
 		}
 	}
-	if ( '' !== $mmenu_css ) {
-		wp_add_inline_style( 'mmenu-light', ':root{' . $mmenu_css . '}' );
+	// mmenu-light fades its divider lines and sub-page header (opacity .15 /
+	// .4). A color someone picked is meant to be seen, so those draw at full
+	// strength — only when set, leaving the faded defaults alone otherwise.
+	if ( '' !== $mmenu_color_map['--ekwa-mmenu-divider'] ) {
+		$mmenu_css .= '--ekwa-mmenu-divider-opacity:1;';
+	}
+	if ( '' !== $mmenu_color_map['--ekwa-mmenu-navbar-bg'] || '' !== $mmenu_color_map['--ekwa-mmenu-navbar-text'] ) {
+		$mmenu_css .= '--ekwa-mmenu-navbar-opacity:1;';
 	}
 
 	/* Front-end CSS/JS is inlined on render — see inc/ekwa-inline-assets.php. */
 	$out = '';
+
+	if ( '' !== $mmenu_css ) {
+		if ( function_exists( 'ekwa_perf_defer_mmenu_enabled' ) && ekwa_perf_defer_mmenu_enabled() ) {
+			// Deferred mode never enqueues the mmenu-light stylesheet, so an
+			// inline style attached to it would never print. Ship the
+			// variables with the block instead.
+			$out .= '<style id="ekwa-mmenu-colors">:root{' . $mmenu_css . '}</style>';
+		} else {
+			wp_add_inline_style( 'mmenu-light', ':root{' . $mmenu_css . '}' );
+		}
+	}
 
 	// ── Hamburger button ────────────────────────────────────────
 	$out .= '<button class="ekwa-hamburger-btn"'

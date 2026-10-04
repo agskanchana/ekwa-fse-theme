@@ -60,12 +60,41 @@
 	font-size: 1.1em;
 	color: var(--ekwa-mmenu-icon, var(--wp--preset--color--primary, #2563eb));
 }
+/* mmenu-light puts mm-spn--navbar on the WHOLE menu, not just its header, so
+   this is the panel. The sub-page header is the ::after (title) and ::before
+   (back arrow) pseudo-elements below — the Sub-page Header colors go there
+   only, instead of repainting the panel and every item. With nothing set, the
+   fallbacks give exactly the panel these two rules always produced. */
 .mm-spn.mm-spn--navbar {
-	background: var(--ekwa-mmenu-navbar-bg, var(--ekwa-mmenu-bg, var(--wp--preset--color--primary, #2563eb)));
-	color: var(--ekwa-mmenu-navbar-text, var(--ekwa-mmenu-text, #fff));
+	background: var(--ekwa-mmenu-bg, var(--wp--preset--color--primary, #2563eb));
+	color: var(--ekwa-mmenu-text, #fff);
 }
 .mm-spn.mm-spn--navbar a {
-	color: var(--ekwa-mmenu-navbar-text, var(--ekwa-mmenu-text, #fff));
+	color: var(--ekwa-mmenu-text, #fff);
+}
+
+/* Sub-page header. mmenu-light draws the title faded (opacity .4); a chosen
+   header color is shown at full strength (--ekwa-mmenu-navbar-opacity is
+   printed only then). The back arrow sits above the title's background. */
+.ekwa-mobile-nav.mm-spn.mm-spn--navbar::after {
+	background: var(--ekwa-mmenu-navbar-bg, transparent);
+	color: var(--ekwa-mmenu-navbar-text, inherit);
+	opacity: var(--ekwa-mmenu-navbar-opacity, .4);
+}
+.ekwa-mobile-nav.mm-spn.mm-spn--navbar::before {
+	z-index: 1;
+	color: var(--ekwa-mmenu-navbar-text, inherit);
+	opacity: var(--ekwa-mmenu-navbar-opacity, .4);
+}
+
+/* Item dividers are pseudo-element lines (mmenu-light: 1px currentColor at
+   opacity .15), not borders on the <li>. A chosen divider color is shown at
+   full strength (--ekwa-mmenu-divider-opacity is printed only then). */
+.ekwa-mobile-nav.mm-spn li::after,
+.ekwa-mobile-nav.mm-spn a:not(:last-child)::after,
+.ekwa-mobile-nav.mm-spn.mm-spn--navbar ul::before {
+	border-color: var(--ekwa-mmenu-divider, currentColor);
+	opacity: var(--ekwa-mmenu-divider-opacity, .15);
 }
 
 /* mmenu-light close button (injected by JS into .mm-ocd__content) */

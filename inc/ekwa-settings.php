@@ -60,7 +60,7 @@ function ekwa_admin_enqueue( $hook ) {
 	wp_enqueue_script(
 		'ekwa-admin-js',
 		get_template_directory_uri() . '/assets/js/ekwa-admin.js',
-		array( 'jquery', 'wp-color-picker' ),
+		array( 'jquery', 'wp-color-picker', 'ekwa-icon-library' ),
 		wp_get_theme()->get( 'Version' ),
 		true
 	);

@@ -300,6 +300,31 @@
 	padding: 8px;
 }
 
+.ekwa-icon-more {
+	padding: 8px 12px 0;
+	color: #646970;
+	font-size: 12px;
+}
+
+/* Fit as many columns as the field allows — the menu-item field is narrow, and
+   a fixed six columns there meant two visible tiles and a sideways scrollbar.
+   Long icon names are cut with an ellipsis; the tile's title shows them whole. */
+.ekwa-icon-picker-dropdown {
+	overflow-x: hidden;
+}
+.ekwa-icon-picker-dropdown .ekwa-icon-grid {
+	grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+}
+.ekwa-icon-picker-dropdown .ekwa-icon-option {
+	min-width: 0;
+}
+.ekwa-icon-picker-dropdown .ekwa-icon-option span {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .ekwa-icon-option {
 	display: flex;
 	flex-direction: column;
