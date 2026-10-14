@@ -3409,6 +3409,60 @@ function ekwa_faq_sanitize_color( $value ) {
 }
 
 /**
+ * Expand read-only text shortcodes for FAQ schema without consuming IDs or
+ * once-per-request assets from other shortcode callbacks.
+ *
+ * @param string $text Question or rendered answer HTML.
+ * @return string
+ */
+function ekwa_faq_schema_do_shortcode( $text ) {
+	global $shortcode_tags;
+
+	if ( false === strpos( $text, '[' ) ) {
+		return $text;
+	}
+
+	$safe_callbacks = array(
+		'ekwa_phone_shortcode',
+		'ekwa_address_shortcode',
+		'ekwa_copyright_shortcode',
+		'ekwa_hours_shortcode',
+		'ekwa_related_articles_heading_shortcode',
+	);
+	$skip_stateful = static function ( $output, $tag, $atts, $matches ) use ( &$shortcode_tags, $safe_callbacks ) {
+		if ( false !== $output || in_array( $shortcode_tags[ $tag ] ?? null, $safe_callbacks, true ) ) {
+			return $output;
+		}
+		return $matches[0];
+	};
+
+	add_filter( 'pre_do_shortcode_tag', $skip_stateful, PHP_INT_MAX, 4 );
+	try {
+		return do_shortcode( $text );
+	} finally {
+		remove_filter( 'pre_do_shortcode_tag', $skip_stateful, PHP_INT_MAX );
+	}
+}
+
+/**
+ * Escape shortcode delimiters inside JSON strings while preserving arrays.
+ *
+ * @param string $schema_json Encoded FAQ schema.
+ * @return string
+ */
+function ekwa_faq_schema_escape_brackets( $schema_json ) {
+	$escaped_json = preg_replace_callback(
+		'/"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"/',
+		static function ( $matches ) {
+			return str_replace( array( '[', ']' ), array( '\u005B', '\u005D' ), $matches[0] );
+		},
+		$schema_json
+	);
+
+	return null !== $escaped_json ? $escaped_json : $schema_json;
+}
+
+/**
  * Server-side render callback for the ekwa/faq block.
  *
  * Wraps inner ekwa/faq-item blocks in a <div class="ekwa-faq"> with custom
@@ -3456,7 +3510,7 @@ function ekwa_render_faq_block( $attrs, $content, $block = null ) {
 			if ( 'ekwa/faq-item' !== $inner['blockName'] ) {
 				continue;
 			}
-			$question = isset( $inner['attrs']['question'] ) ? wp_strip_all_tags( $inner['attrs']['question'] ) : '';
+			$question = isset( $inner['attrs']['question'] ) ? wp_strip_all_tags( ekwa_faq_schema_do_shortcode( $inner['attrs']['question'] ) ) : '';
 			$question = trim( html_entity_decode( $question, ENT_QUOTES, 'UTF-8' ) );
 			if ( '' === $question ) {
 				continue;
@@ -3472,7 +3526,7 @@ function ekwa_render_faq_block( $attrs, $content, $block = null ) {
 				$answer_html = isset( $inner['innerHTML'] ) ? $inner['innerHTML'] : '';
 			}
 
-			$answer_text = trim( wp_strip_all_tags( $answer_html ) );
+			$answer_text = trim( wp_strip_all_tags( ekwa_faq_schema_do_shortcode( $answer_html ) ) );
 			$answer_text = preg_replace( '/\s+/', ' ', $answer_text );
 			if ( '' === $answer_text ) {
 				continue;
@@ -3494,8 +3548,11 @@ function ekwa_render_faq_block( $attrs, $content, $block = null ) {
 				'@type'      => 'FAQPage',
 				'mainEntity' => $entities,
 			);
+			$schema_json = wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			// Keep later shortcode passes out of strings while preserving array brackets.
+			$schema_json = ekwa_faq_schema_escape_brackets( $schema_json );
 			$schema_html = '<script type="application/ld+json">'
-				. wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+				. $schema_json
 				. '</script>';
 		}
 	}
@@ -5974,7 +6031,7 @@ function ekwa_render_faq_container_block( $attrs, $content, $block = null ) {
 
 			if ( 'ekwa/faq-question' === $name ) {
 				$question_raw = isset( $inner['attrs']['content'] ) ? $inner['attrs']['content'] : '';
-				$question     = trim( html_entity_decode( wp_strip_all_tags( $question_raw ), ENT_QUOTES, 'UTF-8' ) );
+				$question     = trim( html_entity_decode( wp_strip_all_tags( ekwa_faq_schema_do_shortcode( $question_raw ) ), ENT_QUOTES, 'UTF-8' ) );
 				$pending_q    = '' !== $question ? $question : null;
 				continue;
 			}
@@ -5989,7 +6046,7 @@ function ekwa_render_faq_container_block( $attrs, $content, $block = null ) {
 					$answer_html = isset( $inner['innerHTML'] ) ? $inner['innerHTML'] : '';
 				}
 
-				$answer_text = ekwa_faq_clean_answer_html( $answer_html );
+				$answer_text = ekwa_faq_clean_answer_html( ekwa_faq_schema_do_shortcode( $answer_html ) );
 
 				if ( '' !== $answer_text ) {
 					ekwa_faq_container_schema_collector( array(

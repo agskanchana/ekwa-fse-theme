@@ -416,6 +416,12 @@ function ekwa_header_menu_render_megamenu( $top_item, $tree ) {
 		if ( $has_image ) {
 			$col_classes[] = 'has-image';
 		}
+		// Append only current-state classes; other item classes never rendered here.
+		foreach ( (array) $col_item->classes as $class ) {
+			if ( preg_match( '/^current[-_]/', $class ) ) {
+				$col_classes[] = $class;
+			}
+		}
 
 		$out .= '<div' . ekwa_header_menu_class_attr( 'megaColumn', $col_classes ) . '>';
 
