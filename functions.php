@@ -350,6 +350,12 @@ add_action( 'admin_init', 'ekwa_github_handle_manual_check' );
 require_once get_template_directory() . '/inc/ekwa-settings.php';
 
 /**
+ * WAF-safe submit for the settings / schema forms — packs the fields into one
+ * base64 value so ModSecurity doesn't 403 the save (CSS/JS fields look like code).
+ */
+require_once get_template_directory() . '/inc/ekwa-waf-safe-form.php';
+
+/**
  * Location address extraction — resolves a pasted Google Maps "Direction URL"
  * and geocodes it to fill street/city/state/zip/lat/lng in the Locations tab.
  */
