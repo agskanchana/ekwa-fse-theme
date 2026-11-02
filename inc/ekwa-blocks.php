@@ -5351,6 +5351,10 @@ function ekwa_render_categories_block( $attrs ) {
  * configured featured-articles category so the same block doubles as a
  * "Featured Articles" section. Hidden on single posts, archives, search, 404.
  *
+ * With showLatest on (opt-in, default off), the slug matching is skipped: the
+ * block lists the newest posts wherever it is placed (excluding the post being
+ * read), with the "latest" heading labels and an ekwa-related--latest wrapper.
+ *
  * The heading pluralises by post count, and switches to the "featured" labels
  * when the matched category equals the configured featured slug.
  *
@@ -5381,48 +5385,85 @@ function ekwa_render_related_articles_block( $attrs ) {
 	$f_plural      = $attrs['featuredPluralLabel']   ?? __( 'Featured articles', 'ekwa' );
 	$featured_slug = sanitize_title( $attrs['featuredCategorySlug'] ?? 'featured-articles' );
 	$hide_heading  = ! empty( $attrs['hideHeading'] );
+	// Opt-in "latest posts" mode: skip the slug → category matching and list the
+	// newest posts wherever the block is placed. Off (absent) = the original
+	// slug-based behaviour, unchanged.
+	$show_latest   = ! empty( $attrs['showLatest'] );
 
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		if ( $show_latest ) {
+			return '<div class="ekwa-related"><p style="color:#9ca3af;">'
+				. esc_html( sprintf(
+					/* translators: %d: number of posts the block lists. */
+					_n( 'Renders on the front-end: the latest post.', 'Renders on the front-end: the %d latest posts.', $count, 'ekwa' ),
+					$count
+				) )
+				. '</p></div>';
+		}
 		return '<div class="ekwa-related"><p style="color:#9ca3af;">'
 			. esc_html__( 'Renders on the front-end. On pages: posts whose category slug matches the page slug. On the front page / blog home: posts in the featured-articles category.', 'ekwa' )
 			. '</p></div>';
 	}
 
-	// Allow on singular pages and on front page / blog home only.
-	if ( ! is_page() && ! is_front_page() && ! is_home() ) {
-		return '';
-	}
+	if ( $show_latest ) {
+		$latest_query = array(
+			'post_type'           => 'post',
+			'posts_per_page'      => $count,
+			'orderby'             => 'date',
+			'order'               => 'DESC',
+			'ignore_sticky_posts' => true,
+		);
+		// On a blog post, don't list the post being read.
+		if ( is_singular( 'post' ) ) {
+			$latest_query['post__not_in'] = array( get_queried_object_id() );
+		}
+		$posts = get_posts( $latest_query );
+		if ( empty( $posts ) ) {
+			return '';
+		}
 
-	// Page slug → category, with a featured-slug fallback for front page / home.
-	$term = ekwa_related_posts_resolve_category( $featured_slug );
-	if ( ! $term ) {
-		return '';
-	}
-
-	$posts = get_posts( array(
-		'post_type'      => 'post',
-		'posts_per_page' => $count,
-		'cat'            => $term->term_id,
-		'orderby'        => 'date',
-		'order'          => 'DESC',
-	) );
-	if ( empty( $posts ) ) {
-		return '';
-	}
-
-	// Heading: featured slug match uses featured labels, otherwise generic related labels.
-	$is_featured  = ( $term->slug === $featured_slug );
-	if ( $is_featured ) {
-		$heading_text = ( count( $posts ) === 1 ) ? $f_singular : $f_plural;
+		$l_singular   = $attrs['latestSingularLabel'] ?? __( 'Latest article', 'ekwa' );
+		$l_plural     = $attrs['latestPluralLabel']   ?? __( 'Latest articles', 'ekwa' );
+		$heading_text = ( count( $posts ) === 1 ) ? $l_singular : $l_plural;
+		$wrap_open    = '<div class="ekwa-related ekwa-related--latest">';
 	} else {
-		$heading_text = ( count( $posts ) === 1 ) ? $singular : $plural;
+		// Allow on singular pages and on front page / blog home only.
+		if ( ! is_page() && ! is_front_page() && ! is_home() ) {
+			return '';
+		}
+
+		// Page slug → category, with a featured-slug fallback for front page / home.
+		$term = ekwa_related_posts_resolve_category( $featured_slug );
+		if ( ! $term ) {
+			return '';
+		}
+
+		$posts = get_posts( array(
+			'post_type'      => 'post',
+			'posts_per_page' => $count,
+			'cat'            => $term->term_id,
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+		) );
+		if ( empty( $posts ) ) {
+			return '';
+		}
+
+		// Heading: featured slug match uses featured labels, otherwise generic related labels.
+		$is_featured  = ( $term->slug === $featured_slug );
+		if ( $is_featured ) {
+			$heading_text = ( count( $posts ) === 1 ) ? $f_singular : $f_plural;
+		} else {
+			$heading_text = ( count( $posts ) === 1 ) ? $singular : $plural;
+		}
+
+		$wrap_open = '<div class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
 	}
 
 	$heading_html = $hide_heading
 		? ''
 		: '<' . $heading_level . ' class="ekwa-related__title">' . esc_html( $heading_text ) . '</' . $heading_level . '>';
 
-	$wrap_open  = '<div class="ekwa-related" data-category="' . esc_attr( $term->slug ) . '">';
 	$wrap_close = '</div>';
 
 	// Each card uses the editable "Post item template" (Settings → Related Posts)

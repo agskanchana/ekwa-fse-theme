@@ -63,6 +63,14 @@
 				el( InspectorControls, null,
 					el( PanelBody, { title: __( 'Layout' ), initialOpen: true },
 						el( ToggleControl, {
+							label: __( 'Show latest posts' ),
+							help: a.showLatest
+								? __( 'Lists the newest posts wherever this block is placed. Page-slug matching is off.' )
+								: __( 'Off: posts whose category matches the page slug (featured-articles on the home page).' ),
+							checked: !! a.showLatest,
+							onChange: function ( v ) { set( { showLatest: v } ); }
+						} ),
+						el( ToggleControl, {
 							label: __( 'Use carousel' ),
 							help: a.useCarousel ? __( 'Off = simple grid.' ) : __( 'On = sliding carousel.' ),
 							checked: a.useCarousel,
@@ -149,11 +157,13 @@
 							checked: a.hideHeading,
 							onChange: function ( v ) { set( { hideHeading: v } ); }
 						} ),
-						el( TextControl, { label: __( 'Singular label (1 post)' ), value: a.singularLabel, onChange: function ( v ) { set( { singularLabel: v } ); } } ),
-						el( TextControl, { label: __( 'Plural label (2+ posts)' ), value: a.pluralLabel, onChange: function ( v ) { set( { pluralLabel: v } ); } } ),
-						el( TextControl, { label: __( 'Featured singular label' ), value: a.featuredSingularLabel, onChange: function ( v ) { set( { featuredSingularLabel: v } ); } } ),
-						el( TextControl, { label: __( 'Featured plural label' ),   value: a.featuredPluralLabel,   onChange: function ( v ) { set( { featuredPluralLabel: v } ); } } ),
-						el( TextControl, {
+						a.showLatest && el( TextControl, { label: __( 'Latest singular label (1 post)' ), value: a.latestSingularLabel, onChange: function ( v ) { set( { latestSingularLabel: v } ); } } ),
+						a.showLatest && el( TextControl, { label: __( 'Latest plural label (2+ posts)' ), value: a.latestPluralLabel, onChange: function ( v ) { set( { latestPluralLabel: v } ); } } ),
+						! a.showLatest && el( TextControl, { label: __( 'Singular label (1 post)' ), value: a.singularLabel, onChange: function ( v ) { set( { singularLabel: v } ); } } ),
+						! a.showLatest && el( TextControl, { label: __( 'Plural label (2+ posts)' ), value: a.pluralLabel, onChange: function ( v ) { set( { pluralLabel: v } ); } } ),
+						! a.showLatest && el( TextControl, { label: __( 'Featured singular label' ), value: a.featuredSingularLabel, onChange: function ( v ) { set( { featuredSingularLabel: v } ); } } ),
+						! a.showLatest && el( TextControl, { label: __( 'Featured plural label' ),   value: a.featuredPluralLabel,   onChange: function ( v ) { set( { featuredPluralLabel: v } ); } } ),
+						! a.showLatest && el( TextControl, {
 							label: __( 'Featured category slug' ),
 							help: __( 'When the matching category equals this slug, the featured labels are used instead of the related labels.' ),
 							value: a.featuredCategorySlug,
@@ -163,7 +173,9 @@
 				),
 				el( 'div', useBlockProps(),
 					el( Notice, { status: 'info', isDismissible: false },
-						__( 'Renders only on WordPress pages whose slug matches a category slug. Hidden on archives, single posts and home unless the home is a static page with a matching category.' )
+						a.showLatest
+							? __( 'Shows the latest posts wherever this block is placed (on a blog post, the post being read is left out).' )
+							: __( 'Renders only on WordPress pages whose slug matches a category slug. Hidden on archives, single posts and home unless the home is a static page with a matching category.' )
 					),
 					el( ServerSideRender, { block: 'ekwa/related-articles', attributes: a } )
 				)

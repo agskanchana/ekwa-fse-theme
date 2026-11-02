@@ -517,9 +517,9 @@ function ekwa_ai_block_spec_registry() {
 			'block'    => 'ekwa/related-articles',
 			'type'     => 'leaf',
 			'contexts' => array( 'section', 'footer' ),
-			'desc'     => 'Lists related blog posts by category context, as a carousel or a grid. Rendered automatically on pages and the front page.',
-			'attrs'    => array( 'count — number (default 6)', 'useCarousel — bool (default true; false = grid)', 'headingLevel — h2|h3|…', 'hideHeading — bool' ),
-			'examples' => array( "<!-- wp:ekwa/related-articles {\"count\":6} /-->" ),
+			'desc'     => 'Lists related blog posts by category context, as a carousel or a grid. Rendered automatically on pages and the front page. With showLatest it lists the newest posts instead, anywhere.',
+			'attrs'    => array( 'count — number (default 6)', 'useCarousel — bool (default true; false = grid)', 'showLatest — bool (default false; true = newest posts, no slug matching)', 'headingLevel — h2|h3|…', 'hideHeading — bool' ),
+			'examples' => array( "<!-- wp:ekwa/related-articles {\"count\":6} /-->", "<!-- wp:ekwa/related-articles {\"showLatest\":true,\"count\":3,\"useCarousel\":false} /-->" ),
 		),
 
 		'elfsight-review' => array(
