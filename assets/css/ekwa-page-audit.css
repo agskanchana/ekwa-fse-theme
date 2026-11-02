@@ -418,3 +418,108 @@
 	font-size: 12px;
 	font-weight: 500;
 }
+
+/* ---------- PASS / FAIL (sitemap-tool criteria) ---------- */
+.ekwa-pa-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	line-height: 1.6;
+	white-space: nowrap;
+	background: #f0f0f0;
+	color: #3c434a;
+}
+.ekwa-pa-status.is-pass { background: #e6f4ea; color: #0a6b34; }
+.ekwa-pa-status.is-fail { background: #fcebea; color: #b32d2e; }
+.ekwa-pa-status.is-small { padding: 0 6px; font-size: 10px; margin-left: 6px; }
+
+.ekwa-pa-switch__st {
+	margin-left: 6px;
+	padding: 0 5px;
+	border-radius: 3px;
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1.6;
+	background: rgba(255, 255, 255, 0.85);
+}
+.ekwa-pa-switch__st.is-pass { color: #0a6b34; }
+.ekwa-pa-switch__st.is-fail { color: #b32d2e; }
+.ekwa-pa-switch .components-button.is-secondary .ekwa-pa-switch__st { background: #f0f0f0; }
+
+.ekwa-pa-gauges { gap: 6px; }
+
+.ekwa-pa-verdict {
+	margin: 12px 0;
+	padding: 10px 12px;
+	border-radius: 6px;
+	border: 1px solid #dcdcde;
+	background: #fff;
+}
+.ekwa-pa-verdict.is-pass { border-color: #b8dfc5; background: #f4fbf6; }
+.ekwa-pa-verdict.is-fail { border-color: #f1c4c4; background: #fdf5f5; }
+.ekwa-pa-verdict__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.ekwa-pa-verdict__list { margin: 8px 0 0 18px; list-style: disc; font-size: 12px; }
+.ekwa-pa-verdict__list li { margin: 2px 0; }
+.ekwa-pa-verdict__criteria { margin: 8px 0 0; }
+
+/* ---------- Collapsible fix groups ---------- */
+.ekwa-pa-group {
+	margin: 12px 0;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	background: #fff;
+}
+.ekwa-pa-group__head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	text-align: left;
+	font: inherit;
+	color: #1e1e1e;
+	border-radius: 6px;
+}
+.ekwa-pa-group__head:hover { background: #f6f7f7; }
+.ekwa-pa-group__head:focus-visible { outline: 2px solid var(--wp-admin-theme-color, #2271b1); outline-offset: -2px; }
+.ekwa-pa-group__chev { width: 12px; color: #50575e; }
+.ekwa-pa-group__title { font-weight: 600; font-size: 13px; }
+.ekwa-pa-group__meta { margin-left: auto; font-size: 11px; color: #50575e; text-align: right; }
+.ekwa-pa-group.is-accessibility { border-left: 4px solid #7b4fbf; }
+.ekwa-pa-group.is-performance { border-left: 4px solid #2271b1; }
+.ekwa-pa-group.is-seo { border-left: 4px solid #0a7a3c; }
+.ekwa-pa-group__body { padding: 0 10px 4px; border-top: 1px solid #f0f0f0; }
+
+/* ---------- Stylesheet fix diff ---------- */
+.ekwa-pa-css { margin: 8px 0; }
+.ekwa-pa-css__sel {
+	display: block;
+	font-size: 11px;
+	padding: 2px 6px;
+	background: #f6f7f7;
+	border-radius: 3px;
+	overflow-wrap: anywhere;
+}
+.ekwa-pa-css__decl { margin-top: 4px; font-family: Menlo, Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.ekwa-pa-css__decl del { color: #8a2424; background: #fcebea; text-decoration: line-through; padding: 0 3px; border-radius: 2px; }
+.ekwa-pa-css__decl ins { color: #0a5a2c; background: #e6f4ea; text-decoration: none; padding: 0 3px; border-radius: 2px; }
+.ekwa-pa-css__vars { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.ekwa-pa-token { display: inline-flex; align-items: center; gap: 4px; }
+.ekwa-pa-token code { font-size: 11px; }
+.ekwa-pa-swatch {
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	border-radius: 3px;
+	border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.ekwa-pa-summary-row__label { display: inline-flex; align-items: center; flex-wrap: wrap; }

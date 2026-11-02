@@ -1199,12 +1199,35 @@ function ekwa_render_settings_page() {
 			<?php endif; ?>
 		</h1>
 
+		<?php
+		// Tools (not settings) sit together at the end of the bar, so when the
+		// bar wraps on a narrower screen they move as one group.
+		$ekwa_tool_tabs = array( 'bulk-pages', 'legacy-import' );
+		$ekwa_tab_link  = static function ( $slug, $label ) use ( $active_tab ) {
+			printf(
+				'<a href="#%1$s" class="nav-tab %2$s" data-tab="%1$s">%3$s</a>',
+				esc_attr( $slug ),
+				$active_tab === $slug ? 'nav-tab-active' : '',
+				esc_html( $label )
+			);
+		};
+		?>
 		<h2 class="nav-tab-wrapper ekwa-nav-tabs">
-			<?php foreach ( $tabs as $slug => $label ) : ?>
-				<a href="#<?php echo esc_attr( $slug ); ?>"
-					class="nav-tab <?php echo $active_tab === $slug ? 'nav-tab-active' : ''; ?>"
-					data-tab="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></a>
-			<?php endforeach; ?>
+			<?php
+			foreach ( $tabs as $slug => $label ) {
+				if ( ! in_array( $slug, $ekwa_tool_tabs, true ) ) {
+					$ekwa_tab_link( $slug, $label );
+				}
+			}
+			$ekwa_tools = array_intersect_key( $tabs, array_flip( $ekwa_tool_tabs ) );
+			if ( $ekwa_tools ) {
+				echo '<span class="ekwa-nav-tools">';
+				foreach ( $ekwa_tools as $slug => $label ) {
+					$ekwa_tab_link( $slug, $label );
+				}
+				echo '</span>';
+			}
+			?>
 		</h2>
 
 		<form method="post" action="" class="ekwa-settings-form" id="ekwa-main-settings-form">

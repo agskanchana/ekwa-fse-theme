@@ -21,10 +21,22 @@
  *     so they go through the editor's own undo stack and are saved with the
  *     page). The before/after attributes are recorded in post meta so the
  *     sidebar can undo them later too.
- *   - "manual" fixes are steps for a person (template parts, CSS, hosting).
+ *   - "css" fixes change one declaration of the site stylesheet (and may add
+ *     one colour variable) — see inc/ekwa-page-audit-css.php. Site-wide,
+ *     administrators only, logged as exact text patches in
+ *     EKWA_PAGE_AUDIT_CHANGES_OPTION and undoable byte for byte.
+ *   - "part" fixes change one block's attributes inside a template part
+ *     (header, footer…) — see inc/ekwa-page-audit-parts.php. Same log.
+ *   - "manual" fixes are steps for a person (hosting, image files, …).
  *
- * Nothing here runs unless someone opens the sidebar and clicks: no hooks on
- * the front end, no options written on load, no change for a site that never
+ * Each report is also judged PASS/FAIL against the same criteria as the
+ * team's PageSpeed sitemap tool (ekwa_page_audit_thresholds()), and a short
+ * summary is kept per page for the site-wide dashboard
+ * (inc/ekwa-page-audit-dashboard.php).
+ *
+ * Nothing here runs unless someone opens the sidebar or the dashboard and
+ * clicks: no hooks on the front end (except the compare preview, which needs a
+ * signed URL), no options written on load, no change for a site that never
  * uses it.
  *
  * @package ekwa
@@ -36,6 +48,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Site-wide log of setting changes made from the audit (non-autoloaded). */
 const EKWA_PAGE_AUDIT_LOG_OPTION = 'ekwa_page_audit_log';
+
+/** Site-wide log of stylesheet and template-part changes (non-autoloaded). */
+const EKWA_PAGE_AUDIT_CHANGES_OPTION = 'ekwa_page_audit_changes';
+
+/** Post meta: small per-strategy summary (scores, metrics, PASS/FAIL) for the dashboard. */
+const EKWA_PAGE_AUDIT_META_SUMMARY = '_ekwa_page_audit_summary';
 
 /** Post meta: compact PageSpeed report, one key per strategy (suffix). */
 const EKWA_PAGE_AUDIT_META_REPORT = '_ekwa_page_audit_report_';
@@ -334,9 +352,11 @@ function ekwa_page_audit_test_url( $post ) {
  * @return array|WP_Error Decoded API response.
  */
 function ekwa_page_audit_fetch_psi( $url, $strategy ) {
+	// All four categories, as the team's sitemap tool tests them: SEO is part
+	// of PASS/FAIL, Best Practices is recorded for reference.
 	$query = 'url=' . rawurlencode( $url )
 		. '&strategy=' . rawurlencode( $strategy )
-		. '&category=performance&category=accessibility&locale=en';
+		. '&category=performance&category=accessibility&category=best-practices&category=seo&locale=en';
 	$key   = ekwa_page_audit_psi_key();
 	if ( '' !== $key ) {
 		$query .= '&key=' . rawurlencode( $key );
@@ -550,8 +570,11 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 	$cats   = isset( $lh['categories'] ) && is_array( $lh['categories'] ) ? $lh['categories'] : array();
 	$audits = isset( $lh['audits'] ) && is_array( $lh['audits'] ) ? $lh['audits'] : array();
 
-	$scores = array();
-	foreach ( array( 'performance', 'accessibility' ) as $cat ) {
+	// v1 reports (3.3.6–3.3.8) only have performance + accessibility; every
+	// reader treats a missing key as "not measured".
+	$categories = array( 'performance', 'accessibility', 'best-practices', 'seo' );
+	$scores     = array();
+	foreach ( $categories as $cat ) {
 		$scores[ $cat ] = isset( $cats[ $cat ]['score'] ) && is_numeric( $cats[ $cat ]['score'] )
 			? (int) round( $cats[ $cat ]['score'] * 100 )
 			: null;
@@ -576,6 +599,8 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 			'title'   => ekwa_page_audit_text( isset( $a['title'] ) ? $a['title'] : $abbr, 60 ),
 			'display' => ekwa_page_audit_text( isset( $a['displayValue'] ) ? $a['displayValue'] : '', 30 ),
 			'score'   => isset( $a['score'] ) && is_numeric( $a['score'] ) ? round( (float) $a['score'], 2 ) : null,
+			// Raw lab value (ms, or unitless for CLS) — what PASS/FAIL reads.
+			'value'   => isset( $a['numericValue'] ) && is_numeric( $a['numericValue'] ) ? round( (float) $a['numericValue'], 'cumulative-layout-shift' === $id ? 4 : 0 ) : null,
 		);
 	}
 
@@ -590,7 +615,8 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 	}
 
 	$failing = array();
-	foreach ( array( 'performance', 'accessibility' ) as $cat ) {
+	$keep    = array( 'performance' => 30, 'accessibility' => 30, 'seo' => 20, 'best-practices' => 12 );
+	foreach ( $keep as $cat => $max ) {
 		$refs = isset( $cats[ $cat ]['auditRefs'] ) && is_array( $cats[ $cat ]['auditRefs'] ) ? $cats[ $cat ]['auditRefs'] : array();
 		$list = array();
 		foreach ( $refs as $ref ) {
@@ -605,7 +631,12 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 			if ( ! in_array( $mode, array( 'binary', 'numeric', 'metricSavings' ), true ) || ! is_numeric( $score ) ) {
 				continue;
 			}
-			if ( (float) $score >= ( 'accessibility' === $cat ? 1.0 : 0.9 ) ) {
+			if ( (float) $score >= ( 'performance' === $cat ? 0.9 : 1.0 ) ) {
+				continue;
+			}
+			// SEO / Best Practices: like the sitemap tool, only audits that can
+			// move the score (weight > 0) explain a score below 100.
+			if ( ( 'seo' === $cat || 'best-practices' === $cat ) && empty( $ref['weight'] ) ) {
 				continue;
 			}
 
@@ -629,7 +660,7 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 				}
 			}
 			if ( ! empty( $a['details'] ) && is_array( $a['details'] ) ) {
-				$items = ekwa_page_audit_compact_items( $a['details'], 'accessibility' === $cat ? 8 : 6 );
+				$items = ekwa_page_audit_compact_items( $a['details'], 'accessibility' === $cat ? 8 : ( 'best-practices' === $cat ? 3 : 6 ) );
 				if ( $items ) {
 					$entry['items'] = $items;
 				}
@@ -651,7 +682,7 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 				return $x['score'] > $y['score'] ? 1 : ( $x['score'] < $y['score'] ? -1 : 0 );
 			}
 		);
-		$failing[ $cat ] = array_slice( $list, 0, 30 );
+		$failing[ $cat ] = array_slice( $list, 0, $max );
 	}
 
 	$field = array();
@@ -676,7 +707,7 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 	}
 
 	return array(
-		'v'          => 1,
+		'v'          => 2,
 		'strategy'   => $strategy,
 		'url'        => $url,
 		'fetched'    => time(),
@@ -692,6 +723,426 @@ function ekwa_page_audit_compact( $data, $strategy ) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // REST
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PASS / FAIL — the team's PageSpeed sitemap tool criteria
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pass criteria. Defaults are the sitemap tool's (performance-eval):
+ * Performance ≥ 90, Accessibility 100, SEO 100, FCP ≤ 1.8 s, LCP ≤ 2.5 s,
+ * CLS ≤ 0.1. Best Practices and TBT are recorded but not enforced (null).
+ *
+ * @return array<string,int|float|null>
+ */
+function ekwa_page_audit_thresholds() {
+	$defaults = array(
+		'performance'    => 90,
+		'accessibility'  => 100,
+		'best-practices' => null,
+		'seo'            => 100,
+		'fcp'            => 1.8,
+		'lcp'            => 2.5,
+		'cls'            => 0.1,
+		'tbt'            => null,
+	);
+	/**
+	 * Filter the PASS/FAIL thresholds. Set a key to null to stop enforcing it.
+	 *
+	 * @param array $defaults
+	 */
+	$filtered = apply_filters( 'ekwa_page_audit_thresholds', $defaults );
+	return is_array( $filtered ) ? array_merge( $defaults, array_intersect_key( $filtered, $defaults ) ) : $defaults;
+}
+
+/**
+ * A lab metric in seconds (unitless for CLS), from a stored report.
+ * Reports saved before 'value' existed fall back to parsing the display text.
+ *
+ * @param array  $report
+ * @param string $id Lighthouse audit id.
+ * @return float|null
+ */
+function ekwa_page_audit_metric_value( $report, $id ) {
+	foreach ( isset( $report['metrics'] ) && is_array( $report['metrics'] ) ? $report['metrics'] : array() as $metric ) {
+		if ( ! is_array( $metric ) || ! isset( $metric['id'] ) || $metric['id'] !== $id ) {
+			continue;
+		}
+		$is_cls = 'cumulative-layout-shift' === $id;
+		if ( isset( $metric['value'] ) && is_numeric( $metric['value'] ) ) {
+			return $is_cls ? round( (float) $metric['value'], 3 ) : round( (float) $metric['value'] / 1000, 3 );
+		}
+		$display = isset( $metric['display'] ) ? str_replace( array( "\xc2\xa0", ',' ), array( ' ', '' ), (string) $metric['display'] ) : '';
+		if ( preg_match( '/([0-9]*\.?[0-9]+)\s*(ms|s)?/u', $display, $m ) ) {
+			$n = (float) $m[1];
+			if ( $is_cls ) {
+				return round( $n, 3 );
+			}
+			return round( isset( $m[2] ) && 'ms' === $m[2] ? $n / 1000 : $n, 3 );
+		}
+		return null;
+	}
+	return null;
+}
+
+/**
+ * Judge a stored report: the sitemap tool's evaluate(), rule for rule.
+ * A score check with no score fails ("not measured"); a metric with no value
+ * is skipped.
+ *
+ * @param array|null $report
+ * @return array{status:string,issues:array[]} status pass|fail|none
+ */
+function ekwa_page_audit_evaluate( $report ) {
+	if ( ! is_array( $report ) || empty( $report['scores'] ) ) {
+		return array( 'status' => 'none', 'issues' => array() );
+	}
+	$t      = ekwa_page_audit_thresholds();
+	$issues = array();
+
+	$labels = array(
+		'performance'    => __( 'Performance', 'ekwa' ),
+		'accessibility'  => __( 'Accessibility', 'ekwa' ),
+		'best-practices' => __( 'Best Practices', 'ekwa' ),
+		'seo'            => __( 'SEO', 'ekwa' ),
+	);
+	foreach ( $labels as $key => $label ) {
+		if ( null === $t[ $key ] ) {
+			continue;
+		}
+		$value = isset( $report['scores'][ $key ] ) && is_numeric( $report['scores'][ $key ] ) ? (int) $report['scores'][ $key ] : null;
+		if ( null === $value ) {
+			$issues[] = array(
+				'key'  => $key,
+				'text' => sprintf( /* translators: %s: category */ __( '%s: not measured — re-run the test', 'ekwa' ), $label ),
+			);
+		} elseif ( $value < $t[ $key ] ) {
+			$issues[] = array(
+				'key'   => $key,
+				'value' => $value,
+				'limit' => $t[ $key ],
+				/* translators: 1: category, 2: score, 3: required score */
+				'text'  => sprintf( __( '%1$s: %2$d (required: ≥%3$d)', 'ekwa' ), $label, $value, $t[ $key ] ),
+			);
+		}
+	}
+
+	$metrics = array(
+		'fcp' => array( 'first-contentful-paint', 'FCP', 's' ),
+		'lcp' => array( 'largest-contentful-paint', 'LCP', 's' ),
+		'cls' => array( 'cumulative-layout-shift', 'CLS', '' ),
+		'tbt' => array( 'total-blocking-time', 'TBT', 's' ),
+	);
+	foreach ( $metrics as $key => $def ) {
+		if ( null === $t[ $key ] ) {
+			continue;
+		}
+		$value = ekwa_page_audit_metric_value( $report, $def[0] );
+		if ( null === $value || $value <= (float) $t[ $key ] ) {
+			continue;
+		}
+		$issues[] = array(
+			'key'   => $key,
+			'value' => $value,
+			'limit' => $t[ $key ],
+			/* translators: 1: metric, 2: value, 3: unit, 4: limit */
+			'text'  => sprintf( __( '%1$s: %2$s%3$s (required: ≤%4$s%3$s)', 'ekwa' ), $def[1], rtrim( rtrim( number_format( $value, 3, '.', '' ), '0' ), '.' ), $def[2], $t[ $key ] ),
+		);
+	}
+
+	return array( 'status' => $issues ? 'fail' : 'pass', 'issues' => $issues );
+}
+
+/**
+ * The small per-strategy record the dashboard lists.
+ *
+ * @param array $report
+ * @return array
+ */
+function ekwa_page_audit_summary_from_report( $report ) {
+	$eval    = ekwa_page_audit_evaluate( $report );
+	$titles  = static function ( $list, $max ) {
+		$out = array();
+		foreach ( array_slice( is_array( $list ) ? $list : array(), 0, $max ) as $a ) {
+			if ( is_array( $a ) && ! empty( $a['title'] ) ) {
+				$out[] = array( 'id' => isset( $a['id'] ) ? (string) $a['id'] : '', 'title' => (string) $a['title'] );
+			}
+		}
+		return $out;
+	};
+	$scores  = isset( $report['scores'] ) && is_array( $report['scores'] ) ? $report['scores'] : array();
+	$audits  = isset( $report['audits'] ) && is_array( $report['audits'] ) ? $report['audits'] : array();
+	return array(
+		't'       => isset( $report['fetched'] ) ? (int) $report['fetched'] : 0,
+		'scores'  => array(
+			'performance'    => isset( $scores['performance'] ) ? $scores['performance'] : null,
+			'accessibility'  => isset( $scores['accessibility'] ) ? $scores['accessibility'] : null,
+			'best-practices' => isset( $scores['best-practices'] ) ? $scores['best-practices'] : null,
+			'seo'            => isset( $scores['seo'] ) ? $scores['seo'] : null,
+		),
+		'metrics' => array(
+			'fcp' => ekwa_page_audit_metric_value( $report, 'first-contentful-paint' ),
+			'lcp' => ekwa_page_audit_metric_value( $report, 'largest-contentful-paint' ),
+			'cls' => ekwa_page_audit_metric_value( $report, 'cumulative-layout-shift' ),
+			'tbt' => ekwa_page_audit_metric_value( $report, 'total-blocking-time' ),
+		),
+		'status'  => $eval['status'],
+		'issues'  => wp_list_pluck( $eval['issues'], 'text' ),
+		'keys'    => wp_list_pluck( $eval['issues'], 'key' ),
+		'failing' => array(
+			'accessibility' => $titles( isset( $audits['accessibility'] ) ? $audits['accessibility'] : array(), 12 ),
+			'seo'           => $titles( isset( $audits['seo'] ) ? $audits['seo'] : array(), 8 ),
+			'performance'   => $titles( isset( $audits['performance'] ) ? $audits['performance'] : array(), 6 ),
+		),
+	);
+}
+
+/**
+ * A post's summaries (mobile/desktop). Built from the full reports when the
+ * summary meta is missing — pages tested before it existed.
+ *
+ * @param int $post_id
+ * @return array{mobile:array|null,desktop:array|null}
+ */
+function ekwa_page_audit_summaries( $post_id ) {
+	$stored = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_SUMMARY );
+	$out    = array();
+	foreach ( array( 'mobile', 'desktop' ) as $strategy ) {
+		if ( isset( $stored[ $strategy ] ) && is_array( $stored[ $strategy ] ) ) {
+			$out[ $strategy ] = $stored[ $strategy ];
+			continue;
+		}
+		$report           = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_REPORT . $strategy );
+		$out[ $strategy ] = $report ? ekwa_page_audit_summary_from_report( $report ) : null;
+	}
+	return $out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SITE CHANGES (stylesheet + template parts)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The stylesheet / template-part change log.
+ *
+ * @return array[]
+ */
+function ekwa_page_audit_changes() {
+	$log = get_option( EKWA_PAGE_AUDIT_CHANGES_OPTION, array() );
+	return is_array( $log ) ? array_values( array_filter( $log, 'is_array' ) ) : array();
+}
+
+/**
+ * Change the log under a lock.
+ *
+ * @param callable $change Receives the log, returns the new log.
+ * @return bool
+ */
+function ekwa_page_audit_mutate_changes( $change ) {
+	$lock = function_exists( 'ekwa_ai_lock' ) ? ekwa_ai_lock( 'page-audit-changes', 5 ) : 'none';
+	if ( '' === $lock ) {
+		return false;
+	}
+	try {
+		wp_cache_delete( EKWA_PAGE_AUDIT_CHANGES_OPTION, 'options' );
+		$log = call_user_func( $change, ekwa_page_audit_changes() );
+		if ( count( $log ) > 100 ) {
+			$log = array_slice( $log, -100 );
+		}
+		update_option( EKWA_PAGE_AUDIT_CHANGES_OPTION, array_values( $log ), false );
+		return true;
+	} finally {
+		if ( 'none' !== $lock && function_exists( 'ekwa_ai_unlock' ) ) {
+			ekwa_ai_unlock( $lock );
+		}
+	}
+}
+
+/**
+ * A change entry as the UI sees it: no patches, plus where it stands now.
+ *
+ * @param array $entry
+ * @return array
+ */
+function ekwa_page_audit_public_change( $entry ) {
+	$out = array(
+		'id'       => isset( $entry['id'] ) ? (string) $entry['id'] : '',
+		'type'     => isset( $entry['type'] ) ? (string) $entry['type'] : '',
+		'time'     => isset( $entry['time'] ) ? (int) $entry['time'] : 0,
+		'user'     => isset( $entry['user'] ) ? (string) $entry['user'] : '',
+		'post_id'  => isset( $entry['post_id'] ) ? (int) $entry['post_id'] : 0,
+		'fix_id'   => isset( $entry['fix_id'] ) ? (string) $entry['fix_id'] : '',
+		'title'    => isset( $entry['title'] ) ? (string) $entry['title'] : '',
+		'category' => isset( $entry['category'] ) ? (string) $entry['category'] : '',
+		'undone'   => ! empty( $entry['undone'] ) ? (int) $entry['undone'] : 0,
+	);
+	if ( 'css' === $out['type'] ) {
+		$out['css']    = isset( $entry['css'] ) ? $entry['css'] : array();
+		$out['detail'] = ekwa_page_audit_css_describe( $out['css'] );
+		$out['marker'] = 'ekwa-fix:' . $out['id'];
+		$out['state']  = $out['undone'] ? 'undone' : ( ekwa_page_audit_css_entry_applied( $entry ) ? 'applied' : 'changed' );
+	} elseif ( 'part' === $out['type'] ) {
+		foreach ( array( 'part', 'part_title', 'path', 'block', 'before', 'after' ) as $key ) {
+			$out[ $key ] = isset( $entry[ $key ] ) ? $entry[ $key ] : null;
+		}
+		$out['detail'] = sprintf( /* translators: 1: template part, 2: block name */ __( '%1$s → %2$s', 'ekwa' ), (string) $out['part_title'], (string) $out['block'] );
+		$out['state']  = $out['undone'] ? 'undone' : ekwa_page_audit_parts_entry_state( $entry );
+	}
+	$out['undoable'] = ! $out['undone'] && in_array( isset( $out['state'] ) ? $out['state'] : '', array( 'applied', 'reverted' ), true );
+	return $out;
+}
+
+/**
+ * Change entries made from one post.
+ *
+ * @param int $post_id
+ * @return array[]
+ */
+function ekwa_page_audit_changes_for_post( $post_id ) {
+	$out = array();
+	foreach ( ekwa_page_audit_changes() as $entry ) {
+		if ( isset( $entry['post_id'] ) && (int) $entry['post_id'] === (int) $post_id ) {
+			$out[] = ekwa_page_audit_public_change( $entry );
+		}
+	}
+	return $out;
+}
+
+/**
+ * Undo one logged stylesheet / template-part change.
+ *
+ * @param string $entry_id
+ * @return array|WP_Error Public entry.
+ */
+function ekwa_page_audit_undo_change( $entry_id ) {
+	$found = null;
+	foreach ( ekwa_page_audit_changes() as $entry ) {
+		if ( isset( $entry['id'] ) && $entry['id'] === $entry_id ) {
+			$found = $entry;
+		}
+	}
+	if ( ! $found ) {
+		return new WP_Error( 'ekwa_page_audit_missing', __( 'That change is no longer in the log.', 'ekwa' ), array( 'status' => 404 ) );
+	}
+	if ( ! empty( $found['undone'] ) ) {
+		return new WP_Error( 'ekwa_page_audit_undone', __( 'That change was already undone.', 'ekwa' ), array( 'status' => 409 ) );
+	}
+
+	$lock = function_exists( 'ekwa_ai_lock' ) ? ekwa_ai_lock( 'page-audit-' . ( 'css' === $found['type'] ? 'css' : 'part' ), 5 ) : 'none';
+	if ( '' === $lock ) {
+		return new WP_Error( 'ekwa_page_audit_busy', __( 'Busy — try again in a moment.', 'ekwa' ), array( 'status' => 503 ) );
+	}
+	try {
+		if ( 'css' === $found['type'] ) {
+			$result = ekwa_page_audit_css_undo_entry( $found );
+		} elseif ( 'part' === $found['type'] ) {
+			$result = ekwa_page_audit_parts_undo_entry( $found );
+		} else {
+			$result = new WP_Error( 'ekwa_page_audit_entry', __( 'Invalid change record.', 'ekwa' ), array( 'status' => 400 ) );
+		}
+	} finally {
+		if ( 'none' !== $lock && function_exists( 'ekwa_ai_unlock' ) ) {
+			ekwa_ai_unlock( $lock );
+		}
+	}
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	$user = ekwa_page_audit_user_name();
+	ekwa_page_audit_mutate_changes( static function ( $log ) use ( $entry_id, $user, &$found ) {
+		foreach ( $log as $i => $entry ) {
+			if ( isset( $entry['id'] ) && $entry['id'] === $entry_id ) {
+				$log[ $i ]['undone']    = time();
+				$log[ $i ]['undone_by'] = $user;
+				$found                  = $log[ $i ];
+			}
+		}
+		return $log;
+	} );
+	ekwa_page_audit_purge_caches();
+	return ekwa_page_audit_public_change( $found );
+}
+
+/**
+ * Purge common page caches after a site-wide change, so the next PageSpeed
+ * test (and every visitor) sees it. Only on an explicit apply/undo.
+ */
+function ekwa_page_audit_purge_caches() {
+	/**
+	 * Filter whether the page audit purges page caches after a change.
+	 *
+	 * @param bool $purge
+	 */
+	if ( ! apply_filters( 'ekwa_page_audit_purge_caches', true ) ) {
+		return;
+	}
+	do_action( 'litespeed_purge_all' );
+	if ( function_exists( 'rocket_clean_domain' ) ) {
+		rocket_clean_domain();
+	}
+	if ( function_exists( 'w3tc_flush_all' ) ) {
+		w3tc_flush_all();
+	}
+	if ( function_exists( 'wp_cache_clear_cache' ) ) {
+		wp_cache_clear_cache();
+	}
+	if ( function_exists( 'sg_cachepress_purge_cache' ) ) {
+		sg_cachepress_purge_cache();
+	}
+	if ( class_exists( 'autoptimizeCache' ) && is_callable( array( 'autoptimizeCache', 'clearall' ) ) ) {
+		autoptimizeCache::clearall();
+	}
+	do_action( 'ekwa_page_audit_caches_purged' );
+}
+
+/**
+ * Request the page once before testing it, so a page cache emptied by a fix
+ * is warm again — PageSpeed should measure what visitors get, not a cold
+ * cache miss. A failure here is harmless.
+ *
+ * @param string $url
+ */
+function ekwa_page_audit_warm( $url ) {
+	if ( ! apply_filters( 'ekwa_page_audit_warm_cache', true, $url ) ) {
+		return;
+	}
+	wp_remote_get( $url, array( 'timeout' => 8, 'redirection' => 3, 'sslverify' => apply_filters( 'https_local_ssl_verify', false ) ) );
+}
+
+/**
+ * A fix from a post's stored analysis.
+ *
+ * @param int    $post_id
+ * @param string $strategy
+ * @param string $fix_id
+ * @return array|null
+ */
+function ekwa_page_audit_find_fix( $post_id, $strategy, $fix_id ) {
+	$analysis = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_AI . ekwa_page_audit_strategy( $strategy ) );
+	foreach ( isset( $analysis['fixes'] ) && is_array( $analysis['fixes'] ) ? $analysis['fixes'] : array() as $fix ) {
+		if ( is_array( $fix ) && isset( $fix['id'] ) && $fix['id'] === $fix_id ) {
+			return $fix;
+		}
+	}
+	return null;
+}
+
+/**
+ * The active (not undone) change entry recorded for a fix, if any.
+ *
+ * @param string $fix_id
+ * @return array|null Raw entry.
+ */
+function ekwa_page_audit_change_for_fix( $fix_id ) {
+	$found = null;
+	foreach ( ekwa_page_audit_changes() as $entry ) {
+		if ( isset( $entry['fix_id'] ) && $entry['fix_id'] === $fix_id && empty( $entry['undone'] ) ) {
+			$found = $entry;
+		}
+	}
+	return $found;
+}
 
 add_action( 'rest_api_init', 'ekwa_page_audit_register_routes' );
 
@@ -764,6 +1215,102 @@ function ekwa_page_audit_register_routes() {
 			'entry_id' => array( 'required' => false, 'type' => 'string', 'default' => '' ),
 		),
 	) );
+
+	// Stylesheet / template-part fixes: the client names the fix; the change
+	// itself is read from the analysis stored on the server, never from the
+	// request.
+	$fix_args = $post_arg + array(
+		'strategy' => array( 'required' => false, 'type' => 'string', 'default' => 'mobile' ),
+		'fix_id'   => array( 'required' => true, 'type' => 'string' ),
+	);
+	register_rest_route( 'ekwa/v1', '/page-audit/apply-css', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_page_audit_rest_apply_css',
+		'permission_callback' => 'ekwa_page_audit_can_manage',
+		'args'                => $fix_args,
+	) );
+	register_rest_route( 'ekwa/v1', '/page-audit/apply-part', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_page_audit_rest_apply_part',
+		'permission_callback' => 'ekwa_page_audit_can_manage_parts',
+		'args'                => $fix_args,
+	) );
+	register_rest_route( 'ekwa/v1', '/page-audit/undo-change', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'ekwa_page_audit_rest_undo_change',
+		'permission_callback' => 'ekwa_page_audit_can_manage',
+		'args'                => array(
+			'entry_id' => array( 'required' => true, 'type' => 'string' ),
+		),
+	) );
+}
+
+/**
+ * Permission for template-part changes: site-wide and theme-level.
+ *
+ * @param WP_REST_Request $request
+ * @return bool
+ */
+function ekwa_page_audit_can_manage_parts( $request ) {
+	return current_user_can( 'manage_options' ) && current_user_can( 'edit_theme_options' );
+}
+
+/**
+ * POST /page-audit/apply-css.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_page_audit_rest_apply_css( $request ) {
+	$post_id = (int) $request->get_param( 'post_id' );
+	$fix     = ekwa_page_audit_find_fix( $post_id, (string) $request->get_param( 'strategy' ), (string) $request->get_param( 'fix_id' ) );
+	if ( ! $fix || 'css' !== ( isset( $fix['kind'] ) ? $fix['kind'] : '' ) || empty( $fix['css'] ) ) {
+		return new WP_Error( 'ekwa_page_audit_fix', __( 'That fix is not in the latest analysis any more. Analyze again.', 'ekwa' ), array( 'status' => 404 ) );
+	}
+	if ( ekwa_page_audit_change_for_fix( $fix['id'] ) ) {
+		return new WP_Error( 'ekwa_page_audit_same', __( 'This fix is already applied.', 'ekwa' ), array( 'status' => 409 ) );
+	}
+	$entry = ekwa_page_audit_css_apply_fix( $post_id, $fix );
+	if ( is_wp_error( $entry ) ) {
+		return $entry;
+	}
+	return rest_ensure_response( array( 'entry' => $entry ) );
+}
+
+/**
+ * POST /page-audit/apply-part.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_page_audit_rest_apply_part( $request ) {
+	$post_id = (int) $request->get_param( 'post_id' );
+	$fix     = ekwa_page_audit_find_fix( $post_id, (string) $request->get_param( 'strategy' ), (string) $request->get_param( 'fix_id' ) );
+	if ( ! $fix || 'part' !== ( isset( $fix['kind'] ) ? $fix['kind'] : '' ) || empty( $fix['part'] ) ) {
+		return new WP_Error( 'ekwa_page_audit_fix', __( 'That fix is not in the latest analysis any more. Analyze again.', 'ekwa' ), array( 'status' => 404 ) );
+	}
+	if ( ekwa_page_audit_change_for_fix( $fix['id'] ) ) {
+		return new WP_Error( 'ekwa_page_audit_same', __( 'This fix is already applied.', 'ekwa' ), array( 'status' => 409 ) );
+	}
+	$entry = ekwa_page_audit_parts_apply_fix( $post_id, $fix );
+	if ( is_wp_error( $entry ) ) {
+		return $entry;
+	}
+	return rest_ensure_response( array( 'entry' => $entry ) );
+}
+
+/**
+ * POST /page-audit/undo-change.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response|WP_Error
+ */
+function ekwa_page_audit_rest_undo_change( $request ) {
+	$entry = ekwa_page_audit_undo_change( sanitize_text_field( (string) $request->get_param( 'entry_id' ) ) );
+	if ( is_wp_error( $entry ) ) {
+		return $entry;
+	}
+	return rest_ensure_response( array( 'entry' => $entry ) );
 }
 
 /**
@@ -860,23 +1407,30 @@ function ekwa_page_audit_rest_state( $request ) {
 		return new WP_Error( 'rest_post_invalid_id', __( 'Page not found.', 'ekwa' ), array( 'status' => 404 ) );
 	}
 
-	$reports  = array();
-	$analysis = array();
+	$reports    = array();
+	$analysis   = array();
+	$evaluation = array();
 	foreach ( array( 'mobile', 'desktop' ) as $strategy ) {
-		$report                = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_REPORT . $strategy );
-		$ai                    = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_AI . $strategy );
-		$reports[ $strategy ]  = $report ? $report : null;
-		$analysis[ $strategy ] = $ai ? $ai : null;
+		$report                  = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_REPORT . $strategy );
+		$ai                      = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_AI . $strategy );
+		$reports[ $strategy ]    = $report ? $report : null;
+		$analysis[ $strategy ]   = $ai ? $ai : null;
+		$evaluation[ $strategy ] = $report ? ekwa_page_audit_evaluate( $report ) : null;
 	}
+	$target = ekwa_page_audit_css_target();
 
 	return rest_ensure_response( array(
-		'reports'  => $reports,
-		'analysis' => $analysis,
-		'scores'   => ekwa_page_audit_scores( $post_id ),
-		'history'  => array_values( ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_HISTORY ) ),
-		'log'      => ekwa_page_audit_log_for_post( $post_id ),
-		'settings' => ekwa_page_audit_settings_snapshot(),
-		'psiKey'   => '' !== ekwa_page_audit_psi_key(),
+		'reports'    => $reports,
+		'analysis'   => $analysis,
+		'evaluation' => $evaluation,
+		'thresholds' => ekwa_page_audit_thresholds(),
+		'scores'     => ekwa_page_audit_scores( $post_id ),
+		'history'    => array_values( ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_HISTORY ) ),
+		'log'        => ekwa_page_audit_log_for_post( $post_id ),
+		'changes'    => ekwa_page_audit_changes_for_post( $post_id ),
+		'settings'   => ekwa_page_audit_settings_snapshot(),
+		'cssTarget'  => array( 'model' => $target['model'], 'label' => $target['label'] ),
+		'psiKey'     => '' !== ekwa_page_audit_psi_key(),
 	) );
 }
 
@@ -900,6 +1454,7 @@ function ekwa_page_audit_rest_run( $request ) {
 		return $url;
 	}
 
+	ekwa_page_audit_warm( $url );
 	$data = ekwa_page_audit_fetch_psi( $url, $strategy );
 	if ( is_wp_error( $data ) ) {
 		return $data;
@@ -918,15 +1473,23 @@ function ekwa_page_audit_rest_run( $request ) {
 		's' => $strategy,
 		'p' => $report['scores']['performance'],
 		'a' => $report['scores']['accessibility'],
+		'o' => $report['scores']['seo'],
+		'b' => $report['scores']['best-practices'],
 	);
 	if ( count( $scores ) > 30 ) {
 		$scores = array_slice( $scores, -30 );
 	}
 	ekwa_page_audit_put_meta( $post_id, EKWA_PAGE_AUDIT_META_SCORES, $scores );
 
+	$summary              = ekwa_page_audit_get_meta( $post_id, EKWA_PAGE_AUDIT_META_SUMMARY );
+	$summary[ $strategy ] = ekwa_page_audit_summary_from_report( $report );
+	ekwa_page_audit_put_meta( $post_id, EKWA_PAGE_AUDIT_META_SUMMARY, $summary );
+
 	return rest_ensure_response( array(
-		'report' => $report,
-		'scores' => $scores,
+		'report'     => $report,
+		'scores'     => $scores,
+		'evaluation' => ekwa_page_audit_evaluate( $report ),
+		'summary'    => $summary[ $strategy ],
 	) );
 }
 
@@ -1042,23 +1605,33 @@ function ekwa_page_audit_site_context() {
  * @return string
  */
 function ekwa_page_audit_system_prompt( $focus ) {
-	$focus_line = 'all' === $focus
-		? 'Cover both Performance and Accessibility.'
-		: 'Cover ONLY ' . ( 'accessibility' === $focus ? 'Accessibility' : 'Performance' ) . ' issues.';
+	$names      = array( 'performance' => 'Performance', 'accessibility' => 'Accessibility', 'seo' => 'SEO' );
+	$focus_line = isset( $names[ $focus ] )
+		? 'Cover ONLY ' . $names[ $focus ] . ' issues.'
+		: 'Cover Performance, Accessibility and SEO.';
+	$css_props  = implode( ', ', ekwa_page_audit_css_properties() );
 
 	return <<<PROMPT
-You are a senior web performance and accessibility engineer working inside the WordPress block editor of a site built on the "Ekwa" block theme. You receive a Google PageSpeed Insights (Lighthouse) report for ONE published page, the page's block tree as it is in the editor now, the theme's performance SETTINGS with their current values, the colour PALETTE, and basic SITE info. Explain what holds the scores back and propose concrete fixes the site owner can apply with one click, plus manual steps for what cannot be applied automatically. {$focus_line}
+You are a senior web performance, accessibility and SEO engineer working on a WordPress site built on the "Ekwa" block theme. You receive a Google PageSpeed Insights (Lighthouse) report for ONE published page, the page's block tree as it is in the editor now (BLOCKS), the template parts the page's template renders around it (PARTS: header, footer…), the site stylesheet (STYLESHEET) with its CSS custom properties (TOKENS), the theme's performance SETTINGS with their current values, the colour PALETTE, and basic SITE info. Explain what holds the scores back and propose concrete fixes the site owner can apply with one click, plus manual steps for what cannot be applied automatically. {$focus_line}
 
 FIX KINDS
 1. "setting" — change ONE Ekwa setting from SETTINGS: only keys listed there, only to one of its allowed values, and only to a value different from "current". Settings are SITE-WIDE (every page changes), so use them for problems that come from the theme's global output, and say "site-wide" in "why". The setting's "risk" is shown to the person automatically — do not repeat it; use "visualNote" only for other visible effects.
 2. "block" — change attributes of ONE block in BLOCKS, addressed by its "path" (copy it exactly) and "block" (must equal that block's "name"). Only use attribute names that exist in that block type's SCHEMA. Never change attributes marked "richText" (their text is truncated in BLOCKS) — make such a fix "manual". "attrs" holds only the attributes you change, with complete new values; for an object attribute such as "style" give only the nested keys you change (they are merged into the existing object).
-3. "manual" — everything else: header/footer/template parts, the child theme's CSS, third-party scripts, server, hosting, caching, image files that need re-exporting. Put short, specific numbered steps in "steps".
+3. "part" — change attributes of ONE block inside a template part from PARTS: "part" (the part's slug), "path" (copy it exactly from that part's blocks) and "block" (must equal that block's "name"). Only parts with "editable": true, and only attributes that exist in PART_SCHEMA for that block and are NOT marked "html" (those live in the block's HTML). Same "attrs" rules as "block". A template part is shared by every page, so say "site-wide" in "why".
+4. "css" — change the site stylesheet (STYLESHEET), which styles every page including the header and footer. Use it for colour contrast and other visual accessibility problems (focus outlines, link underlines, small text, target size) wherever the element is. Give "css": {"edits": [{"selector": "", "media": "", "property": "", "from": "", "to": ""}], "vars": [{"name": "--token-name", "value": "#rrggbb"}]} and a "note" of 2-6 words for the stylesheet comment (e.g. "text contrast 2.9:1 → 4.8:1").
+   - "selector" and "media" are copied EXACTLY from a rule in STYLESHEET ("media" = the enclosing @media/@supports prelude, or ""). "from" = the value that rule has now, copied exactly. To add a property the rule does not set, use "from": "". If no rule targets the element, give a new, specific selector with "from": "" — it is appended at the end of the stylesheet, so it must be at least as specific as the rule it overrides.
+   - Edit the rule that actually sets the failing element's style. If that rule also styles elements that pass, add a more specific rule for the failing element instead.
+   - COLOURS: the site's colours are CSS variables listed in TOKENS — write colours as var(--token). First pick an EXISTING token that reaches the required contrast and fits the design (same hue family). Only if none does, add exactly ONE new token in "vars", named after the token it derives from (e.g. --gold → --gold-ink or --gold-dark, --slate → --slate-strong), with a hex value that keeps the original hue and changes lightness only as much as needed — then use var(--that-name). Never change an existing token's value (that recolours the whole site), and never write a raw hex in "to" where the rule used a variable.
+   - Allowed properties: {$css_props}. Never url(), @import, comments, or values containing { } ; < >. Add !important only if the original declaration had it.
+   - The old declaration is kept in a comment automatically; do not add comments yourself.
+5. "manual" — everything else: third-party scripts, server, hosting, caching, image files that need re-exporting, SEO fields of an SEO plugin, attributes stored in a block's HTML. Put short, specific numbered steps in "steps".
 
 RULES
 - Base every fix on an audit in REPORT and put that audit's id in "audit". Do not invent problems or repeat one problem as several fixes.
-- BLOCKS is only the page body. Elements from the header, footer or other template parts are not in BLOCKS — those fixes are "manual" (name the part to edit). Blocks with a "note" saying they are synced patterns or template parts must not be changed.
+- BLOCKS is only the page body. Elements of the header, footer or other template parts are in PARTS — fix them with "part" (block attributes) or "css" (visual). Blocks in BLOCKS with a "note" saying they are synced patterns or template parts must not be changed with "block".
 - Match report nodes (selector, snippet, label) to blocks by className, anchor, text, image URL/alt or position. If you cannot identify the block with confidence, make the fix "manual" instead of guessing a path.
-- Colour contrast: keep the colour's hue and change its lightness only as much as needed to reach 4.5:1 (3:1 for text at least 24px, or at least 18.66px bold). Prefer an existing PALETTE colour when one passes. Use the attribute that holds the colour (e.g. "style":{"color":{"text":"#hex"}} or "textColor" for core blocks, or the block's own colour attribute). Always fill "colors" with before/after values and the colour they are measured against, set "visual": true and describe the visible change in "visualNote".
+- Colour contrast: reach 4.5:1 (3:1 for text at least 24px, or at least 18.66px bold), reading the foreground, background and font size from the audit item's explanation. Prefer a "css" fix (see COLOURS). Use a "block"/"part" colour attribute only when the colour is set on that block itself (style.color, textColor or the block's own colour attribute). Always fill "colors" with before/after values and the colour they are measured against ("against"), set "visual": true and describe the visible change in "visualNote".
+- SEO: document title, meta description, link text, crawlable links, image alt, hreflang, robots and canonical audits. Most are "manual" (SEO plugin fields, page settings) unless a block or part attribute fixes them.
 - Image alt text: concise and specific, from the file name, caption, nearby text and the page topic. Never "image of". Use "" only for an image inside a link or button that already has its own text.
 - Link and button names: say where the link goes or what the button does. Never "click here" or "read more" alone.
 - Never weaken accessibility to gain performance or the reverse. Never remove content or blocks.
@@ -1084,19 +1657,22 @@ Return ONLY one JSON object, no Markdown fences, no text around it:
 {"summary": "2-4 plain-language sentences for the site owner",
  "fixes": [{
    "id": "short-kebab-case-id",
-   "category": "performance" | "accessibility",
+   "category": "performance" | "accessibility" | "seo",
    "audit": "lighthouse-audit-id",
    "title": "imperative, max 80 characters",
    "why": "1-3 sentences: what is wrong and what the change does",
    "impact": "high" | "medium" | "low",
-   "kind": "setting" | "block" | "manual",
+   "kind": "setting" | "block" | "part" | "css" | "manual",
    "setting": "option_key", "value": true,
    "path": "0.2.1", "block": "core/paragraph", "attrs": {},
+   "part": "header",
+   "css": {"edits": [{"selector": ".x", "media": "", "property": "color", "from": "var(--a)", "to": "var(--b)"}], "vars": []},
+   "note": "short stylesheet comment",
    "steps": "1. … 2. …",
    "visual": false, "visualNote": "",
    "colors": [{"role": "text" | "background" | "border" | "icon", "before": "#rrggbb", "after": "#rrggbb", "against": "#rrggbb"}]
  }]}
-Include "setting"/"value" only for kind "setting", "path"/"block"/"attrs" only for kind "block", "steps" only for kind "manual", and "colors" only for colour changes.
+Include "setting"/"value" only for kind "setting"; "path"/"block"/"attrs" only for kinds "block" and "part" ("part" also needs "part"); "css"/"note" only for kind "css"; "steps" only for kind "manual"; "colors" only for colour changes.
 PROMPT;
 }
 
@@ -1124,9 +1700,11 @@ function ekwa_page_audit_hex( $value ) {
  * @param mixed  $decoded Decoded JSON answer.
  * @param array  $index   path => block name, from the outline that was sent.
  * @param string $stamp   Prefix that makes fix ids unique across analyses.
+ * @param array  $ctx     Optional: 'parts' => ekwa_page_audit_parts_context()
+ *                        result, 'css' => bool (a stylesheet was sent).
  * @return array{summary:string,fixes:array[]}
  */
-function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp ) {
+function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp, $ctx = array() ) {
 	$registry = ekwa_page_audit_settings_registry();
 	$summary  = is_array( $decoded ) && isset( $decoded['summary'] ) ? sanitize_textarea_field( (string) $decoded['summary'] ) : '';
 	$raw      = is_array( $decoded ) && isset( $decoded['fixes'] ) && is_array( $decoded['fixes'] ) ? $decoded['fixes'] : array();
@@ -1146,10 +1724,10 @@ function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp ) {
 		}
 		$seen[ $id ] = true;
 
-		$kind = isset( $fix['kind'] ) && in_array( $fix['kind'], array( 'setting', 'block', 'manual' ), true ) ? $fix['kind'] : 'manual';
+		$kind = isset( $fix['kind'] ) && in_array( $fix['kind'], array( 'setting', 'block', 'part', 'css', 'manual' ), true ) ? $fix['kind'] : 'manual';
 		$out  = array(
 			'id'         => $id,
-			'category'   => isset( $fix['category'] ) && 'accessibility' === $fix['category'] ? 'accessibility' : 'performance',
+			'category'   => isset( $fix['category'] ) && in_array( $fix['category'], array( 'accessibility', 'seo' ), true ) ? $fix['category'] : 'performance',
 			'audit'      => isset( $fix['audit'] ) ? substr( preg_replace( '/[^a-z0-9-]/', '', strtolower( (string) $fix['audit'] ) ), 0, 80 ) : '',
 			'title'      => isset( $fix['title'] ) ? ekwa_page_audit_text( $fix['title'], 120 ) : '',
 			'why'        => isset( $fix['why'] ) ? sanitize_textarea_field( substr( (string) $fix['why'], 0, 900 ) ) : '',
@@ -1220,13 +1798,64 @@ function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp ) {
 				$out['block'] = $block;
 				$out['attrs'] = json_decode( $json, true );
 			}
+		} elseif ( 'part' === $kind ) {
+			$check = empty( $ctx['parts'] )
+				? array( 'ok' => false, 'reason' => __( 'Template parts were not available to this analysis.', 'ekwa' ) )
+				: ekwa_page_audit_parts_validate( $fix, $ctx['parts'] );
+			if ( empty( $check['ok'] ) ) {
+				$manual_reason = $check['reason'];
+			} else {
+				$out['part']      = $check['part'];
+				$out['partTitle'] = '';
+				foreach ( $ctx['parts']['parts'] as $p ) {
+					if ( $p['part'] === $check['part'] ) {
+						$out['partTitle'] = (string) $p['title'];
+					}
+				}
+				$out['path']  = $check['path'];
+				$out['block'] = $check['block'];
+				$out['attrs'] = $check['attrs'];
+			}
+		} elseif ( 'css' === $kind ) {
+			$check = empty( $ctx['css'] )
+				? array( 'ok' => false, 'reason' => __( 'The site stylesheet was not available to this analysis.', 'ekwa' ) )
+				: ekwa_page_audit_css_validate( $fix );
+			if ( ! empty( $check['skip'] ) ) {
+				continue; // Already in effect.
+			}
+			if ( empty( $check['ok'] ) ) {
+				$manual_reason = $check['reason'];
+			} else {
+				$out['css'] = $check['css'];
+				if ( $check['colors'] ) {
+					$out['colors'] = $check['colors'];
+					$out['visual'] = true;
+				}
+				if ( $check['notes'] ) {
+					$out['cssNotes'] = $check['notes'];
+				}
+			}
 		}
 
 		if ( 'manual' === $kind || '' !== $manual_reason ) {
 			$out['kind']  = 'manual';
 			$steps        = isset( $fix['steps'] ) ? sanitize_textarea_field( substr( (string) $fix['steps'], 0, 1500 ) ) : '';
+			if ( '' === $steps && 'css' === $kind && ! empty( $fix['css']['edits'] ) && is_array( $fix['css']['edits'] ) ) {
+				// Keep what the model suggested as instructions a person can follow.
+				foreach ( array_slice( $fix['css']['edits'], 0, 4 ) as $n => $edit ) {
+					if ( is_array( $edit ) ) {
+						$steps .= ( $n + 1 ) . '. ' . sanitize_text_field( sprintf(
+							/* translators: 1: selector, 2: property, 3: value */
+							__( 'In the stylesheet, set %2$s to %3$s for %1$s.', 'ekwa' ),
+							isset( $edit['selector'] ) ? (string) $edit['selector'] : '',
+							isset( $edit['property'] ) ? (string) $edit['property'] : '',
+							isset( $edit['to'] ) ? (string) $edit['to'] : ''
+						) ) . "\n";
+					}
+				}
+			}
 			$out['steps'] = trim( ( '' !== $manual_reason ? $manual_reason . "\n" : '' ) . $steps );
-			unset( $out['setting'], $out['value'], $out['path'], $out['block'], $out['attrs'] );
+			unset( $out['setting'], $out['value'], $out['path'], $out['block'], $out['attrs'], $out['part'], $out['partTitle'], $out['css'], $out['cssNotes'] );
 		}
 
 		$fixes[] = $out;
@@ -1276,7 +1905,7 @@ function ekwa_page_audit_rest_analyze( $request ) {
 	$post_id  = (int) $request->get_param( 'post_id' );
 	$strategy = ekwa_page_audit_strategy( $request->get_param( 'strategy' ) );
 	$focus    = (string) $request->get_param( 'focus' );
-	$focus    = in_array( $focus, array( 'performance', 'accessibility' ), true ) ? $focus : 'all';
+	$focus    = in_array( $focus, array( 'performance', 'accessibility', 'seo' ), true ) ? $focus : 'all';
 	$post     = get_post( $post_id );
 	if ( ! $post ) {
 		return new WP_Error( 'rest_post_invalid_id', __( 'Page not found.', 'ekwa' ), array( 'status' => 404 ) );
@@ -1289,8 +1918,12 @@ function ekwa_page_audit_rest_analyze( $request ) {
 	if ( ! $report ) {
 		return new WP_Error( 'ekwa_page_audit_no_report', __( 'Run the PageSpeed test first — the AI reads its report.', 'ekwa' ), array( 'status' => 400 ) );
 	}
-	if ( 'all' !== $focus && isset( $report['audits'] ) ) {
-		$report['audits'] = array( $focus => isset( $report['audits'][ $focus ] ) ? $report['audits'][ $focus ] : array() );
+	if ( isset( $report['audits'] ) && is_array( $report['audits'] ) ) {
+		// Best Practices is recorded for the dashboard, not part of the fixes.
+		unset( $report['audits']['best-practices'] );
+		if ( 'all' !== $focus ) {
+			$report['audits'] = array( $focus => isset( $report['audits'][ $focus ] ) ? $report['audits'][ $focus ] : array() );
+		}
 	}
 
 	$outline = ekwa_page_audit_sanitize_outline( $request->get_param( 'blocks' ) );
@@ -1312,20 +1945,34 @@ function ekwa_page_audit_rest_analyze( $request ) {
 		);
 	}
 
+	// Header/footer and the site stylesheet: read-only here (no side effects
+	// before the AI call — the MCP relay re-sends this request).
+	$parts = ekwa_page_audit_parts_context( $post );
+	$css   = ekwa_page_audit_css_context();
+
 	$payload = array(
-		'PAGE'     => array(
+		'PAGE'        => array(
 			'title' => wp_strip_all_tags( get_the_title( $post ) ),
 			'url'   => get_permalink( $post ),
 			'type'  => $post->post_type,
 		),
-		'STRATEGY' => $strategy,
-		'REPORT'   => $report,
-		'SETTINGS' => $settings,
-		'PALETTE'  => ekwa_page_audit_palette(),
-		'SITE'     => ekwa_page_audit_site_context(),
-		'BLOCKS'   => $outline['list'],
-		'SCHEMA'   => $schemas,
+		'STRATEGY'    => $strategy,
+		'REPORT'      => $report,
+		'SETTINGS'    => $settings,
+		'PALETTE'     => ekwa_page_audit_palette(),
+		'SITE'        => ekwa_page_audit_site_context(),
+		'BLOCKS'      => $outline['list'],
+		'SCHEMA'      => $schemas,
+		'PARTS'       => $parts['parts'],
+		'PART_SCHEMA' => $parts['schemas'],
 	);
+	if ( $css ) {
+		$payload['TOKENS']     = $css['tokens'];
+		$payload['STYLESHEET'] = $css['stylesheet'];
+		if ( $css['reduced'] ) {
+			$payload['STYLESHEET_NOTE'] = 'Large stylesheet: only rules that set properties a fix may change are included.';
+		}
+	}
 
 	$contents = array(
 		array(
@@ -1361,11 +2008,11 @@ function ekwa_page_audit_rest_analyze( $request ) {
 	}
 
 	$stamp    = base_convert( (string) time(), 10, 36 );
-	$checked  = ekwa_page_audit_validate_fixes( $decoded, $outline['index'], $stamp );
+	$checked  = ekwa_page_audit_validate_fixes( $decoded, $outline['index'], $stamp, array( 'parts' => $parts, 'css' => (bool) $css ) );
 	$provider = function_exists( 'ekwa_ai_relay_applies' ) && ekwa_ai_relay_applies() ? 'mcp' : 'gemini';
 
 	$analysis = array(
-		'v'        => 1,
+		'v'        => 2,
 		'time'     => time(),
 		'strategy' => $strategy,
 		'focus'    => $focus,
@@ -1442,6 +2089,7 @@ function ekwa_page_audit_rest_apply_setting( $request ) {
 		return new WP_Error( 'ekwa_page_audit_busy', __( 'Busy — try again in a moment.', 'ekwa' ), array( 'status' => 503 ) );
 	}
 
+	ekwa_page_audit_purge_caches();
 	return rest_ensure_response( array(
 		'entry'    => ekwa_page_audit_public_log_entry( $entry ),
 		'settings' => ekwa_page_audit_settings_snapshot(),
@@ -1504,6 +2152,9 @@ function ekwa_page_audit_undo_setting( $entry_id ) {
 
 	if ( ! $ok ) {
 		return new WP_Error( 'ekwa_page_audit_busy', __( 'Busy — try again in a moment.', 'ekwa' ), array( 'status' => 503 ) );
+	}
+	if ( ! is_wp_error( $result ) ) {
+		ekwa_page_audit_purge_caches();
 	}
 	return $result;
 }
@@ -1636,6 +2287,32 @@ function ekwa_page_audit_admin_undo() {
 add_action( 'admin_post_ekwa_page_audit_undo', 'ekwa_page_audit_admin_undo' );
 
 /**
+ * admin-post.php?action=ekwa_page_audit_undo_change — Undo links for
+ * stylesheet / template-part changes in the Performance tab.
+ */
+function ekwa_page_audit_admin_undo_change() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'You are not allowed to do that.', 'ekwa' ), 403 );
+	}
+	$entry_id = isset( $_GET['entry'] ) ? sanitize_text_field( wp_unslash( $_GET['entry'] ) ) : '';
+	check_admin_referer( 'ekwa_page_audit_undo_change_' . $entry_id );
+
+	$result = ekwa_page_audit_undo_change( $entry_id );
+	$status = is_wp_error( $result ) ? $result->get_error_code() : 'ok';
+
+	wp_safe_redirect( add_query_arg(
+		array(
+			'page'              => 'ekwa-settings',
+			'ekwa_tab'          => 'performance',
+			'ekwa_audit_change' => rawurlencode( $status ),
+		),
+		admin_url( 'themes.php' )
+	) . '#ekwa-page-audit-settings' );
+	exit;
+}
+add_action( 'admin_post_ekwa_page_audit_undo_change', 'ekwa_page_audit_admin_undo_change' );
+
+/**
  * The Performance tab's audit section: the PageSpeed API key and the log of
  * setting changes made from page audits, each with an Undo link.
  */
@@ -1643,14 +2320,24 @@ function ekwa_page_audit_render_settings_section() {
 	$key_const = defined( 'EKWA_PSI_API_KEY' ) && EKWA_PSI_API_KEY;
 	$stored    = (string) get_option( 'ekwa_psi_api_key', '' );
 	$masked    = ( ! $key_const && '' !== $stored && function_exists( 'ekwa_ai_mask_key' ) ) ? ekwa_ai_mask_key( $stored ) : '';
-	$log       = array_reverse( ekwa_page_audit_log() );
-	$undo_code = isset( $_GET['ekwa_audit_undo'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_audit_undo'] ) ) : '';
+	$log         = array_reverse( ekwa_page_audit_log() );
+	$changes     = array_reverse( ekwa_page_audit_changes() );
+	$undo_code   = isset( $_GET['ekwa_audit_undo'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_audit_undo'] ) ) : '';
+	$change_code = isset( $_GET['ekwa_audit_change'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_audit_change'] ) ) : '';
 	?>
 	<div class="ekwa-section" id="ekwa-page-audit-settings">
 		<h2><?php esc_html_e( 'PageSpeed & Accessibility audit', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
 			<?php esc_html_e( 'Every page and post editor has a “Page Speed & Accessibility” panel (the gauge icon in the top toolbar, and a summary in the Page sidebar). It tests the published page with Google PageSpeed Insights, and your AI provider (Ekwa Settings → AI: the Gemini key or the MCP connector) suggests fixes you can apply and undo one by one.', 'ekwa' ); ?>
 		</p>
+		<?php if ( function_exists( 'ekwa_page_audit_dashboard_url' ) ) : ?>
+			<p><a class="button" href="<?php echo esc_url( ekwa_page_audit_dashboard_url() ); ?>"><span class="dashicons dashicons-performance" style="margin-top:4px;" aria-hidden="true"></span> <?php esc_html_e( 'Open the site-wide Page Speed dashboard', 'ekwa' ); ?></a></p>
+		<?php endif; ?>
+		<?php if ( 'ok' === $change_code ) : ?>
+			<div class="notice notice-success inline"><p><?php esc_html_e( 'The change was undone.', 'ekwa' ); ?></p></div>
+		<?php elseif ( '' !== $change_code ) : ?>
+			<div class="notice notice-warning inline"><p><?php esc_html_e( 'That change could not be undone automatically — it was edited since, already undone, or is no longer in the log. Search the stylesheet for its “ekwa-fix:” note to revert it by hand.', 'ekwa' ); ?></p></div>
+		<?php endif; ?>
 		<?php if ( 'ok' === $undo_code ) : ?>
 			<div class="notice notice-success inline"><p><?php esc_html_e( 'The setting was restored to its value before the fix.', 'ekwa' ); ?></p></div>
 		<?php elseif ( '' !== $undo_code ) : ?>
@@ -1735,6 +2422,50 @@ function ekwa_page_audit_render_settings_section() {
 					<?php endif; ?>
 				</td>
 			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Stylesheet & header/footer changes', 'ekwa' ); ?></th>
+				<td>
+					<?php if ( ! $changes ) : ?>
+						<p class="description"><?php esc_html_e( 'None yet. Stylesheet fixes (marked “ekwa-fix:” in the CSS) and header/footer block fixes applied from a page audit are listed here and can be undone.', 'ekwa' ); ?></p>
+					<?php else : ?>
+						<table class="widefat striped" style="max-width:860px;">
+							<thead><tr>
+								<th><?php esc_html_e( 'When', 'ekwa' ); ?></th>
+								<th><?php esc_html_e( 'Fix', 'ekwa' ); ?></th>
+								<th><?php esc_html_e( 'Change', 'ekwa' ); ?></th>
+								<th><?php esc_html_e( 'From page', 'ekwa' ); ?></th>
+								<th></th>
+							</tr></thead>
+							<tbody>
+							<?php
+							foreach ( array_slice( $changes, 0, 30 ) as $raw_entry ) :
+								$entry = ekwa_page_audit_public_change( $raw_entry );
+								$pid   = (int) $entry['post_id'];
+								?>
+								<tr>
+									<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) $entry['time'] ) ); ?><br><span class="description"><?php echo esc_html( (string) $entry['user'] ); ?></span></td>
+									<td><?php echo esc_html( $entry['title'] ); ?><?php if ( 'css' === $entry['type'] ) : ?><br><code><?php echo esc_html( $entry['marker'] ); ?></code><?php endif; ?></td>
+									<td><code style="white-space:normal;"><?php echo esc_html( ekwa_page_audit_text( isset( $entry['detail'] ) ? $entry['detail'] : '', 220 ) ); ?></code></td>
+									<td><?php echo $pid && get_post( $pid ) ? '<a href="' . esc_url( get_edit_post_link( $pid ) ) . '">' . esc_html( get_the_title( $pid ) ) . '</a>' : '—'; ?></td>
+									<td>
+										<?php if ( ! empty( $entry['undone'] ) ) : ?>
+											<em><?php esc_html_e( 'Undone', 'ekwa' ); ?></em>
+										<?php elseif ( $entry['undoable'] ) : ?>
+											<a class="button button-small" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=ekwa_page_audit_undo_change&entry=' . rawurlencode( $entry['id'] ) ), 'ekwa_page_audit_undo_change_' . $entry['id'] ) ); ?>"><?php esc_html_e( 'Undo', 'ekwa' ); ?></a>
+											<?php if ( 'css' === $entry['type'] && $pid && function_exists( 'ekwa_page_audit_compare_url' ) ) : ?>
+												<a class="button button-small" href="<?php echo esc_url( ekwa_page_audit_compare_url( array( 'change' => $entry['id'] ) ) ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Compare', 'ekwa' ); ?></a>
+											<?php endif; ?>
+										<?php else : ?>
+											<em title="<?php esc_attr_e( 'The lines this fix changed were edited afterwards.', 'ekwa' ); ?>"><?php esc_html_e( 'Edited since', 'ekwa' ); ?></em>
+										<?php endif; ?>
+									</td>
+								</tr>
+							<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+				</td>
+			</tr>
 		</table>
 	</div>
 	<?php
@@ -1778,7 +2509,7 @@ function ekwa_page_audit_enqueue_editor() {
 	wp_enqueue_script(
 		'ekwa-page-audit-editor',
 		get_template_directory_uri() . '/' . $rel,
-		array( 'wp-plugins', 'wp-editor', 'wp-edit-post', 'wp-block-editor', 'wp-blocks', 'wp-components', 'wp-element', 'wp-data', 'wp-i18n', 'wp-api-fetch', 'wp-core-data' ),
+		array( 'wp-plugins', 'wp-editor', 'wp-edit-post', 'wp-block-editor', 'wp-blocks', 'wp-components', 'wp-element', 'wp-data', 'wp-i18n', 'wp-api-fetch', 'wp-core-data', 'wp-dom-ready' ),
 		filemtime( get_template_directory() . '/' . $rel ),
 		true
 	);
@@ -1801,6 +2532,7 @@ function ekwa_page_audit_enqueue_editor() {
 
 	wp_localize_script( 'ekwa-page-audit-editor', 'ekwaPageAudit', array(
 		'canManage'    => current_user_can( 'manage_options' ),
+		'canParts'     => current_user_can( 'manage_options' ) && current_user_can( 'edit_theme_options' ),
 		'canAi'        => function_exists( 'ekwa_ai_is_configured' ) && ekwa_ai_is_configured() && current_user_can( $ai_cap ),
 		'aiProvider'   => function_exists( 'ekwa_ai_effective_provider' ) ? ekwa_ai_effective_provider() : 'gemini',
 		'models'       => $models,
@@ -1808,6 +2540,13 @@ function ekwa_page_audit_enqueue_editor() {
 		'psiKey'       => '' !== ekwa_page_audit_psi_key(),
 		'settingsUrl'  => admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=performance#ekwa-page-audit-settings' ),
 		'aiSettingsUrl' => admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=ai' ),
+		'dashboardUrl' => function_exists( 'ekwa_page_audit_dashboard_url' ) ? ekwa_page_audit_dashboard_url() : '',
+		'compareUrl'   => function_exists( 'ekwa_page_audit_compare_url' ) ? ekwa_page_audit_compare_url( array() ) : '',
 	) );
 }
 add_action( 'enqueue_block_editor_assets', 'ekwa_page_audit_enqueue_editor' );
+
+require_once __DIR__ . '/ekwa-page-audit-css.php';
+require_once __DIR__ . '/ekwa-page-audit-parts.php';
+require_once __DIR__ . '/ekwa-page-audit-compare.php';
+require_once __DIR__ . '/ekwa-page-audit-dashboard.php';

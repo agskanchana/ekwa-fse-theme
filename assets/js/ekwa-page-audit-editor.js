@@ -15,7 +15,15 @@
  *             (so the editor's own Undo works too, and the change is saved with
  *             the page). The before/after values are recorded on the server so
  *             the change can still be undone after a reload.
+ *   css     — one declaration of the site stylesheet (+ maybe one new colour
+ *             token), applied on the server, marked "ekwa-fix:" in the CSS,
+ *             undoable, and viewable side by side with "Compare".
+ *   part    — attributes of one block in a template part (header, footer…),
+ *             applied on the server, undoable.
  *   manual  — steps for a person.
+ *
+ * Each report is judged PASS/FAIL against the team's sitemap-tool criteria
+ * (server-side, ekwa_page_audit_evaluate()), shown per device.
  *
  * Colour changes show a before/after sample with the contrast ratio computed
  * here (not taken on trust from the AI), and a large colour shift has to be
@@ -228,6 +236,7 @@
 		busy:         {},
 		messages:     {},
 		ack:          {},
+		groups:       { accessibility: true },
 	};
 	var listeners = [];
 
@@ -286,9 +295,11 @@
 		setStore( { running: strategy, runStarted: Date.now(), runError: '' } );
 		apiFetch( { path: '/ekwa/v1/page-audit/run', method: 'POST', data: { post_id: postId, strategy: strategy } } )
 			.then( function ( res ) {
-				var reports = assign( {}, ( store.data && store.data.reports ) || {} );
-				reports[ strategy ] = res.report;
-				patchData( { reports: reports, scores: res.scores || [] } );
+				var reports    = assign( {}, ( store.data && store.data.reports ) || {} );
+				var evaluation = assign( {}, ( store.data && store.data.evaluation ) || {} );
+				reports[ strategy ]    = res.report;
+				evaluation[ strategy ] = res.evaluation || null;
+				patchData( { reports: reports, evaluation: evaluation, scores: res.scores || [] } );
 			} )
 			.catch( function ( err ) { setStore( { runError: errText( err ) } ); } )
 			.then( function () { setStore( { running: '' } ); } );
@@ -592,6 +603,44 @@
 			.then( function () { busy( key, false ); } );
 	}
 
+	// Stylesheet / template-part fixes: the server reads the fix from the
+	// stored analysis by id, applies it and logs it.
+	function applySiteFix( postId, fix ) {
+		var route = 'css' === fix.kind ? 'apply-css' : 'apply-part';
+		busy( fix.id, true );
+		apiFetch( {
+			path:   '/ekwa/v1/page-audit/' + route,
+			method: 'POST',
+			data:   { post_id: postId, strategy: store.strategy, fix_id: fix.id },
+		} )
+			.then( function ( res ) {
+				patchData( { changes: ( ( store.data && store.data.changes ) || [] ).concat( [ res.entry ] ) } );
+				say( fix.id, 'success', 'css' === fix.kind
+					? __( 'The stylesheet was changed for the whole site. Use Compare to check it, then re-run the test.', 'ekwa' )
+					: __( 'The template part was changed for the whole site. Re-run the test to measure it.', 'ekwa' ) );
+			} )
+			.catch( function ( err ) { say( fix.id, 'error', errText( err ) ); } )
+			.then( function () { busy( fix.id, false ); } );
+	}
+
+	function undoChange( entry, msgKey ) {
+		var key = msgKey || entry.id;
+		busy( key, true );
+		apiFetch( { path: '/ekwa/v1/page-audit/undo-change', method: 'POST', data: { entry_id: entry.id } } )
+			.then( function ( res ) {
+				var list = ( ( store.data && store.data.changes ) || [] ).map( function ( e ) { return e.id === res.entry.id ? res.entry : e; } );
+				patchData( { changes: list } );
+				say( key, 'success', __( 'Undone — the site is back to how it was before this fix.', 'ekwa' ) );
+			} )
+			.catch( function ( err ) { say( key, 'error', errText( err ) ); } )
+			.then( function () { busy( key, false ); } );
+	}
+
+	function compareHref( postId, fix ) {
+		if ( ! CFG.compareUrl ) { return ''; }
+		return CFG.compareUrl + '&post=' + encodeURIComponent( postId ) + '&strategy=' + encodeURIComponent( store.strategy ) + '&fix=' + encodeURIComponent( fix.id );
+	}
+
 	function logUndoable( entry ) {
 		var settings = ( store.data && store.data.settings ) || {};
 		var cur      = settings[ entry.setting ];
@@ -625,6 +674,12 @@
 				if ( 'applied' === st || 'changed' === st || 'missing' === st ) {
 					return { applied: true, entry: h, blockState: st };
 				}
+			}
+		}
+		if ( 'css' === fix.kind || 'part' === fix.kind ) {
+			var c = lastWith( data.changes, fix.id );
+			if ( c && ! c.undone ) {
+				return { applied: true, entry: c, undoable: !! c.undoable, blockState: 'changed' === c.state || 'missing' === c.state ? c.state : '' };
 			}
 		}
 		return {};
@@ -670,11 +725,51 @@
 		return {
 			p: ( null !== a.p && null !== b.p ) ? b.p - a.p : 0,
 			a: ( null !== a.a && null !== b.a ) ? b.a - a.a : 0,
+			o: ( null != a.o && null != b.o ) ? b.o - a.o : 0,
 		};
 	}
 
 	function Badge( props ) {
 		return el( 'span', { className: 'ekwa-pa-badge is-' + props.tone }, props.children );
+	}
+
+	// PASS / FAIL against the sitemap-tool criteria (judged on the server).
+	function StatusChip( props ) {
+		var st = props.evaluation ? props.evaluation.status : 'none';
+		var lb = { pass: __( 'PASS', 'ekwa' ), fail: __( 'FAIL', 'ekwa' ), none: __( 'Not tested', 'ekwa' ) }[ st ] || st;
+		return el( 'span', { className: 'ekwa-pa-status is-' + st + ( props.small ? ' is-small' : '' ) },
+			el( 'span', { 'aria-hidden': 'true' }, 'pass' === st ? '✓ ' : ( 'fail' === st ? '✕ ' : '' ) ),
+			props.label ? props.label + ' ' : '', lb );
+	}
+
+	function criteriaText( t ) {
+		t = t || {};
+		var parts = [];
+		if ( null != t.performance ) { parts.push( sprintf( __( 'Performance ≥ %s', 'ekwa' ), t.performance ) ); }
+		if ( null != t.accessibility ) { parts.push( sprintf( __( 'Accessibility %s', 'ekwa' ), t.accessibility ) ); }
+		if ( null != t.seo ) { parts.push( sprintf( __( 'SEO %s', 'ekwa' ), t.seo ) ); }
+		if ( null != t[ 'best-practices' ] ) { parts.push( sprintf( __( 'Best Practices ≥ %s', 'ekwa' ), t[ 'best-practices' ] ) ); }
+		if ( null != t.fcp ) { parts.push( 'FCP ≤ ' + t.fcp + ' s' ); }
+		if ( null != t.lcp ) { parts.push( 'LCP ≤ ' + t.lcp + ' s' ); }
+		if ( null != t.cls ) { parts.push( 'CLS ≤ ' + t.cls ); }
+		if ( null != t.tbt ) { parts.push( 'TBT ≤ ' + t.tbt + ' s' ); }
+		return parts.join( ' · ' );
+	}
+
+	function Verdict( props ) {
+		var ev = props.evaluation;
+		if ( ! ev || 'none' === ev.status ) { return null; }
+		var issues = ev.issues || [];
+		return el( 'div', { className: 'ekwa-pa-verdict is-' + ev.status },
+			el( 'div', { className: 'ekwa-pa-verdict__head' },
+				el( StatusChip, { evaluation: ev } ),
+				el( 'span', null, 'pass' === ev.status
+					? __( 'Meets every criterion.', 'ekwa' )
+					: sprintf( /* translators: %d: number of criteria missed */ __( '%d criteria missed:', 'ekwa' ), issues.length ) )
+			),
+			issues.length ? el( 'ul', { className: 'ekwa-pa-verdict__list' }, issues.map( function ( i, n ) { return el( 'li', { key: n }, i.text ); } ) ) : null,
+			el( 'p', { className: 'ekwa-pa-muted ekwa-pa-verdict__criteria' }, sprintf( /* translators: %s: list of criteria */ __( 'Criteria: %s', 'ekwa' ), criteriaText( props.thresholds ) ) )
+		);
 	}
 
 	function Message( props ) {
@@ -765,6 +860,71 @@
 		);
 	}
 
+	function CssDiff( props ) {
+		var fix    = props.fix;
+		var css    = fix.css || {};
+		var entry  = props.status && props.status.applied ? props.status.entry : null;
+		var target = ( store.data && store.data.cssTarget && store.data.cssTarget.label ) || css.target || __( 'Site stylesheet', 'ekwa' );
+		var modeLb = { add: __( 'adds', 'ekwa' ), 'new': __( 'new rule', 'ekwa' ) };
+		return el( 'div', { className: 'ekwa-pa-diff' },
+			el( 'div', { className: 'ekwa-pa-diff__target' },
+				el( Badge, { tone: 'site' }, __( 'Site-wide', 'ekwa' ) ), ' ', target ),
+			( css.edits || [] ).map( function ( e, i ) {
+				return el( 'div', { key: i, className: 'ekwa-pa-css' },
+					el( 'code', { className: 'ekwa-pa-css__sel' }, ( e.media ? e.media + ' › ' : '' ) + e.selector ),
+					el( 'div', { className: 'ekwa-pa-css__decl' },
+						e.from
+							? el( 'del', null, e.property + ': ' + e.from )
+							: el( 'span', { className: 'ekwa-pa-muted' }, modeLb[ e.mode ] || modeLb.add ),
+						el( 'span', { 'aria-hidden': 'true' }, ' → ' ),
+						el( 'ins', null, e.property + ': ' + e.to )
+					)
+				);
+			} ),
+			( css.vars || [] ).length ? el( 'div', { className: 'ekwa-pa-css__vars' },
+				el( 'span', { className: 'ekwa-pa-muted' }, __( 'New colour token', 'ekwa' ) + ': ' ),
+				css.vars.map( function ( v ) {
+					return el( 'span', { key: v.name, className: 'ekwa-pa-token' },
+						el( 'span', { className: 'ekwa-pa-swatch', style: { background: v.value }, 'aria-hidden': 'true' } ),
+						el( 'code', null, v.name + ': ' + v.value ) );
+				} )
+			) : null,
+			( fix.cssNotes || [] ).map( function ( n, i ) { return el( 'p', { key: 'n' + i, className: 'ekwa-pa-risk' }, n ); } ),
+			el( 'p', { className: 'ekwa-pa-muted' }, entry && entry.marker
+				? sprintf( /* translators: %s: marker text */ __( 'The old value is kept in a comment marked “%s” in the stylesheet.', 'ekwa' ), entry.marker )
+				: __( 'The old value is kept in a comment marked “ekwa-fix:” in the stylesheet, so it can be undone or found later.', 'ekwa' ) )
+		);
+	}
+
+	function PartDiff( props ) {
+		var fix   = props.fix;
+		var entry = props.status && props.status.applied ? props.status.entry : null;
+		var type  = wp.blocks.getBlockType( fix.block );
+		var rows  = Object.keys( fix.attrs || {} ).map( function ( k ) {
+			var before = entry && entry.before ? entry.before[ k ] : undefined;
+			var after  = entry && entry.after ? entry.after[ k ] : fix.attrs[ k ];
+			return el( 'tr', { key: k },
+				el( 'th', { scope: 'row' }, k ),
+				entry ? el( 'td', null, fmtValue( before ) ) : null,
+				el( 'td', null, fmtValue( after ) )
+			);
+		} );
+		return el( 'div', { className: 'ekwa-pa-diff' },
+			el( 'div', { className: 'ekwa-pa-diff__target' },
+				el( Badge, { tone: 'site' }, __( 'Site-wide', 'ekwa' ) ), ' ',
+				sprintf( /* translators: 1: template part title, 2: block title */ __( 'Template part “%1$s” → %2$s', 'ekwa' ), fix.partTitle || fix.part, ( type && type.title ) || fix.block )
+			),
+			el( 'table', null,
+				el( 'thead', null, el( 'tr', null,
+					el( 'th', { scope: 'col' }, __( 'Setting', 'ekwa' ) ),
+					entry ? el( 'th', { scope: 'col' }, __( 'Before', 'ekwa' ) ) : null,
+					el( 'th', { scope: 'col' }, entry ? __( 'After', 'ekwa' ) : __( 'New value', 'ekwa' ) )
+				) ),
+				el( 'tbody', null, rows )
+			)
+		);
+	}
+
 	function FixCard( props ) {
 		var fix    = props.fix;
 		var postId = props.postId;
@@ -774,12 +934,21 @@
 		var acked  = !! store.ack[ fix.id ];
 
 		var tone   = { high: 'high', medium: 'medium', low: 'low' }[ fix.impact ] || 'medium';
-		var kindLb = { setting: __( 'Setting', 'ekwa' ), block: __( 'Block', 'ekwa' ), manual: __( 'Manual', 'ekwa' ) }[ fix.kind ];
+		var kindLb = {
+			setting: __( 'Setting', 'ekwa' ),
+			block:   __( 'Block', 'ekwa' ),
+			css:     __( 'Stylesheet', 'ekwa' ),
+			part:    __( 'Header / footer', 'ekwa' ),
+			manual:  __( 'Manual', 'ekwa' ),
+		}[ fix.kind ];
+		var isSite   = 'css' === fix.kind || 'part' === fix.kind;
+		var allowed  = 'setting' === fix.kind || 'css' === fix.kind ? CFG.canManage : ( 'part' === fix.kind ? CFG.canParts : true );
+		var compare  = 'css' === fix.kind ? compareHref( postId, fix ) : '';
 
 		var actions = null;
 		if ( 'manual' !== fix.kind ) {
 			if ( status.applied ) {
-				var canUndo = 'setting' === fix.kind ? ( CFG.canManage && status.undoable ) : true;
+				var canUndo = 'setting' === fix.kind ? ( CFG.canManage && status.undoable ) : ( isSite ? ( allowed && status.undoable ) : true );
 				actions = el( 'div', { className: 'ekwa-pa-actions' },
 					el( 'span', { className: 'ekwa-pa-applied' }, '✓ ' + ( 'changed' === status.blockState
 						? __( 'Applied, edited since', 'ekwa' )
@@ -787,24 +956,42 @@
 					canUndo ? el( Button, {
 						variant: 'secondary', isBusy: isBusy, disabled: isBusy,
 						onClick: function () {
-							if ( 'setting' === fix.kind ) { undoSetting( status.entry, fix.id ); } else { undoBlockEntry( postId, status.entry, fix.id ); }
+							if ( 'setting' === fix.kind ) {
+								undoSetting( status.entry, fix.id );
+							} else if ( isSite ) {
+								undoChange( status.entry, fix.id );
+							} else {
+								undoBlockEntry( postId, status.entry, fix.id );
+							}
 						},
 					}, __( 'Undo', 'ekwa' ) ) : null,
-					'setting' === fix.kind && ! status.undoable ? el( 'span', { className: 'ekwa-pa-muted' }, __( 'Changed again since — undo from Ekwa Settings if needed.', 'ekwa' ) ) : null
+					compare ? el( Button, { variant: 'tertiary', href: compare, target: '_blank', rel: 'noopener noreferrer' }, __( 'Compare', 'ekwa' ) ) : null,
+					'setting' === fix.kind && ! status.undoable ? el( 'span', { className: 'ekwa-pa-muted' }, __( 'Changed again since — undo from Ekwa Settings if needed.', 'ekwa' ) ) : null,
+					isSite && ! status.undoable ? el( 'span', { className: 'ekwa-pa-muted' }, __( 'Edited since — undo by hand (search the stylesheet for its ekwa-fix note) or from Ekwa Settings → Performance.', 'ekwa' ) ) : null
 				);
 			} else if ( status.inEffect ) {
 				actions = el( 'div', { className: 'ekwa-pa-actions' }, el( 'span', { className: 'ekwa-pa-applied' }, '✓ ' + __( 'Already in effect', 'ekwa' ) ) );
-			} else if ( 'setting' === fix.kind && ! CFG.canManage ) {
-				actions = el( 'p', { className: 'ekwa-pa-muted' }, __( 'Site-wide settings can only be changed by an administrator.', 'ekwa' ) );
+			} else if ( ! allowed ) {
+				actions = el( 'div', { className: 'ekwa-pa-actions' },
+					el( 'p', { className: 'ekwa-pa-muted' }, __( 'Site-wide changes can only be made by an administrator.', 'ekwa' ) ),
+					compare ? el( Button, { variant: 'secondary', href: compare, target: '_blank', rel: 'noopener noreferrer' }, __( 'Compare', 'ekwa' ) ) : null
+				);
 			} else {
 				actions = el( 'div', { className: 'ekwa-pa-actions' },
 					el( Button, {
 						variant: 'primary', isBusy: isBusy, disabled: isBusy || ( big && ! acked ),
 						onClick: function () {
 							say( fix.id, '', '' );
-							if ( 'setting' === fix.kind ) { applySetting( postId, fix ); } else { applyBlockFix( postId, fix ); }
+							if ( 'setting' === fix.kind ) {
+								applySetting( postId, fix );
+							} else if ( isSite ) {
+								applySiteFix( postId, fix );
+							} else {
+								applyBlockFix( postId, fix );
+							}
 						},
-					}, 'setting' === fix.kind ? __( 'Apply site-wide', 'ekwa' ) : __( 'Apply fix', 'ekwa' ) )
+					}, { setting: __( 'Apply site-wide', 'ekwa' ), css: __( 'Apply to stylesheet', 'ekwa' ), part: __( 'Apply to template part', 'ekwa' ) }[ fix.kind ] || __( 'Apply fix', 'ekwa' ) ),
+					compare ? el( Button, { variant: 'secondary', href: compare, target: '_blank', rel: 'noopener noreferrer' }, __( 'Compare before / after', 'ekwa' ) ) : null
 				);
 			}
 		}
@@ -819,6 +1006,8 @@
 			fix.colors && fix.colors.length ? el( ColourPreview, { colors: fix.colors } ) : null,
 			'block' === fix.kind ? el( AttrDiff, { fix: fix, status: status } ) : null,
 			'setting' === fix.kind ? el( SettingDiff, { fix: fix, status: status } ) : null,
+			'css' === fix.kind ? el( CssDiff, { fix: fix, status: status } ) : null,
+			'part' === fix.kind ? el( PartDiff, { fix: fix, status: status } ) : null,
 			'manual' === fix.kind && fix.steps ? el( 'div', { className: 'ekwa-pa-steps' }, fix.steps ) : null,
 			// The setting's own risk note is already shown above; skip a visual note that just repeats it.
 			fix.visual && fix.visualNote && ( ! fix.risk || fix.visualNote.trim() !== fix.risk.trim() )
@@ -834,6 +1023,38 @@
 			fix.audit ? el( 'p', { className: 'ekwa-pa-muted ekwa-pa-audit-id' }, sprintf( /* translators: %s: Lighthouse audit id */ __( 'PageSpeed audit: %s', 'ekwa' ), fix.audit ) ) : null,
 			actions,
 			el( Message, { message: store.messages[ fix.id ], onRemove: function () { say( fix.id, '', '' ); } } )
+		);
+	}
+
+	// One collapsible category of fixes. Open/closed is kept in the shared
+	// store so it survives re-renders (and the summary panel's updates).
+	function FixGroup( props ) {
+		var open    = !! store.groups[ props.id ];
+		var applied = props.fixes.filter( function ( f ) { var st = fixStatus( f ); return st.applied || st.inEffect; } ).length;
+		var manual  = props.fixes.filter( function ( f ) { return 'manual' === f.kind; } ).length;
+		var panelId = 'ekwa-pa-group-' + props.id;
+		var meta    = [ sprintf( /* translators: %d: number of fixes */ __( '%d fixes', 'ekwa' ), props.fixes.length ) ];
+		if ( applied ) { meta.push( sprintf( /* translators: %d: number applied */ __( '%d applied', 'ekwa' ), applied ) ); }
+		if ( manual ) { meta.push( sprintf( /* translators: %d: number of manual fixes */ __( '%d manual', 'ekwa' ), manual ) ); }
+		return el( 'div', { className: 'ekwa-pa-group is-' + props.id + ( open ? ' is-open' : '' ) },
+			el( 'button', {
+				type: 'button',
+				className: 'ekwa-pa-group__head',
+				'aria-expanded': open,
+				'aria-controls': panelId,
+				onClick: function () {
+					var next = assign( {}, store.groups );
+					next[ props.id ] = ! open;
+					setStore( { groups: next } );
+				},
+			},
+				el( 'span', { className: 'ekwa-pa-group__chev', 'aria-hidden': 'true' }, open ? '▾' : '▸' ),
+				el( 'span', { className: 'ekwa-pa-group__title' }, props.title ),
+				el( 'span', { className: 'ekwa-pa-group__meta' }, meta.join( ' · ' ) )
+			),
+			open ? el( 'div', { className: 'ekwa-pa-group__body', id: panelId },
+				props.fixes.map( function ( fix ) { return el( FixCard, { key: fix.id, fix: fix, postId: props.postId } ); } )
+			) : null
 		);
 	}
 
@@ -926,15 +1147,20 @@
 	}
 
 	function StrategySwitch( props ) {
-		var s = props.store;
+		var s    = props.store;
+		var ev   = ( s.data && s.data.evaluation ) || {};
 		return el( 'div', { className: 'ekwa-pa-switch', role: 'group', 'aria-label': __( 'Device', 'ekwa' ) },
 			[ [ 'mobile', __( 'Mobile', 'ekwa' ) ], [ 'desktop', __( 'Desktop', 'ekwa' ) ] ].map( function ( opt ) {
+				var st = ev[ opt[ 0 ] ] ? ev[ opt[ 0 ] ].status : 'none';
 				return el( Button, {
 					key: opt[ 0 ],
 					variant: s.strategy === opt[ 0 ] ? 'primary' : 'secondary',
 					'aria-pressed': s.strategy === opt[ 0 ],
 					onClick: function () { setStore( { strategy: opt[ 0 ] } ); },
-				}, opt[ 1 ] );
+				},
+					opt[ 1 ],
+					'none' !== st ? el( 'span', { className: 'ekwa-pa-switch__st is-' + st }, 'pass' === st ? __( 'PASS', 'ekwa' ) : __( 'FAIL', 'ekwa' ) ) : null
+				);
 			} )
 		);
 	}
@@ -949,15 +1175,22 @@
 		var elapsed  = running ? Math.round( ( Date.now() - s.runStarted ) / 1000 ) : 0;
 		var unpublished = 'publish' !== post.status || !! post.password;
 
+		var sc       = ( report && report.scores ) || {};
+		var bp       = sc[ 'best-practices' ];
+
 		return el( PanelBody, { title: __( 'Scores', 'ekwa' ), initialOpen: true },
 			el( StrategySwitch, { store: s } ),
 			el( 'div', { className: 'ekwa-pa-gauges' },
-				el( Gauge, { score: report ? report.scores.performance : null, label: __( 'Performance', 'ekwa' ), delta: d.p } ),
-				el( Gauge, { score: report ? report.scores.accessibility : null, label: __( 'Accessibility', 'ekwa' ), delta: d.a } )
+				el( Gauge, { score: report ? sc.performance : null, label: __( 'Performance', 'ekwa' ), delta: d.p } ),
+				el( Gauge, { score: report ? sc.accessibility : null, label: __( 'Accessibility', 'ekwa' ), delta: d.a } ),
+				el( Gauge, { score: report && null != sc.seo ? sc.seo : null, label: __( 'SEO', 'ekwa' ), delta: d.o } )
 			),
+			report && null != bp ? el( 'p', { className: 'ekwa-pa-muted ekwa-pa-center' },
+				sprintf( /* translators: %d: score */ __( 'Best Practices: %d (recorded, not part of PASS/FAIL)', 'ekwa' ), bp ) ) : null,
 			report ? el( 'p', { className: 'ekwa-pa-muted ekwa-pa-center' },
 				sprintf( /* translators: %s: date and time */ __( 'Tested %s', 'ekwa' ), when( report.fetched ) )
 			) : el( 'p', { className: 'ekwa-pa-muted ekwa-pa-center' }, __( 'Not tested yet.', 'ekwa' ) ),
+			report ? el( Verdict, { evaluation: ( data.evaluation || {} )[ s.strategy ], thresholds: data.thresholds } ) : null,
 			report ? el( Metrics, { metrics: report.metrics } ) : null,
 			report && report.field && report.field.overall ? el( 'p', { className: 'ekwa-pa-muted' },
 				sprintf( /* translators: %s: FAST / AVERAGE / SLOW */ __( 'Real visitors (Chrome UX Report, 28 days): %s', 'ekwa' ), report.field.overall.toUpperCase() ) ) : null,
@@ -989,8 +1222,9 @@
 		if ( ! report ) { return null; }
 		var perf = ( report.audits && report.audits.performance ) || [];
 		var a11y = ( report.audits && report.audits.accessibility ) || [];
+		var seo  = ( report.audits && report.audits.seo ) || [];
 		return el( PanelBody, {
-			title: sprintf( /* translators: %d: number of issues */ __( 'Issues found (%d)', 'ekwa' ), perf.length + a11y.length ),
+			title: sprintf( /* translators: %d: number of issues */ __( 'Issues found (%d)', 'ekwa' ), perf.length + a11y.length + seo.length ),
 			initialOpen: false,
 		},
 			report.lcp ? el( 'div', { className: 'ekwa-pa-lcp' },
@@ -1001,7 +1235,11 @@
 			el( 'h3', { className: 'ekwa-pa-h' }, sprintf( __( 'Performance (%d)', 'ekwa' ), perf.length ) ),
 			el( AuditList, { audits: perf } ),
 			el( 'h3', { className: 'ekwa-pa-h' }, sprintf( __( 'Accessibility (%d)', 'ekwa' ), a11y.length ) ),
-			el( AuditList, { audits: a11y } )
+			el( AuditList, { audits: a11y } ),
+			report.scores && null != report.scores.seo ? el( Fragment, null,
+				el( 'h3', { className: 'ekwa-pa-h' }, sprintf( __( 'SEO (%d)', 'ekwa' ), seo.length ) ),
+				el( AuditList, { audits: seo } )
+			) : null
 		);
 	}
 
@@ -1025,9 +1263,10 @@
 				label: __( 'Look at', 'ekwa' ),
 				value: s.focus,
 				options: [
-					{ value: 'all', label: __( 'Performance and accessibility', 'ekwa' ) },
+					{ value: 'all', label: __( 'Performance, accessibility and SEO', 'ekwa' ) },
 					{ value: 'performance', label: __( 'Performance only', 'ekwa' ) },
 					{ value: 'accessibility', label: __( 'Accessibility only', 'ekwa' ) },
+					{ value: 'seo', label: __( 'SEO only', 'ekwa' ) },
 				],
 				onChange: function ( v ) { setStore( { focus: v } ); },
 			} ) );
@@ -1078,13 +1317,14 @@
 			if ( ! fixes.length ) {
 				body.push( el( 'p', { key: 'none' }, __( 'No fixes suggested.', 'ekwa' ) ) );
 			}
-			[ [ 'accessibility', __( 'Accessibility', 'ekwa' ) ], [ 'performance', __( 'Performance', 'ekwa' ) ] ].forEach( function ( cat ) {
-				var list = fixes.filter( function ( f ) { return f.category === cat[ 0 ]; } );
+			[
+				[ 'accessibility', __( 'Accessibility', 'ekwa' ) ],
+				[ 'performance', __( 'Performance', 'ekwa' ) ],
+				[ 'seo', __( 'SEO', 'ekwa' ) ],
+			].forEach( function ( cat ) {
+				var list = fixes.filter( function ( f ) { return ( f.category || 'performance' ) === cat[ 0 ]; } );
 				if ( ! list.length ) { return; }
-				body.push( el( 'h3', { key: 'h-' + cat[ 0 ], className: 'ekwa-pa-h' }, cat[ 1 ] + ' (' + list.length + ')' ) );
-				list.forEach( function ( fix ) {
-					body.push( el( FixCard, { key: fix.id, fix: fix, postId: post.id } ) );
-				} );
+				body.push( el( FixGroup, { key: 'g-' + cat[ 0 ], id: cat[ 0 ], title: cat[ 1 ], fixes: list, postId: post.id } ) );
 			} );
 			if ( fixes.some( function ( f ) { return 'block' === f.kind; } ) ) {
 				body.push( el( 'p', { key: 'save', className: 'ekwa-pa-muted' }, __( 'Block fixes change the page in the editor; save the page, then re-run the test to see the new score.', 'ekwa' ) ) );
@@ -1101,6 +1341,7 @@
 		var entries = [];
 		( data.history || [] ).forEach( function ( h ) { entries.push( { kind: 'block', e: h } ); } );
 		( data.log || [] ).forEach( function ( l ) { entries.push( { kind: 'setting', e: l } ); } );
+		( data.changes || [] ).forEach( function ( c ) { entries.push( { kind: c.type, e: c } ); } );
 		if ( ! entries.length ) { return null; }
 		entries.sort( function ( a, b ) { return ( b.e.time || 0 ) - ( a.e.time || 0 ); } );
 
@@ -1118,6 +1359,14 @@
 					if ( 'setting' === row.kind ) {
 						canUndo = CFG.canManage && logUndoable( e );
 						stateLb = e.undone ? __( 'Undone', 'ekwa' ) : ( canUndo ? __( 'Active (site-wide)', 'ekwa' ) : __( 'Changed again since', 'ekwa' ) );
+					} else if ( 'css' === row.kind || 'part' === row.kind ) {
+						canUndo = ( 'css' === row.kind ? CFG.canManage : CFG.canParts ) && !! e.undoable;
+						stateLb = e.undone ? __( 'Undone', 'ekwa' ) : ( {
+							applied:  __( 'Active (site-wide)', 'ekwa' ),
+							reverted: __( 'Already reverted', 'ekwa' ),
+							changed:  __( 'Edited since', 'ekwa' ),
+							missing:  __( 'Block moved or removed', 'ekwa' ),
+						}[ e.state ] || '' );
 					} else if ( e.undone ) {
 						stateLb = __( 'Undone', 'ekwa' );
 					} else {
@@ -1130,21 +1379,33 @@
 						}[ st ];
 						canUndo = 'applied' === st || 'reverted' === st;
 					}
+					var detail = {
+						setting: function () { return sprintf( __( '%1$s: %2$s → %3$s', 'ekwa' ), e.label || e.setting, fmtValue( e.old ), fmtValue( e[ 'new' ] ) ); },
+						css:     function () { return ( e.marker ? e.marker + ' · ' : '' ) + truncate( e.detail || '', 140 ); },
+						part:    function () { return e.detail || ''; },
+					}[ row.kind ];
 					return el( 'li', { key: key },
 						el( 'div', { className: 'ekwa-pa-changes__title' }, e.title || ( 'setting' === row.kind ? e.label : e.block ) ),
 						el( 'div', { className: 'ekwa-pa-muted' },
-							( 'setting' === row.kind
-								? sprintf( __( '%1$s: %2$s → %3$s', 'ekwa' ), e.label || e.setting, fmtValue( e.old ), fmtValue( e[ 'new' ] ) )
-								: sprintf( __( 'Block %s', 'ekwa' ), e.block ) ) +
+							( detail ? detail() : sprintf( __( 'Block %s', 'ekwa' ), e.block ) ) +
 							' · ' + when( e.time ) + ( e.user ? ' · ' + e.user : '' ) ),
 						el( 'div', { className: 'ekwa-pa-actions' },
 							el( 'span', { className: 'ekwa-pa-muted' }, stateLb ),
 							! e.undone && canUndo ? el( Button, {
 								variant: 'secondary', size: 'small', isBusy: isBusy, disabled: isBusy,
 								onClick: function () {
-									if ( 'setting' === row.kind ) { undoSetting( e, key ); } else { undoBlockEntry( post.id, e, key ); }
+									if ( 'setting' === row.kind ) {
+										undoSetting( e, key );
+									} else if ( 'css' === row.kind || 'part' === row.kind ) {
+										undoChange( e, key );
+									} else {
+										undoBlockEntry( post.id, e, key );
+									}
 								},
-							}, __( 'Undo', 'ekwa' ) ) : null
+							}, __( 'Undo', 'ekwa' ) ) : null,
+							'css' === row.kind && ! e.undone && CFG.compareUrl ? el( Button, {
+								variant: 'tertiary', size: 'small', href: CFG.compareUrl + '&change=' + encodeURIComponent( e.id ), target: '_blank', rel: 'noopener noreferrer',
+							}, __( 'Compare', 'ekwa' ) ) : null
 						),
 						el( Message, { message: s.messages[ key ], onRemove: function () { say( key, '', '' ); } } )
 					);
@@ -1222,29 +1483,39 @@
 		var mobile  = reports.mobile;
 		var desktop = reports.desktop;
 
-		var row = function ( label, rep ) {
+		var evals = ( s.data && s.data.evaluation ) || {};
+		var row = function ( label, rep, key ) {
 			return el( 'div', { className: 'ekwa-pa-summary-row' },
-				el( 'span', { className: 'ekwa-pa-summary-row__label' }, label ),
+				el( 'span', { className: 'ekwa-pa-summary-row__label' }, label, el( StatusChip, { evaluation: evals[ key ], small: true } ) ),
 				el( Gauge, { small: true, score: rep ? rep.scores.performance : null, label: __( 'Performance', 'ekwa' ) } ),
-				el( Gauge, { small: true, score: rep ? rep.scores.accessibility : null, label: __( 'Accessibility', 'ekwa' ) } )
+				el( Gauge, { small: true, score: rep ? rep.scores.accessibility : null, label: __( 'Accessibility', 'ekwa' ) } ),
+				el( Gauge, { small: true, score: rep && null != rep.scores.seo ? rep.scores.seo : null, label: __( 'SEO', 'ekwa' ) } )
 			);
 		};
 
 		return el( PluginDocumentSettingPanel, { name: 'ekwa-page-audit-summary', title: __( 'Page Speed & Accessibility', 'ekwa' ), className: 'ekwa-pa-summary' },
 			mobile || desktop
 				? el( Fragment, null,
-					mobile ? row( __( 'Mobile', 'ekwa' ), mobile ) : null,
-					desktop ? row( __( 'Desktop', 'ekwa' ), desktop ) : null,
+					mobile ? row( __( 'Mobile', 'ekwa' ), mobile, 'mobile' ) : null,
+					desktop ? row( __( 'Desktop', 'ekwa' ), desktop, 'desktop' ) : null,
 					el( 'p', { className: 'ekwa-pa-muted' }, sprintf( __( 'Tested %s', 'ekwa' ), when( ( mobile || desktop ).fetched ) ) )
 				)
-				: el( 'p', { className: 'ekwa-pa-muted' }, __( 'Not tested yet. Test the published page and get AI fixes for speed and accessibility.', 'ekwa' ) ),
-			el( Button, { variant: 'secondary', icon: ICON, onClick: openSidebar }, __( 'Open the audit', 'ekwa' ) )
+				: el( 'p', { className: 'ekwa-pa-muted' }, __( 'Not tested yet. Test the published page and get AI fixes for speed, accessibility and SEO.', 'ekwa' ) ),
+			el( Button, { variant: 'secondary', icon: ICON, onClick: openSidebar }, __( 'Open the audit', 'ekwa' ) ),
+			CFG.dashboardUrl ? el( 'p', { className: 'ekwa-pa-muted' }, el( 'a', { href: CFG.dashboardUrl }, __( 'All pages: Page Speed dashboard', 'ekwa' ) ) ) : null
 		);
 	}
 
 	if ( PluginDocumentSettingPanel ) {
 		registerPluginSafe( PLUGIN + '-summary', { render: SummaryPanel, icon: ICON } );
 	}
+
+	// Opened from the dashboard ("Open audit"): show the full audit right away.
+	try {
+		if ( window.URLSearchParams && new window.URLSearchParams( window.location.search ).get( 'ekwa_pa' ) ) {
+			wp.domReady ? wp.domReady( function () { window.setTimeout( openSidebar, 400 ); } ) : window.setTimeout( openSidebar, 1200 );
+		}
+	} catch ( e ) {}
 
 	function registerPluginSafe( name, settings ) {
 		try {

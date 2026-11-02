@@ -3,7 +3,7 @@
    ========================================================================== */
 
 .ekwa-settings-wrap {
-	max-width: 960px;
+	max-width: 1180px;
 }
 
 .ekwa-settings-form .form-table th {
@@ -11,11 +11,70 @@
 	padding-top: 16px;
 }
 
-/* ---------- Tabs ---------- */
-.ekwa-nav-tabs {
-	margin-top: 16px;
-	margin-bottom: 0;
+/* ---------- Tabs ----------
+   WordPress' folder-style .nav-tab only works on one line: wrapped, the second
+   row floats under a border that belongs to the first. Restyled as one bar of
+   pills that wraps cleanly; the two tools (Bulk Page Creator, Legacy Import)
+   sit at the end, set apart from the settings tabs. Same markup and classes. */
+.ekwa-settings-wrap .ekwa-nav-tabs {
+	display: flex;
 	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	margin: 16px 0 0;
+	padding: 6px;
+	border: 1px solid #c3c4c7;
+	border-radius: 8px;
+	background: #fff;
+	line-height: 1;
+}
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab {
+	float: none;
+	margin: 0;
+	padding: 8px 12px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: #3c434a;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.3;
+	white-space: nowrap;
+}
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab:hover {
+	background: #f0f0f1;
+	color: #1d2327;
+}
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab:focus {
+	box-shadow: 0 0 0 2px #2271b1;
+	outline: 2px solid transparent;
+}
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab-active,
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab-active:hover,
+.ekwa-settings-wrap .ekwa-nav-tabs .nav-tab-active:focus {
+	background: #2271b1;
+	color: #fff;
+}
+/* Tools group: pushed to the end and kept together, with a divider. */
+.ekwa-settings-wrap .ekwa-nav-tools {
+	display: inline-flex;
+	gap: 4px;
+	margin-left: auto;
+	padding-left: 8px;
+	border-left: 1px solid #dcdcde;
+}
+.ekwa-settings-wrap .ekwa-nav-tools .nav-tab {
+	color: #50575e;
+}
+.ekwa-settings-wrap .ekwa-nav-tools .nav-tab-active {
+	color: #fff;
+}
+@media screen and (max-width: 782px) {
+	.ekwa-settings-wrap .ekwa-nav-tools {
+		margin-left: 0;
+		padding-left: 0;
+		border-left: 0;
+	}
 }
 
 .ekwa-tab-pane {
