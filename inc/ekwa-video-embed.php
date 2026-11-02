@@ -29,20 +29,47 @@ if ( ! defined( 'ABSPATH' ) ) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Fields enforced by the editor's video schema guard.
+ *
+ * Google requires name/thumbnailUrl/uploadDate (critical); duration is
+ * recommended. Description is not required because the render falls back to
+ * the title. A child theme can return array() to disable the editor guard.
+ *
+ * @return array
+ */
+function ekwa_video_schema_required_fields() {
+	$fields = apply_filters( 'ekwa_video_schema_required_fields', array( 'videoTitle', 'thumbnailUrl', 'uploadDate', 'videoDuration' ) );
+	return array_values( array_intersect( (array) $fields, array( 'videoTitle', 'videoDescription', 'thumbnailUrl', 'uploadDate', 'videoDuration' ) ) );
+}
+
+/**
  * Register the two blocks and their editor scripts.
  */
 function ekwa_video_embed_register_blocks() {
 	wp_register_script(
+		'ekwa-video-schema-guard',
+		get_theme_file_uri( 'assets/js/ekwa-video-schema-guard.js' ),
+		array( 'wp-data', 'wp-hooks', 'wp-i18n' ),
+		filemtime( get_theme_file_path( 'assets/js/ekwa-video-schema-guard.js' ) ),
+		true
+	);
+	wp_add_inline_script(
+		'ekwa-video-schema-guard',
+		'window.ekwaVideoSchemaConfig = ' . wp_json_encode( array( 'required' => ekwa_video_schema_required_fields() ) ) . ';',
+		'before'
+	);
+
+	wp_register_script(
 		'ekwa-youtube-video-editor',
 		get_theme_file_uri( 'assets/js/ekwa-youtube-video-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch', 'ekwa-video-schema-guard' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-youtube-video-editor.js' ) ),
 		true
 	);
 	wp_register_script(
 		'ekwa-vimeo-video-editor',
 		get_theme_file_uri( 'assets/js/ekwa-vimeo-video-editor.js' ),
-		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch' ),
+		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-api-fetch', 'ekwa-video-schema-guard' ),
 		filemtime( get_theme_file_path( 'assets/js/ekwa-vimeo-video-editor.js' ) ),
 		true
 	);

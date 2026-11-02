@@ -40,6 +40,11 @@
 		return { videoId: m[ 1 ], embedUrl: 'https://www.youtube-nocookie.com/embed/' + m[ 1 ] + '?rel=0' };
 	}
 
+	var videoSchema = window.ekwaVideoSchema || null;
+	if ( videoSchema ) {
+		videoSchema.registerBlock( 'ekwa/youtube-video', function ( url ) { return extractBasicInfo( url ).videoId; } );
+	}
+
 	// ISO 8601 duration ("PT1H4M30S") <-> human input ("1:04:30"), for the
 	// manual-entry field — schema markup needs ISO 8601, humans don't write it.
 	function isoDurationToHuman( iso ) {
@@ -106,6 +111,12 @@
 			var durationError             = durationErrorState[ 0 ];
 			var setDurationError          = durationErrorState[ 1 ];
 
+			useEffect( function () {
+				if ( ! videoSchema ) { return; }
+				videoSchema.setLoading( props.clientId, isLoading );
+				return function () { videoSchema.setLoading( props.clientId, false ); };
+			}, [ props.clientId, isLoading ] );
+
 			// Keep the human-readable duration field in sync when the ISO value
 			// changes from elsewhere (metadata fetch, URL cleared, etc.).
 			useEffect( function () {
@@ -139,7 +150,7 @@
 						} );
 					} )
 					.catch( function ( err ) {
-						setError( ( err && err.message ) || __( 'Could not fetch video metadata. You can still publish — the video will still play.', 'ekwa' ) );
+						setError( ( err && err.message ) || __( 'Could not fetch video metadata. Fill in the video information below.', 'ekwa' ) );
 					} )
 					.finally( function () { setIsLoading( false ); } );
 			}
@@ -203,19 +214,33 @@
 
 			var blockProps = useBlockProps( { className: 'ekwa-video-embed-editor' } );
 
-			// Soft nudge — the API didn't return these, but they matter for the
-			// schema markup, so ask rather than silently publishing without them.
-			var hasVideo         = a.videoUrl && a.videoId && ! isLoading;
-			var missingDuration   = hasVideo && ! a.videoDuration;
-			var missingUploadDate = hasVideo && ! a.uploadDate;
+			var missing = ( videoSchema && a.videoId && ! isLoading ) ? videoSchema.getMissing( props.name, a ) : [];
+			function isMissing( key ) {
+				return missing.indexOf( key ) !== -1;
+			}
+
 			var missingFieldsNotice = null;
-			if ( ! error && ( missingDuration || missingUploadDate ) ) {
-				var missingLabel = missingDuration && missingUploadDate
-					? __( "duration and upload date couldn't", 'ekwa' )
-					: missingDuration
-						? __( "duration couldn't", 'ekwa' )
-						: __( "upload date couldn't", 'ekwa' );
-				missingFieldsNotice = __( "This video's ", 'ekwa' ) + missingLabel + __( ' be detected automatically. You can enter it in the Video Information panel below.', 'ekwa' );
+			if ( missing.length ) {
+				missingFieldsNotice = wp.i18n.sprintf(
+					__( "Required for this video's schema markup — please fill in: %s. The page can't be saved until this is done.", 'ekwa' ),
+					videoSchema.formatMissing( missing )
+				);
+				if ( isMissing( 'thumbnailUrl' ) ) {
+					missingFieldsNotice += __( ' No thumbnail could be fetched — upload one under Video Information.', 'ekwa' );
+				}
+			} else if ( ! videoSchema || ! videoSchema.isEnabled ) {
+				// Old soft warning when the shared guard did not load or a child theme disabled it.
+				var hasVideo         = a.videoUrl && a.videoId && ! isLoading;
+				var missingDuration   = hasVideo && ! a.videoDuration;
+				var missingUploadDate = hasVideo && ! a.uploadDate;
+				if ( ! error && ( missingDuration || missingUploadDate ) ) {
+					var missingLabel = missingDuration && missingUploadDate
+						? __( "duration and upload date couldn't", 'ekwa' )
+						: missingDuration
+							? __( "duration couldn't", 'ekwa' )
+							: __( "upload date couldn't", 'ekwa' );
+					missingFieldsNotice = __( "This video's ", 'ekwa' ) + missingLabel + __( ' be detected automatically. You can enter it in the Video Information panel below.', 'ekwa' );
+				}
 			}
 
 			var inspector = el( InspectorControls, null,
@@ -228,7 +253,7 @@
 					} ),
 					isLoading ? el( Spinner ) : null,
 					error ? el( Notice, { status: 'error', isDismissible: false }, error ) : null,
-					missingFieldsNotice ? el( Notice, { status: 'warning', isDismissible: false }, missingFieldsNotice ) : null,
+					missingFieldsNotice ? el( Notice, { status: missing.length ? 'error' : 'warning', isDismissible: false }, missingFieldsNotice ) : null,
 					a.videoUrl && a.videoId ? [
 						el( ToggleControl, { key: 'title', label: __( 'Show title', 'ekwa' ), checked: a.showTitle, onChange: function ( v ) { set( { showTitle: v } ); } } ),
 						el( ToggleControl, { key: 'desc', label: __( 'Show description', 'ekwa' ), checked: a.showDescription, onChange: function ( v ) { set( { showDescription: v } ); } } ),
@@ -256,13 +281,14 @@
 						label: __( 'Video title', 'ekwa' ),
 						value: a.videoTitle || '',
 						onChange: function ( v ) { set( { videoTitle: v } ); },
+						help: isMissing( 'videoTitle' ) ? __( 'Required for the video schema markup.', 'ekwa' ) : undefined,
 					} ),
 					el( TextareaControl, {
 						label: __( 'Video description', 'ekwa' ),
 						value: a.videoDescription || '',
 						onChange: function ( v ) { set( { videoDescription: v } ); },
 						rows: 4,
-						help: __( 'If left blank, the title is used as the description in the schema markup.', 'ekwa' ),
+						help: isMissing( 'videoDescription' ) ? __( 'Required for the video schema markup.', 'ekwa' ) : __( 'If left blank, the title is used as the description in the schema markup.', 'ekwa' ),
 					} ),
 					el( TextControl, {
 						label: __( 'Duration', 'ekwa' ),
@@ -270,14 +296,31 @@
 						onChange: setDurationInput,
 						onBlur: commitDuration,
 						placeholder: __( 'e.g. 4:30 or 1:04:30', 'ekwa' ),
-						help: durationError || __( 'Minutes:seconds, or hours:minutes:seconds.', 'ekwa' ),
+						help: durationError || ( isMissing( 'videoDuration' ) ? __( 'Required for the video schema markup. Minutes:seconds, or hours:minutes:seconds.', 'ekwa' ) : __( 'Minutes:seconds, or hours:minutes:seconds.', 'ekwa' ) ),
 					} ),
 					el( TextControl, {
 						type: 'date',
 						label: __( 'Upload date', 'ekwa' ),
 						value: isoDateToInputValue( a.uploadDate ),
 						onChange: function ( v ) { set( { uploadDate: inputValueToIsoDate( v ) } ); },
-					} )
+						help: isMissing( 'uploadDate' ) ? __( 'Required for the video schema markup.', 'ekwa' ) : undefined,
+					} ),
+					isMissing( 'thumbnailUrl' ) ? el( 'div', null,
+						el( 'p', { style: { fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', marginBottom: '8px' } }, __( 'Thumbnail', 'ekwa' ) ),
+						el( MediaUploadCheck, null,
+							el( MediaUpload, {
+								onSelect: function ( media ) {
+									set( { customThumbnail: { id: media.id, url: media.url, alt: media.alt || '', width: media.width, height: media.height } } );
+								},
+								allowedTypes: [ 'image' ],
+								value: a.customThumbnail && a.customThumbnail.id,
+								render: function ( obj ) {
+									return el( Button, { onClick: obj.open, variant: 'secondary' }, __( 'Upload thumbnail', 'ekwa' ) );
+								},
+							} )
+						),
+						el( 'p', { style: { color: '#757575', fontSize: '12px' } }, __( 'No thumbnail could be fetched for this video. Required for the video schema markup.', 'ekwa' ) )
+					) : null
 				) : null,
 				a.videoUrl && a.videoId ? el( PanelBody, { title: __( 'Custom Thumbnail', 'ekwa' ), initialOpen: false },
 					el( MediaUploadCheck, null,
@@ -342,6 +385,12 @@
 							el( 'div', { style: { width: 0, height: 0, borderTop: '14px solid transparent', borderBottom: '14px solid transparent', borderLeft: '22px solid #fff', filter: 'drop-shadow(0 0 4px rgba(0,0,0,.6))' } } )
 						)
 					),
+					missing.length ? el( 'div', { style: { borderLeft: '4px solid #cc1818', background: '#fcf0f1', color: '#1e1e1e', padding: '8px 12px', marginTop: '8px', fontSize: '13px' } },
+						wp.i18n.sprintf(
+							__( "Missing video information required for schema: %s. Select this block and fill it in under Video Information — the page can't be saved until then.", 'ekwa' ),
+							videoSchema.formatMissing( missing )
+						)
+					) : null,
 					isLoading ? el( Spinner ) : null
 				);
 			}
