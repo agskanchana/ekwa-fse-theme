@@ -19,7 +19,7 @@
 	var jump    = document.getElementById( 'ekwa-cmp-jump' );
 	var msg     = document.getElementById( 'ekwa-cmp-msg' );
 	var width   = 1366;
-	var lock    = false;
+
 
 	try {
 		var saved = parseInt( window.localStorage.getItem( 'ekwaCmpWidth' ), 10 );
@@ -79,24 +79,66 @@
 		return null;
 	}
 
+	// Instant, whatever the page's own `scroll-behavior: smooth` says — a
+	// smooth scroll in one frame being mirrored into the other made the two
+	// fight each other back up the page.
+	function scrollFrame( f, y ) {
+		if ( ! f.contentWindow ) { return; }
+		try {
+			f.contentWindow.scrollTo( { top: Math.max( 0, y ), left: 0, behavior: 'instant' } );
+		} catch ( e ) {
+			f.contentWindow.scrollTo( 0, Math.max( 0, y ) );
+		}
+	}
+
+	// Only the frame the person is actually scrolling leads; the other one
+	// follows and never echoes back.
+	var leader = null;
+
 	function mirror( from ) {
-		if ( ! sync.checked || lock ) { return; }
+		if ( ! sync.checked || from !== leader ) { return; }
 		var y = from.contentWindow ? from.contentWindow.scrollY : 0;
-		lock  = true;
 		frames.forEach( function ( f ) {
-			if ( f !== from && f.contentWindow ) { f.contentWindow.scrollTo( 0, y ); }
+			if ( f !== from ) { scrollFrame( f, y ); }
 		} );
-		window.requestAnimationFrame( function () { lock = false; } );
 	}
 
 	frames.forEach( function ( f ) {
+		var lead = function () { leader = f; };
+		f.addEventListener( 'mouseenter', lead );
+		f.addEventListener( 'focus', lead );
 		f.addEventListener( 'load', function () {
 			outline( f );
 			try {
+				var d = f.contentDocument;
+				// The preview never needs smooth scrolling of its own.
+				var s = d.createElement( 'style' );
+				s.textContent = 'html,body{scroll-behavior:auto !important}';
+				d.head.appendChild( s );
+				[ 'wheel', 'touchstart', 'pointerdown', 'keydown' ].forEach( function ( type ) {
+					f.contentWindow.addEventListener( type, lead, { passive: true } );
+				} );
 				f.contentWindow.addEventListener( 'scroll', function () { mirror( f ); }, { passive: true } );
 			} catch ( e ) {}
 		} );
 	} );
+
+	// Briefly pulse an element so the eye finds it after a jump.
+	function flash( f, el ) {
+		var d = doc( f );
+		if ( ! d || ! el ) { return; }
+		if ( ! d.getElementById( 'ekwa-cmp-flash-style' ) ) {
+			var s = d.createElement( 'style' );
+			s.id = 'ekwa-cmp-flash-style';
+			s.textContent = '@keyframes ekwaCmpFlash{0%,100%{box-shadow:0 0 0 0 rgba(214,54,56,0)}30%,70%{box-shadow:0 0 0 8px rgba(214,54,56,.45)}}'
+				+ '.ekwa-cmp-flash{animation:ekwaCmpFlash 1.4s ease-in-out 2 !important}';
+			d.head.appendChild( s );
+		}
+		el.classList.remove( 'ekwa-cmp-flash' );
+		void el.offsetWidth; // restart the animation
+		el.classList.add( 'ekwa-cmp-flash' );
+		setTimeout( function () { el.classList.remove( 'ekwa-cmp-flash' ); }, 3000 );
+	}
 
 	buttons.forEach( function ( b ) {
 		b.addEventListener( 'click', function () {
@@ -109,17 +151,18 @@
 	hl.addEventListener( 'change', function () { frames.forEach( outline ); } );
 
 	jump.addEventListener( 'click', function () {
-		var target = frames[ 1 ] || frames[ 0 ];
-		var el     = first( target );
-		if ( ! el ) {
-			msg.textContent = ( CFG.i18n && CFG.i18n.notFound ) || '';
-			return;
-		}
-		msg.textContent = '';
-		var y = el.getBoundingClientRect().top + target.contentWindow.scrollY - 120;
+		// A programmatic jump: nobody leads, so neither frame mirrors the other.
+		leader = null;
+		var found = false;
 		frames.forEach( function ( f ) {
-			if ( f.contentWindow ) { f.contentWindow.scrollTo( 0, Math.max( 0, y ) ); }
+			var el = first( f );
+			if ( ! el || ! f.contentWindow ) { return; }
+			found = true;
+			// Each frame aims at its own copy (the fix may shift layout slightly).
+			scrollFrame( f, el.getBoundingClientRect().top + f.contentWindow.scrollY - 120 );
+			flash( f, el );
 		} );
+		msg.textContent = found ? '' : ( ( CFG.i18n && CFG.i18n.notFound ) || '' );
 	} );
 
 	window.addEventListener( 'resize', layout );
