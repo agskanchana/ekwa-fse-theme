@@ -585,6 +585,12 @@ function ekwa_save_settings() {
 	$critical_code = preg_replace( '#</?\s*(style|script)[^>]*>#i', '', $critical_code );
 	update_option( 'ekwa_perf_critical_css_code', $critical_code );
 
+	// PageSpeed Insights API key (Performance tab) — masked field: a blank
+	// submit keeps the stored key, as with the Gemini key above.
+	if ( function_exists( 'ekwa_page_audit_save_settings' ) ) {
+		ekwa_page_audit_save_settings();
+	}
+
 	// If custom country is entered, use that.
 	$country = get_option( 'ekwa_country', '' );
 	if ( 'custom' === $country ) {
@@ -2217,6 +2223,13 @@ function ekwa_render_settings_page() {
 						</tr>
 					</table>
 				</div>
+				<?php
+				// PageSpeed Insights key + the log of setting changes made from page
+				// audits (inc/ekwa-page-audit.php).
+				if ( function_exists( 'ekwa_page_audit_render_settings_section' ) ) {
+					ekwa_page_audit_render_settings_section();
+				}
+				?>
 				<div class="ekwa-section">
 					<h2><?php esc_html_e( 'WebP Images', 'ekwa' ); ?></h2>
 					<p class="description" style="margin-bottom:1em;">

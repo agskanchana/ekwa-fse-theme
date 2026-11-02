@@ -862,7 +862,7 @@ function ekwa_register_blocks() {
 	$blog_blocks = array(
 		'back-to-category' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-server-side-render' ) ),
 		'read-time'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render' ) ),
-		'share-button'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-element', 'wp-i18n' ) ),
+		'share-button'     => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
 		'toc'              => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
 		'related-articles' => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n', 'wp-server-side-render', 'ekwa-carousel-controls' ) ),
 		'load-more'        => array( 'deps' => array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ) ),
@@ -4820,7 +4820,15 @@ function ekwa_render_video_block( $attrs ) {
 	// video file is fetched up front (preload="auto"). Lazy loading would defeat
 	// both, so it is skipped for this video.
 	$priority       = ! empty( $attrs['fetchPriorityHigh'] );
-	$lazy           = ! empty( $attrs['lazyLoad'] ) && ! $priority;
+	// The video FILE's own switch (separate from the poster's above, off by
+	// default): fetchpriority="high" on the <video> element plus
+	// preload="auto". Chromium/Firefox/Safari do not act on fetchpriority on
+	// media elements yet, so preload="auto" is the part that has an effect
+	// today — the file starts downloading when the parser reaches the tag
+	// instead of when playback needs it. Like the poster switch, it skips lazy
+	// loading. Absent (every block saved before it existed) = off = unchanged.
+	$video_priority = ! empty( $attrs['videoFetchPriorityHigh'] );
+	$lazy           = ! empty( $attrs['lazyLoad'] ) && ! $priority && ! $video_priority;
 	$lazy_mode      = function_exists( 'ekwa_perf_lazy_mode' ) ? ekwa_perf_lazy_mode() : 'native';
 	$use_lazysizes  = $lazy && $lazy_mode === 'lazysizes';
 
@@ -4841,6 +4849,7 @@ function ekwa_render_video_block( $attrs ) {
 	if ( $muted )       { $video .= ' muted'; }
 	if ( $playsinline ) { $video .= ' playsinline'; }
 	if ( $controls )    { $video .= ' controls'; }
+	if ( $video_priority ) { $video .= ' fetchpriority="high"'; }
 	if ( $poster ) {
 		// data-poster lets unveilhooks defer the poster image too.
 		$video .= $use_lazysizes
@@ -4852,7 +4861,7 @@ function ekwa_render_video_block( $attrs ) {
 		// `data-src` on inner <source> is NOT processed, so we put the URL
 		// here and drop the <source> child entirely.
 		$video .= ' data-src="' . $src . '"';
-	} elseif ( $priority ) {
+	} elseif ( $priority || $video_priority ) {
 		$video .= ' preload="auto"';
 	} elseif ( $lazy && ! $autoplay ) {
 		// Native lazy fallback: preload="none" only honored when autoplay is off.
@@ -5113,22 +5122,37 @@ function ekwa_render_read_time_block( $attrs ) {
 
 /**
  * Render: ekwa/share-button.
+ *
+ * DoneForMeSocial's embed.js needs a global jQuery `$` and an #sm-buttons
+ * element, neither of which this block's pages reliably have, so the buttons
+ * often never appeared. blocks/ekwa-share-button/view.js (inlined via the
+ * asset map) fetches the same widget into this container instead — after the
+ * page has loaded, or on the first scroll/interaction when loadOn is
+ * "interaction". The container keeps its class; only data attributes are new.
+ *
+ * @param array $attrs Block attributes.
+ * @return string
  */
-function ekwa_render_share_button_block() {
+function ekwa_render_share_button_block( $attrs = array() ) {
 	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
 		return '<div class="ekwa-share-button"><i class="fa-solid fa-share-nodes"></i> Share</div>';
 	}
 
-	// Enqueue the external share script.
-	wp_enqueue_script(
-		'ekwa-share-embed',
-		'https://www.doneformesocial.com/sm-share-buttons/embed.js',
-		array(),
-		null,
-		true
-	);
+	/**
+	 * Filter the URL the share widget's markup is fetched from.
+	 *
+	 * @param string $src Default: DoneForMeSocial's share-buttons endpoint.
+	 */
+	$src  = (string) apply_filters( 'ekwa_share_button_source', 'https://www.doneformesocial.com/sm-share-buttons/' );
+	$load = ( isset( $attrs['loadOn'] ) && 'interaction' === $attrs['loadOn'] ) ? 'interaction' : 'load';
 
-	return '<div class="ekwa-share-button"></div>';
+	// The asset map queues view.js too; queueing here as well covers a render
+	// that bypasses the render_block filter (the queue dedupes).
+	if ( function_exists( 'ekwa_inline_queue_script' ) ) {
+		ekwa_inline_queue_script( 'blocks/ekwa-share-button/view.js' );
+	}
+
+	return '<div class="ekwa-share-button" data-ekwa-share-src="' . esc_url( $src ) . '" data-ekwa-share-load="' . esc_attr( $load ) . '"></div>';
 }
 
 /**

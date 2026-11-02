@@ -2,14 +2,16 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "ekwa/share-button",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"title": "Ekwa Share Button",
 	"category": "ekwa-blog",
 	"icon": "share-alt2",
-	"description": "Embeds the DoneForMeSocial share buttons script.",
+	"description": "Embeds the DoneForMeSocial share buttons, loaded after the page or on first interaction.",
 	"textdomain": "ekwa",
 	"keywords": [ "share", "social", "button" ],
 	"supports": { "html": false },
-	"attributes": {},
+	"attributes": {
+		"loadOn": { "type": "string", "enum": [ "load", "interaction" ], "default": "load" }
+	},
 	"editorScript": "ekwa-share-button-editor"
 }

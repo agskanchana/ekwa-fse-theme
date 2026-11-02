@@ -74,7 +74,7 @@ function ekwa_inline_asset_map() {
 		// it to a single inline emission per request.
 		'ekwa/toc'              => array( 'css' => $blog ),
 		'ekwa/read-time'        => array( 'css' => $blog ),
-		'ekwa/share-button'     => array( 'css' => $blog ),
+		'ekwa/share-button'     => array( 'css' => $blog,                                      'js' => 'blocks/ekwa-share-button/view.js' ),
 		'ekwa/back-to-category' => array( 'css' => $blog ),
 		'ekwa/recent-posts'     => array( 'css' => $blog ),
 		'ekwa/categories'       => array( 'css' => $blog ),

@@ -590,6 +590,12 @@ require_once get_template_directory() . '/inc/ekwa-ai-alt.php';
 require_once get_template_directory() . '/inc/ekwa-interlink.php';
 
 /**
+ * Page Speed & Accessibility audit in the block editor: PageSpeed Insights
+ * scores, AI-suggested fixes (Gemini key or MCP connector), apply + undo.
+ */
+require_once get_template_directory() . '/inc/ekwa-page-audit.php';
+
+/**
  * Tag external links with a descriptive title on first user interaction.
  */
 require_once get_template_directory() . '/inc/ekwa-external-links.php';

@@ -6,6 +6,8 @@
  *   - "Mega Menu" toggle (only meaningful on top-level items)
  *   - "Mega Menu Columns" (1–6, defaults to count of children)
  *   - "Image" attachment (used as the column heading image in mega menus)
+ *   - "Image alt text" (optional; falls back to the image's media-library alt
+ *     text, then to the menu item's label — see ekwa_header_menu_image_alt())
  *
  * Provides ekwa_render_main_nav() which builds a multi-level menu where
  * top-level items flagged as mega menus expand into a columnar grid,
@@ -32,6 +34,9 @@ function ekwa_nav_menu_header_fields( $item_id, $item, $depth, $args ) {
 	$columns_value = ( '' === $columns_raw || null === $columns_raw ) ? '' : (string) (int) $columns_raw;
 	$image_id      = (int) get_post_meta( $item_id, '_ekwa_menu_image', true );
 	$image_url     = $image_id ? wp_get_attachment_image_url( $image_id, 'thumbnail' ) : '';
+	$image_alt     = (string) get_post_meta( $item_id, '_ekwa_menu_image_alt', true );
+	$library_alt   = $image_id ? trim( (string) get_post_meta( $image_id, '_wp_attachment_image_alt', true ) ) : '';
+	$alt_hint      = '' !== $library_alt ? $library_alt : ( isset( $item->title ) ? wp_strip_all_tags( (string) $item->title ) : '' );
 	?>
 	<p class="field-ekwa-megamenu description description-wide">
 		<label for="ekwa-megamenu-<?php echo esc_attr( $item_id ); ?>">
@@ -78,6 +83,19 @@ function ekwa_nav_menu_header_fields( $item_id, $item, $depth, $args ) {
 			</button>
 		</span>
 	</p>
+
+	<p class="field-ekwa-menu-image-alt description description-wide">
+		<label for="ekwa-menu-image-alt-<?php echo esc_attr( $item_id ); ?>">
+			<?php esc_html_e( 'Image alt text', 'ekwa' ); ?><br />
+			<input type="text"
+			       id="ekwa-menu-image-alt-<?php echo esc_attr( $item_id ); ?>"
+			       name="ekwa_menu_image_alt[<?php echo esc_attr( $item_id ); ?>]"
+			       value="<?php echo esc_attr( $image_alt ); ?>"
+			       placeholder="<?php echo esc_attr( $alt_hint ); ?>"
+			       class="widefat" />
+			<span class="description"><?php esc_html_e( 'Describes the mega-menu image for screen readers and search engines. Leave blank to use the image\'s alt text from the Media Library, or the menu label when that is empty too.', 'ekwa' ); ?></span>
+		</label>
+	</p>
 	<?php
 }
 add_action( 'wp_nav_menu_item_custom_fields', 'ekwa_nav_menu_header_fields', 20, 4 );
@@ -113,6 +131,15 @@ function ekwa_save_nav_menu_header_fields( $menu_id, $menu_item_db_id ) {
 			delete_post_meta( $menu_item_db_id, '_ekwa_menu_image' );
 		}
 	}
+
+	if ( isset( $_POST['ekwa_menu_image_alt'][ $menu_item_db_id ] ) ) {
+		$alt = sanitize_text_field( wp_unslash( $_POST['ekwa_menu_image_alt'][ $menu_item_db_id ] ) );
+		if ( '' !== $alt ) {
+			update_post_meta( $menu_item_db_id, '_ekwa_menu_image_alt', $alt );
+		} else {
+			delete_post_meta( $menu_item_db_id, '_ekwa_menu_image_alt' );
+		}
+	}
 }
 add_action( 'wp_update_nav_menu_item', 'ekwa_save_nav_menu_header_fields', 10, 2 );
 
@@ -126,9 +153,39 @@ function ekwa_setup_nav_menu_header_props( $menu_item ) {
 	$menu_item->is_megamenu      = (bool) get_post_meta( $menu_item->ID, '_ekwa_megamenu', true );
 	$menu_item->megamenu_columns = (int) get_post_meta( $menu_item->ID, '_ekwa_megamenu_columns', true );
 	$menu_item->menu_image_id    = (int) get_post_meta( $menu_item->ID, '_ekwa_menu_image', true );
+	$menu_item->menu_image_alt   = (string) get_post_meta( $menu_item->ID, '_ekwa_menu_image_alt', true );
 	return $menu_item;
 }
 add_filter( 'wp_setup_nav_menu_item', 'ekwa_setup_nav_menu_header_props' );
+
+/**
+ * Alt text for a mega-menu column image.
+ *
+ * Images used to be printed with alt="", which accessibility and SEO audits
+ * report as missing alt text. The text now comes from, in order: the item's own
+ * "Image alt text" field, the attachment's alt text in the Media Library, and
+ * finally the column's menu label, so an image always gets a description
+ * without anyone having to fill in a new field.
+ *
+ * @param object $item Menu item (with the props from ekwa_setup_nav_menu_header_props()).
+ * @return string Plain text; escaped by wp_get_attachment_image().
+ */
+function ekwa_header_menu_image_alt( $item ) {
+	$own = isset( $item->menu_image_alt ) ? trim( (string) $item->menu_image_alt ) : '';
+	if ( '' !== $own ) {
+		return $own;
+	}
+	$image_id = isset( $item->menu_image_id ) ? (int) $item->menu_image_id : 0;
+	if ( $image_id ) {
+		$library = trim( wp_strip_all_tags( (string) get_post_meta( $image_id, '_wp_attachment_image_alt', true ) ) );
+		if ( '' !== $library ) {
+			return $library;
+		}
+	}
+	// Menu titles may hold entities (&amp;); decode so the attribute escaping
+	// that follows encodes each character exactly once.
+	return isset( $item->title ) ? trim( html_entity_decode( wp_strip_all_tags( (string) $item->title ), ENT_QUOTES, 'UTF-8' ) ) : '';
+}
 
 /* ------------------------------------------------------------------------
  * Wearing the mockup's clothes
@@ -407,7 +464,7 @@ function ekwa_header_menu_render_megamenu( $top_item, $tree ) {
 				array(
 					'class'   => ekwa_header_menu_classes( 'megaImage' ),
 					'loading' => 'lazy',
-					'alt'     => '',
+					'alt'     => ekwa_header_menu_image_alt( $col_item ),
 				)
 			);
 		}

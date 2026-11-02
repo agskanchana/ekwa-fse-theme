@@ -284,6 +284,7 @@ function ekwa_ai_block_spec_registry() {
 			'attrs'    => array(
 				'src (required), poster',
 				'autoplay, loop, muted, controls, playsinline — bools',
+				'lazyLoad, fetchPriorityHigh (preload the poster with high priority), videoFetchPriorityHigh (fetchpriority="high" + preload="auto" on the video file) — bools, default false; use a priority switch only for a video at the top of the page',
 				'className',
 			),
 			'examples' => array(

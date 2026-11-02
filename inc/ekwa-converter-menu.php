@@ -496,6 +496,9 @@ function ekwa_mc_menu_parse_column( $col ) {
 		$src = trim( $img->getAttribute( 'src' ) );
 		if ( '' !== $src ) {
 			$item['image'] = $src;
+			// The mockup's own description of the image, kept as the menu
+			// item's "Image alt text" (see ekwa_header_menu_image_alt()).
+			$item['image_alt'] = trim( preg_replace( '/\s+/', ' ', (string) $img->getAttribute( 'alt' ) ) );
 			break;
 		}
 	}
@@ -882,6 +885,10 @@ function ekwa_mc_menu_insert_items( $items, $menu_id, $parent_id, &$stats ) {
 			if ( $attachment ) {
 				update_post_meta( $item_id, '_ekwa_menu_image', $attachment );
 				$stats['images']++;
+				$image_alt = isset( $item['image_alt'] ) ? sanitize_text_field( (string) $item['image_alt'] ) : '';
+				if ( '' !== $image_alt ) {
+					update_post_meta( $item_id, '_ekwa_menu_image_alt', $image_alt );
+				}
 			}
 		}
 

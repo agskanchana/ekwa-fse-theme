@@ -131,18 +131,24 @@
 					el( PanelBody, { title: __( 'Performance' ), initialOpen: false },
 						el( ToggleControl, {
 							label: __( 'Lazy load' ),
-							help: attributes.fetchPriorityHigh
-								? __( 'Off while High fetch priority is on.', 'ekwa' )
+							help: ( attributes.fetchPriorityHigh || attributes.videoFetchPriorityHigh )
+								? __( 'Off while a High fetch priority switch is on.', 'ekwa' )
 								: __( 'With Performance → Lazy mode = lazysizes, the video file is fetched only when the wrapper enters the viewport (works alongside Autoplay). With Native mode, applies preload="none" — ignored if Autoplay is on.' ),
-							checked: !! attributes.lazyLoad && ! attributes.fetchPriorityHigh,
-							disabled: !! attributes.fetchPriorityHigh,
+							checked: !! attributes.lazyLoad && ! attributes.fetchPriorityHigh && ! attributes.videoFetchPriorityHigh,
+							disabled: !! attributes.fetchPriorityHigh || !! attributes.videoFetchPriorityHigh,
 							onChange: function ( val ) { setAttributes( { lazyLoad: val } ); },
 						} ),
 						el( ToggleControl, {
-							label: __( 'High fetch priority', 'ekwa' ),
+							label: __( 'High fetch priority — poster image', 'ekwa' ),
 							help: __( 'For a video at the top of the page. Preloads the poster image with high priority (the image PageSpeed measures as the LCP) and starts loading the video right away. Set a poster image for the full effect.', 'ekwa' ),
 							checked: !! attributes.fetchPriorityHigh,
 							onChange: function ( val ) { setAttributes( { fetchPriorityHigh: val } ); },
+						} ),
+						el( ToggleControl, {
+							label: __( 'High fetch priority — video file', 'ekwa' ),
+							help: __( 'Adds fetchpriority="high" to the video and preload="auto", so the video file starts downloading as soon as the page reaches it. Use it for an above-the-fold video with no poster, where the first frame is what PageSpeed measures. Browsers do not act on fetchpriority for video yet; preload="auto" is what speeds it up today. Off by default.', 'ekwa' ),
+							checked: !! attributes.videoFetchPriorityHigh,
+							onChange: function ( val ) { setAttributes( { videoFetchPriorityHigh: val } ); },
 						} )
 					),
 					el( PanelBody, { title: __( 'Transcript' ), initialOpen: false },
