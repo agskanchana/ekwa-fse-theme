@@ -525,7 +525,7 @@ function ekwa_dp_suggest_queries( $post_id ) {
 	}
 
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : (bool) ekwa_get_ai_api_key() ) ) {
 		return $fallback;
 	}
 

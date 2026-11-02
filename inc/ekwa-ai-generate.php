@@ -221,7 +221,7 @@ function ekwa_ai_generate_handle_request( $request ) {
 		ekwa_ai_current_feature( 'html' );
 	}
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error(
 			'no_api_key',
 			'Gemini API key not configured. Add EKWA_GEMINI_API_KEY to wp-config.php or set it in Appearance → Ekwa Settings → AI.',
@@ -853,9 +853,30 @@ function ekwa_ai_generate_image_part( $img ) {
  *                                    frees the whole budget for the actual answer
  *                                    and removes a source of intermittent
  *                                    truncation/empty responses on the 2.5 models.
+ * @param array    $options           Optional. `relay => false` keeps this call
+ *                                    off the MCP connector even when it is on:
+ *                                    for helper passes that run after a request
+ *                                    has already written data, or in cron. The
+ *                                    default — empty — changes nothing.
  * @return array|WP_Error { content: string, tokens: int, finish_reason: string } or error.
  */
-function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = '', $max_output_tokens = 16384, $thinking_budget = null ) {
+function ekwa_ai_generate_call_gemini( $system_prompt, $contents, $temperature, $api_key, $model = '', $max_output_tokens = 16384, $thinking_budget = null, $options = array() ) {
+	// MCP connector: the person's own AI app answers instead of Gemini. Only
+	// reachable when an administrator chose that provider (inc/ekwa-ai-provider.php);
+	// on every other site this whole block is a no-op.
+	if ( function_exists( 'ekwa_ai_relay_applies' ) && ekwa_ai_relay_applies( (array) $options ) ) {
+		return ekwa_ai_relay_call( $system_prompt, $contents, $temperature, $model, $max_output_tokens, $thinking_budget );
+	}
+	if ( '' === trim( (string) $api_key ) && function_exists( 'ekwa_ai_mcp_enabled' ) && ekwa_ai_mcp_enabled() ) {
+		// MCP connector on, no Gemini key, and this call cannot be relayed (it runs
+		// in the background, or the page that sent it predates the connector).
+		// Say so, rather than sending Google a request with an empty key.
+		return new WP_Error(
+			'ekwa_ai_unavailable',
+			__( 'This AI task cannot use the MCP connector — it runs without the editor waiting for it, or the page needs a reload. Reload the page and try again; tasks that run in the background need a Gemini API key (Ekwa Settings → AI).', 'ekwa' )
+		);
+	}
+
 	if ( '' === trim( (string) $model ) ) {
 		$model = ekwa_ai_default_model();
 	}

@@ -405,6 +405,19 @@ function ekwa_save_settings() {
 		}
 	}
 
+	// AI provider — deliberately NOT in $fields: that loop writes '' for any
+	// field missing from the POST, and this option must only ever be written by
+	// an administrator choosing a provider. So: only when the radio was
+	// submitted, and only when the choice differs from what the site runs now —
+	// re-saving the form on a site that never had the option (and so is on
+	// Gemini) writes nothing.
+	if ( isset( $_POST['ekwa_ai_provider'] ) && function_exists( 'ekwa_ai_sanitize_provider' ) ) {
+		$ai_provider = ekwa_ai_sanitize_provider( sanitize_key( wp_unslash( $_POST['ekwa_ai_provider'] ) ) );
+		if ( $ai_provider !== ekwa_ai_provider() ) {
+			update_option( 'ekwa_ai_provider', $ai_provider );
+		}
+	}
+
 	// AI governance — minimum role + per-user daily request cap.
 	$ai_role = isset( $_POST['ekwa_ai_min_role'] ) ? sanitize_text_field( wp_unslash( $_POST['ekwa_ai_min_role'] ) ) : 'contributor';
 	if ( ! in_array( $ai_role, array( 'administrator', 'editor', 'author', 'contributor' ), true ) ) {
@@ -2253,6 +2266,43 @@ function ekwa_render_settings_page() {
 
 			<!-- ========== AI TAB ========== -->
 			<div class="ekwa-tab-pane <?php echo 'ai' === $active_tab ? 'active' : ''; ?>" data-tab="ai">
+				<?php
+				// AI provider. A site that never saved the option is on Gemini
+				// (ekwa_ai_provider() falls back to it), so this pre-selects what
+				// the site already does.
+				$ai_provider = function_exists( 'ekwa_ai_provider' ) ? ekwa_ai_provider() : 'gemini';
+				?>
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'AI provider', 'ekwa' ); ?></h2>
+					<fieldset>
+						<legend class="screen-reader-text"><?php esc_html_e( 'AI provider', 'ekwa' ); ?></legend>
+						<p>
+							<label>
+								<input type="radio" name="ekwa_ai_provider" value="gemini" <?php checked( $ai_provider, 'gemini' ); ?> />
+								<strong><?php esc_html_e( 'Gemini API key', 'ekwa' ); ?></strong>
+							</label>
+						</p>
+						<p class="description" style="margin:0 0 12px 24px;"><?php esc_html_e( 'The theme calls Google with the key below — how AI has always worked here.', 'ekwa' ); ?></p>
+						<p>
+							<label>
+								<input type="radio" name="ekwa_ai_provider" value="mcp" <?php checked( $ai_provider, 'mcp' ); ?> />
+								<strong><?php esc_html_e( 'MCP connector', 'ekwa' ); ?></strong>
+							</label>
+						</p>
+						<p class="description" style="margin:0 0 12px 24px;"><?php esc_html_e( 'Each person\'s own Claude, ChatGPT/Codex or Gemini app does the AI work on their own subscription — no API key. They keep the app open and ask it to run the jobs.', 'ekwa' ); ?></p>
+					</fieldset>
+					<p class="description"><?php esc_html_e( 'With the MCP connector on, background tasks — interlink keyword generation and the converter\'s CSS helper passes — still need a Gemini key and are skipped without one. People who have not connected an AI app keep using the Gemini key when one is set.', 'ekwa' ); ?></p>
+				</div>
+
+				<div class="ekwa-section">
+					<h2><?php esc_html_e( 'MCP connector', 'ekwa' ); ?></h2>
+					<?php
+					if ( function_exists( 'ekwa_mcp_admin_settings_panel' ) ) {
+						ekwa_mcp_admin_settings_panel();
+					}
+					?>
+				</div>
+
 				<div class="ekwa-section">
 					<h2><?php esc_html_e( 'AI Settings', 'ekwa' ); ?></h2>
 					<table class="form-table">

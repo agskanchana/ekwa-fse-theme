@@ -624,7 +624,10 @@ function ekwa_interlink_ai_keyword_call( $titles_by_id, $api_key ) {
 		),
 	);
 
-	$result = ekwa_ai_generate_call_gemini( $system_prompt, $contents, 0.3, $api_key, ekwa_interlink_refine_model() );
+	// Never through the MCP connector: this runs in cron and in a bulk rebuild
+	// that writes each chunk's keywords as it goes. Gemini key only. 16384/null
+	// are the choke point's defaults, spelled out to reach the options argument.
+	$result = ekwa_ai_generate_call_gemini( $system_prompt, $contents, 0.3, $api_key, ekwa_interlink_refine_model(), 16384, null, array( 'relay' => false ) );
 	if ( is_wp_error( $result ) || empty( $result['content'] ) ) {
 		return array();
 	}
@@ -654,7 +657,7 @@ function ekwa_interlink_rest_refine( $request ) {
 	}
 
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key is not configured (Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
 	}
 

@@ -1,0 +1,227 @@
+/**
+ * Ekwa MCP connector — connection-key component (profile screen and
+ * Ekwa Settings → AI). Markup is built by assets/js/ekwa-mcp-admin.js.
+ */
+
+.ekwa-mcp {
+	max-width: 900px;
+}
+
+.ekwa-mcp h3 {
+	margin: 20px 0 8px;
+	font-size: 14px;
+}
+
+.ekwa-mcp__notice {
+	margin: 0 0 12px;
+	padding: 8px 12px;
+}
+
+.ekwa-mcp__table {
+	max-width: 900px;
+	margin: 0 0 4px;
+}
+
+.ekwa-mcp__table td,
+.ekwa-mcp__table th {
+	vertical-align: middle;
+}
+
+.ekwa-mcp__label {
+	font-weight: 600;
+	word-break: break-word;
+}
+
+.ekwa-mcp__actions {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.ekwa-mcp .button.ekwa-mcp__armed {
+	border-color: #d63638;
+	color: #fff;
+	background: #d63638;
+}
+
+.ekwa-mcp__status {
+	margin: 6px 0 0;
+	min-height: 1em;
+	color: #646970;
+}
+
+.ekwa-mcp__status:empty {
+	display: none;
+}
+
+.ekwa-mcp__status.is-success {
+	color: #008a20;
+}
+
+.ekwa-mcp__status.is-error {
+	color: #d63638;
+}
+
+.ekwa-mcp__create-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+/* ---------- The one-time key display ---------- */
+
+.ekwa-mcp__created {
+	margin: 16px 0;
+	padding: 16px 20px;
+	border: 2px solid #dba617;
+	border-radius: 4px;
+	background: #fcf9e8;
+}
+
+.ekwa-mcp__created > h3:first-child {
+	margin-top: 0;
+	font-size: 15px;
+}
+
+.ekwa-mcp__warning {
+	font-weight: 600;
+	color: #8a2424;
+}
+
+.ekwa-mcp__field-label {
+	margin: 12px 0 4px;
+	font-weight: 600;
+}
+
+.ekwa-mcp__hide {
+	margin-top: 12px;
+}
+
+/* ---------- Copyable values ---------- */
+
+.ekwa-mcp__copy {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	margin: 4px 0 8px;
+}
+
+.ekwa-mcp__code {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	padding: 6px 10px;
+	border: 1px solid #dcdcde;
+	border-radius: 3px;
+	background: #f6f7f7;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-all;
+	user-select: all;
+}
+
+.ekwa-mcp__copy-btn {
+	flex: 0 0 auto;
+}
+
+/* ---------- Setup instructions ---------- */
+
+.ekwa-mcp__app {
+	margin: 0 0 12px;
+	padding: 10px 14px;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #fff;
+}
+
+.ekwa-mcp__app p {
+	margin: 4px 0;
+}
+
+.ekwa-mcp__app-title {
+	margin: 0 0 4px;
+	font-size: 13px;
+}
+
+.ekwa-mcp__app--unavailable {
+	background: #f6f7f7;
+	color: #787c82;
+}
+
+.ekwa-mcp__badge {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	background: #dcdcde;
+	color: #50575e;
+	font-size: 11px;
+	font-weight: 400;
+}
+
+.ekwa-mcp__using code {
+	font-size: 12px;
+}
+
+/* ---------- Test and jobs ---------- */
+
+.ekwa-mcp__reply:empty {
+	display: none;
+}
+
+.ekwa-mcp__jobs-head {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin: 20px 0 8px;
+}
+
+.ekwa-mcp__jobs-head h3 {
+	margin: 0 8px 0 0;
+}
+
+.ekwa-mcp__job-status {
+	white-space: nowrap;
+}
+
+.ekwa-mcp__job-status--done {
+	color: #008a20;
+}
+
+.ekwa-mcp__job-status--failed,
+.ekwa-mcp__job-status--abandoned {
+	color: #d63638;
+}
+
+.ekwa-mcp__job-status--pending,
+.ekwa-mcp__job-status--claimed {
+	color: #996800;
+}
+
+.ekwa-mcp__job-error {
+	display: block;
+	color: #d63638;
+	font-size: 12px;
+}
+
+@media screen and (max-width: 600px) {
+	.ekwa-mcp__copy {
+		flex-direction: column;
+	}
+}
+
+/* "Which AI app will you use?" picker above the setup steps. */
+.ekwa-mcp__picker {
+	margin: 12px 0 16px;
+}
+.ekwa-mcp__picker-label {
+	font-weight: 600;
+	margin: 0 0 8px;
+}
+.ekwa-mcp__picker-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}

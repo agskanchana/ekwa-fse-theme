@@ -12,6 +12,8 @@
 
 	var cfg = window.ekwaMediaImport || {};
 	var i18n = cfg.i18n || {};
+	// aiAvailable also counts the MCP connector; older PHP only sent hasAi.
+	var aiOn = cfg.aiAvailable !== undefined ? !!cfg.aiAvailable : !!cfg.hasAi;
 
 	function t(key, fallback) {
 		return i18n[key] || fallback;
@@ -58,13 +60,17 @@
 	}
 
 	function request(url, body) {
-		return $.ajax({
+		var settings = {
 			url: url,
 			method: 'POST',
 			data: JSON.stringify(body),
 			contentType: 'application/json',
 			headers: { 'X-WP-Nonce': cfg.nonce }
-		});
+		};
+		// MCP connector on: the relay client (ekwa-ai-relay.js) waits for the
+		// person's AI app on AI requests (alt text) and resolves with the final
+		// response. Not loaded on a Gemini site, where this is plain $.ajax.
+		return window.ekwaAiRelay ? window.ekwaAiRelay.ajax(settings) : $.ajax(settings);
 	}
 
 	/**
@@ -235,7 +241,7 @@
 
 			$meta.append($alt, $save);
 
-			if (cfg.hasAi && 'image/svg+xml' !== data.mime) {
+			if (aiOn && 'image/svg+xml' !== data.mime) {
 				var $aiBtn = $('<button/>', {
 					type: 'button',
 					'class': 'button button-small ekwa-mi__ai-btn',
@@ -390,7 +396,7 @@
 
 					// Only newly imported images need alt text written; a
 					// duplicate already has whatever it was given last time.
-					if (!data.duplicate && $ai.length && $ai.is(':checked') && cfg.hasAi &&
+					if (!data.duplicate && $ai.length && $ai.is(':checked') && aiOn &&
 						'image/svg+xml' !== data.mime) {
 						var $btn = $row.find('.ekwa-mi__ai-btn');
 						if ($btn.length) {

@@ -19,11 +19,18 @@
 	var __ = ( window.wp && wp.i18n && wp.i18n.__ ) ? wp.i18n.__ : function ( s ) { return s; };
 
 	function api( route, body ) {
-		return fetch( cfg.rest + route, {
+		var init = {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': cfg.nonce },
 			body: JSON.stringify( body )
-		} ).then( function ( r ) {
+		};
+		// MCP connector on: the relay client (ekwa-ai-relay.js) waits for the
+		// person's AI app and resolves with the final Response. Not loaded on a
+		// Gemini site, where this is the plain fetch it always was.
+		var sent = window.ekwaAiRelay
+			? window.ekwaAiRelay.fetch( cfg.rest + route, init )
+			: fetch( cfg.rest + route, init );
+		return sent.then( function ( r ) {
 			return r.json().then( function ( data ) {
 				if ( ! r.ok ) {
 					throw new Error( ( data && data.message ) ? data.message : ( 'HTTP ' + r.status ) );
@@ -142,7 +149,12 @@
 				el( 'h2', { text: __( 'Edit block with AI', 'ekwa' ) + ' — ' + slug } ),
 				el( 'p', { class: 'description', text: __( 'Describe the change. The AI rewrites this block’s files in your child theme; the parent’s PHP render is never touched.', 'ekwa' ) } ),
 				el( 'div', { class: 'row' }, [ inst ] ),
-				el( 'div', { class: 'row' }, [ el( 'label', { style: 'margin-right:6px', text: __( 'Model:', 'ekwa' ) } ), modelSel, el( 'span', { style: 'margin-left:8px' }, [ genBtn ] ) ] ),
+				// MCP mode: the person's AI app picks the model; modelSel stays
+				// (detached) so its default is still sent as a quality hint.
+				el( 'div', { class: 'row' }, ( 'mcp' === cfg.aiProvider
+					? [ el( 'span', { class: 'description', text: __( 'Model: your connected AI app', 'ekwa' ) } ) ]
+					: [ el( 'label', { style: 'margin-right:6px', text: __( 'Model:', 'ekwa' ) } ), modelSel ]
+				).concat( [ el( 'span', { style: 'margin-left:8px' }, [ genBtn ] ) ] ) ),
 				msg,
 				files,
 				el( 'div', { class: 'bar' }, [

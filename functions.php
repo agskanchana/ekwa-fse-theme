@@ -537,6 +537,20 @@ require_once get_template_directory() . '/inc/ekwa-ai-models.php';
 require_once get_template_directory() . '/inc/ekwa-ai-governance.php';
 
 /**
+ * AI provider: the site's Gemini key (default) or the MCP connector, where the
+ * person's own AI app (Claude, ChatGPT/Codex, Gemini CLI) answers the theme's AI
+ * features over MCP — the job relay, the MCP endpoint and personal connection
+ * keys. Loaded before the AI feature modules, whose shared Gemini caller hands
+ * calls to the relay when that provider is chosen.
+ */
+require_once get_template_directory() . '/inc/ekwa-ai-provider.php';
+require_once get_template_directory() . '/inc/ekwa-mcp-keys.php';
+require_once get_template_directory() . '/inc/ekwa-ai-relay.php';
+require_once get_template_directory() . '/inc/ekwa-mcp-server.php';
+require_once get_template_directory() . '/inc/ekwa-ai-relay-client.php';
+require_once get_template_directory() . '/inc/ekwa-mcp-admin.php';
+
+/**
  * Persistent AI Build/Refine sessions (conversation memory), stored per user.
  */
 require_once get_template_directory() . '/inc/ekwa-ai-sessions.php';
@@ -991,6 +1005,7 @@ function ekwa_enqueue_converter_editor_script() {
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
 			'defaultModel'       => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
+			'aiProvider'         => ekwa_ai_effective_provider(),
 			// Design tokens + mockup sheet + fonts, exactly as <head> prints
 			// them — without these the preview can't resolve the var() and
 			// component rules the generated CSS is told to build on.
@@ -1028,6 +1043,7 @@ function ekwa_enqueue_converter_editor_script() {
 			'childStylesheetUrl' => $child_css_uri,
 			'models'             => $ai_model_list,
 			'defaultModel'       => function_exists( 'ekwa_ai_default_model' ) ? ekwa_ai_default_model() : '',
+			'aiProvider'         => ekwa_ai_effective_provider(),
 			// Same design tokens + mockup sheet + fonts the HTML generator's
 			// preview gets — without them the preview iframe can't resolve the
 			// var() and component rules the rendered blocks are built on.
@@ -1135,6 +1151,9 @@ function ekwa_enqueue_interlink_editor_script() {
 			'models'       => $ai_model_list,
 			'defaultModel' => function_exists( 'ekwa_interlink_refine_model' ) ? ekwa_interlink_refine_model() : ekwa_ai_default_model(),
 			'hasApiKey'    => (bool) ekwa_get_ai_api_key(),
+			// hasApiKey keeps its meaning (a Gemini key); these add the MCP connector.
+			'aiAvailable'  => ekwa_ai_is_configured(),
+			'aiProvider'   => ekwa_ai_effective_provider(),
 		)
 	);
 }

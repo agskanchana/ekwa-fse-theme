@@ -333,7 +333,8 @@ function ekwa_fonts_render_tab() {
 			</button>
 			<?php
 			$child_active = ( get_template_directory() !== get_stylesheet_directory() );
-			$ai_key       = function_exists( 'ekwa_get_ai_api_key' ) ? ekwa_get_ai_api_key() : false;
+			// A Gemini key or the MCP connector — either can run the detection.
+			$ai_key       = function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() );
 			if ( $child_active ) :
 				?>
 				<button type="button" class="button button-secondary" id="ekwa-fonts-detect-ai" <?php disabled( ! $ai_key ); ?>>
@@ -970,7 +971,7 @@ function ekwa_fonts_ajax_ai_detect() {
 	}
 
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		wp_send_json_error( array( 'message' => __( 'Gemini API key is not configured (Settings → AI).', 'ekwa' ) ) );
 	}
 

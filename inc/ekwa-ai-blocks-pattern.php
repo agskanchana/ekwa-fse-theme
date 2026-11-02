@@ -255,9 +255,14 @@ function ekwa_ai_pattern_prepare( $markup ) {
 	$out    = trim( serialize_blocks( $blocks ) );
 
 	if ( preg_match_all( '/\b(?:eai|ekwa)-sec-[0-9a-f]{4,}\b/i', $out, $m ) ) {
-		$map = array();
+		// Through the MCP connector this request is sent twice — once to queue the
+		// AI job, once to collect the answer — and the answer was written against
+		// the first send's names. So the names come from the relay id, which both
+		// sends share. Anywhere else the seed is '' and names stay random.
+		$seed = function_exists( 'ekwa_ai_relay_seed' ) ? ekwa_ai_relay_seed() : '';
+		$map  = array();
 		foreach ( array_unique( $m[0] ) as $old ) {
-			$map[ $old ] = 'eai-sec-' . substr( md5( uniqid( $old, true ) ), 0, 6 );
+			$map[ $old ] = 'eai-sec-' . substr( md5( '' !== $seed ? $old . '|' . $seed : uniqid( $old, true ) ), 0, 6 );
 		}
 		$out = strtr( $out, $map );
 		foreach ( $styles as $i => $style ) {

@@ -51,7 +51,11 @@
 		// An empty value means "let the server pick", so it can never go stale.
 		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = CFG.defaultModel || MODEL_OPTIONS[0].value;
-	var HAS_API_KEY   = !! CFG.hasApiKey;
+	// aiAvailable also counts the MCP connector; older PHP only sent hasApiKey.
+	var HAS_API_KEY   = CFG.aiAvailable !== undefined ? !! CFG.aiAvailable : !! CFG.hasApiKey;
+	// In MCP mode the person's AI app picks the model, so the select is hidden
+	// (the chosen value is still sent as a quality hint).
+	var IS_MCP        = CFG.aiProvider === 'mcp';
 
 	var SIDEBAR_NAME = 'ekwa-internal-links';
 
@@ -722,7 +726,7 @@
 				}, __( 'Apply all', 'ekwa' ) )
 			),
 			HAS_API_KEY ? el( 'div', { style: { marginBottom: 12 } },
-				el( SelectControl, {
+				IS_MCP ? el( 'p', { className: 'description ekwa-ai-model-note' }, __( 'Model: your connected AI app', 'ekwa' ) ) : el( SelectControl, {
 					label: __( 'Refine model', 'ekwa' ),
 					value: model,
 					options: MODEL_OPTIONS,

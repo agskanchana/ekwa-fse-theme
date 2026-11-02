@@ -61,7 +61,11 @@ function ekwa_ai_alt_image_base64( $attachment_id ) {
 	$editor = wp_get_image_editor( $path );
 	if ( ! is_wp_error( $editor ) ) {
 		$editor->resize( 1024, 1024, false );
-		$saved = $editor->save( null, 'image/jpeg' );
+		// A temp file, never the default name: for a JPEG of 1025–2560px that
+		// default ("photo-1024x768.jpg") IS the site's `large` thumbnail, which
+		// the delete below would then remove.
+		$temp  = trailingslashit( get_temp_dir() ) . 'ekwa-alt-' . wp_generate_password( 12, false ) . '.jpg';
+		$saved = $editor->save( $temp, 'image/jpeg' );
 		if ( ! is_wp_error( $saved ) && ! empty( $saved['path'] ) && file_exists( $saved['path'] ) ) {
 			$bytes = file_get_contents( $saved['path'] );
 			wp_delete_file( $saved['path'] );
@@ -101,7 +105,7 @@ function ekwa_ai_alt_handle_request( $request ) {
 		ekwa_ai_current_feature( 'alt-text' );
 	}
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key is not configured (Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
 	}
 

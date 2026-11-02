@@ -722,6 +722,8 @@ function ekwa_media_import_enqueue( $hook ) {
 		'aiAltUrl'  => esc_url_raw( rest_url( 'ekwa/v1/generate-alt' ) ),
 		'nonce'     => wp_create_nonce( 'wp_rest' ),
 		'hasAi'     => (bool) ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() ),
+		// Gemini key or MCP connector; hasAi keeps meaning a Gemini key.
+		'aiAvailable' => (bool) ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() ) ),
 		'i18n'      => array(
 			'toggle'      => __( 'Import from URL', 'ekwa' ),
 			'noUrls'      => __( 'Paste at least one image URL first.', 'ekwa' ),
@@ -768,7 +770,7 @@ function ekwa_media_import_render_panel() {
 	if ( ! current_user_can( 'upload_files' ) ) {
 		return;
 	}
-	$has_ai = function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key();
+	$has_ai = function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() );
 	?>
 	<div id="ekwa-media-import" class="ekwa-mi" hidden>
 		<div class="ekwa-mi__head">

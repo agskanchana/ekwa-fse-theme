@@ -142,10 +142,14 @@ function ekwa_ai_current_feature( $set = null ) {
  * @param int    $tokens  Total tokens for the call (0 when unknown).
  * @param string $feature Feature label.
  * @param string $model   Model id.
+ * @param bool   $count   Bump the per-user daily counter. Default true, as
+ *                        before; the MCP connector passes false — its calls
+ *                        run on the person's own AI app and cost the site
+ *                        nothing, so they log without using up the daily cap.
  */
-function ekwa_ai_record_usage( $tokens, $feature = 'ai', $model = '' ) {
+function ekwa_ai_record_usage( $tokens, $feature = 'ai', $model = '', $count = true ) {
 	$user_id = get_current_user_id();
-	if ( $user_id ) {
+	if ( $user_id && $count ) {
 		$key = ekwa_ai_usage_meta_key( $user_id );
 		update_user_meta( $user_id, $key, ekwa_ai_usage_today( $user_id ) + 1 );
 	}

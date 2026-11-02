@@ -148,7 +148,7 @@ function ekwa_ai_edit_block_generate( $request ) {
 	$model = ekwa_ai_resolve_model( $model, 'pro' );
 
 	$api_key = function_exists( 'ekwa_get_ai_api_key' ) ? ekwa_get_ai_api_key() : '';
-	if ( ! $api_key ) {
+	if ( ! ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : $api_key ) ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key not configured (Ekwa Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
 	}
 
@@ -421,7 +421,7 @@ function ekwa_ai_edit_block_enqueue( $hook_suffix ) {
 	if ( ! $on_settings || ! current_user_can( 'edit_theme_options' ) ) {
 		return;
 	}
-	if ( ! function_exists( 'ekwa_get_ai_api_key' ) || ! ekwa_get_ai_api_key() ) {
+	if ( ! ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() ) ) ) {
 		return; // AI unavailable — the buttons aren't rendered either.
 	}
 
@@ -443,6 +443,7 @@ function ekwa_ai_edit_block_enqueue( $hook_suffix ) {
 		'nonce'        => wp_create_nonce( 'wp_rest' ),
 		'models'       => $list,
 		'defaultModel' => ekwa_ai_default_model(),
+		'aiProvider'   => function_exists( 'ekwa_ai_effective_provider' ) ? ekwa_ai_effective_provider() : 'gemini',
 	) );
 }
 add_action( 'admin_enqueue_scripts', 'ekwa_ai_edit_block_enqueue' );

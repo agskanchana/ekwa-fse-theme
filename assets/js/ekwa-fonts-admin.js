@@ -492,10 +492,18 @@
 			document.createTextNode( i18n.detecting || 'Scanning…' )
 		);
 
-		$.post( ekwaFonts.ajaxUrl, {
+		var detectData = {
 			action : 'ekwa_fonts_ai_detect',
 			nonce  : ekwaFonts.nonce,
-		} ).done( function ( res ) {
+		};
+		// MCP connector on: the relay client (ekwa-ai-relay.js) waits for the
+		// person's AI app and resolves with the final response. Not loaded on
+		// a Gemini site, where this is the plain $.post it always was.
+		var detect = window.ekwaAiRelay
+			? window.ekwaAiRelay.ajax( { url: ekwaFonts.ajaxUrl, type: 'POST', data: detectData } )
+			: $.post( ekwaFonts.ajaxUrl, detectData );
+
+		detect.done( function ( res ) {
 			if ( res && res.success && res.data && res.data.fonts ) {
 				renderAiResults( res.data.fonts );
 			} else {

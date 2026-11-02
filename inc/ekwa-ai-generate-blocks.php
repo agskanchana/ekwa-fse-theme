@@ -164,7 +164,7 @@ function ekwa_ai_generate_blocks_handle_request( $request ) {
 		ekwa_ai_current_feature( 'edit' === $request->get_param( 'mode' ) ? 'blocks-edit' : 'blocks' );
 	}
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error(
 			'no_api_key',
 			'Gemini API key not configured. Add EKWA_GEMINI_API_KEY to wp-config.php or set it in Appearance → Ekwa Settings → AI.',

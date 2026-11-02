@@ -60,6 +60,9 @@
 		// An empty value means "let the server pick", so it can never go stale.
 		: [ { value: '', label: __( 'Theme default', 'ekwa' ) } ];
 	var DEFAULT_MODEL = cfg.defaultModel || MODEL_OPTIONS[0].value;
+	// In MCP mode the person's AI app picks the model: show a note instead of
+	// the select (the default is still sent, as a quality hint).
+	var IS_MCP        = cfg.aiProvider === 'mcp';
 
 	// "Images and videos to use" picker (assets/js/ekwa-ai-media.js). Optional:
 	// without it the modal is exactly what it was.
@@ -1020,7 +1023,7 @@
 
 			children.push(
 				el( 'div', { key: 'opts', className: 'ekwa-ai-options' },
-					el( SelectControl, {
+					IS_MCP ? el( 'p', { className: 'description ekwa-ai-model-note' }, __( 'Model: your connected AI app', 'ekwa' ) ) : el( SelectControl, {
 						label: __( 'Model', 'ekwa' ),
 						help: __( 'Flash is fast and cheap; Pro gives the best quality for complex layouts.', 'ekwa' ),
 						value: model,

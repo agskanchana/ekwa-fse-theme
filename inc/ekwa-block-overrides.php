@@ -212,7 +212,7 @@ function ekwa_block_overrides_card() {
 	$is_child     = get_template_directory() !== get_stylesheet_directory();
 	$blocks       = ekwa_block_overrides_available();
 	$in_child     = ekwa_block_overrides_in_child();
-	$ai_available = function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key();
+	$ai_available = function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() );
 
 	$copy_url = wp_nonce_url(
 		add_query_arg( array( 'action' => 'ekwa_copy_block_to_child' ), admin_url( 'admin-post.php' ) ),

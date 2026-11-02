@@ -187,7 +187,7 @@ function ekwa_docs_rest_ask( $request ) {
 	}
 
 	$api_key = function_exists( 'ekwa_get_ai_api_key' ) ? ekwa_get_ai_api_key() : false;
-	if ( ! $api_key ) {
+	if ( ! ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : $api_key ) ) {
 		return rest_ensure_response( array(
 			'ok'      => false,
 			'message' => __( 'No Gemini API key is configured. Add one under Ekwa Settings → AI.', 'ekwa' ),
@@ -369,7 +369,7 @@ function ekwa_render_help_page() {
  * never submit anything.
  */
 function ekwa_render_help_tab() {
-	$has_key = function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key();
+	$has_key = function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() );
 	?>
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Documentation', 'ekwa' ); ?></h2>
@@ -395,7 +395,13 @@ function ekwa_render_help_tab() {
 	<div class="ekwa-section">
 		<h2><?php esc_html_e( 'Ask AI', 'ekwa' ); ?></h2>
 		<p class="description" style="margin-bottom:1em;">
-			<?php esc_html_e( 'Ask anything about the theme. Answers come from the documentation above, using the Gemini key already configured under the AI tab — nothing extra to set up, and the key never leaves the server.', 'ekwa' ); ?>
+			<?php
+			if ( function_exists( 'ekwa_ai_effective_provider' ) && 'mcp' === ekwa_ai_effective_provider() ) {
+				esc_html_e( 'Ask anything about the theme. Answers come from the documentation above, written by your connected AI app (MCP connector) — keep it open and ask it to run your Ekwa AI jobs.', 'ekwa' );
+			} else {
+				esc_html_e( 'Ask anything about the theme. Answers come from the documentation above, using the Gemini key already configured under the AI tab — nothing extra to set up, and the key never leaves the server.', 'ekwa' );
+			}
+			?>
 		</p>
 
 		<?php if ( ! $has_key ) : ?>
@@ -485,14 +491,21 @@ function ekwa_render_help_tab() {
 			history.push( { role: 'user', text: q } );
 			var pending = add( 'ai', ekwaAdmin.askDocsStrings.thinking, false );
 
-			fetch( ekwaAdmin.askDocsUrl, {
+			var askInit = {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					'X-WP-Nonce': ekwaAdmin.webpRestNonce
 				},
 				body: JSON.stringify( { question: q, history: history.slice( 0, -1 ) } )
-			} ).then( function ( r ) { return r.json(); } ).then( function ( res ) {
+			};
+			// MCP connector on: the relay client (ekwa-ai-relay.js) waits for
+			// the person's AI app and resolves with the final Response. Not
+			// loaded on a Gemini site, where this is the plain fetch it was.
+			( window.ekwaAiRelay
+				? window.ekwaAiRelay.fetch( ekwaAdmin.askDocsUrl, askInit )
+				: fetch( ekwaAdmin.askDocsUrl, askInit )
+			).then( function ( r ) { return r.json(); } ).then( function ( res ) {
 				pending.remove();
 				// Guard on the TYPE, not just truthiness: an unexpected payload
 				// shape (an object where a string was assumed) rendered as
@@ -508,9 +521,12 @@ function ekwa_render_help_tab() {
 					var msg = ( typeof raw === 'string' && raw ) ? raw : ekwaAdmin.askDocsStrings.error;
 					add( 'error', msg, false );
 				}
-			} ).catch( function () {
+			} ).catch( function ( err ) {
 				pending.remove();
-				add( 'error', ekwaAdmin.askDocsStrings.error, false );
+				// A cancelled or expired AI-app wait says so; anything else
+				// (network failure, unreadable reply) keeps the generic message.
+				var relayMsg = ( err && /^ekwa_ai_relay_/.test( String( err.code || '' ) ) && err.message ) ? String( err.message ) : '';
+				add( 'error', relayMsg || ekwaAdmin.askDocsStrings.error, false );
 			} ).then( function () {
 				busy = false;
 				send.disabled = false;

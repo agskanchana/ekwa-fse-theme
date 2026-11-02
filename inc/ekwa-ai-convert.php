@@ -266,7 +266,7 @@ function ekwa_ai_convert_handle_request( $request ) {
 	}
 
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key not configured (Ekwa Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
 	}
 
@@ -490,7 +490,7 @@ function ekwa_ai_reconvert_handle_request( $request ) {
 	}
 
 	$api_key = ekwa_get_ai_api_key();
-	if ( ! $api_key ) {
+	if ( ! ekwa_ai_is_configured() ) {
 		return new WP_Error( 'no_api_key', __( 'Gemini API key not configured (Ekwa Settings → AI).', 'ekwa' ), array( 'status' => 400 ) );
 	}
 
