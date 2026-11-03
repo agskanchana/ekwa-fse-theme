@@ -602,6 +602,12 @@ require_once get_template_directory() . '/inc/ekwa-interlink.php';
 require_once get_template_directory() . '/inc/ekwa-page-audit.php';
 
 /**
+ * Site Logo "Load first (LCP image)" option — fetchpriority + preload for a
+ * logo that is the page's LCP (e.g. in the mobile header). Off by default.
+ */
+require_once get_template_directory() . '/inc/ekwa-site-logo-priority.php';
+
+/**
  * Tag external links with a descriptive title on first user interaction.
  */
 require_once get_template_directory() . '/inc/ekwa-external-links.php';

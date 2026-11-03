@@ -523,3 +523,23 @@
 }
 
 .ekwa-pa-summary-row__label { display: inline-flex; align-items: center; flex-wrap: wrap; }
+
+/* ---------- Does it work? (page check, live check, PageSpeed) ---------- */
+.ekwa-pa-verify {
+	margin: 8px 0;
+	padding: 0;
+	list-style: none;
+	font-size: 12px;
+	line-height: 1.45;
+}
+.ekwa-pa-verify li {
+	margin: 4px 0;
+	padding: 4px 8px;
+	border-radius: 4px;
+	background: #f6f7f7;
+	color: #3c434a;
+	overflow-wrap: anywhere;
+}
+.ekwa-pa-verify li.is-ok { background: #edf7f0; color: #0a5a2c; }
+.ekwa-pa-verify li.is-bad { background: #fcebea; color: #8a2424; }
+.ekwa-pa-verify li.is-note { background: #f0f6fc; color: #1d4f7c; }

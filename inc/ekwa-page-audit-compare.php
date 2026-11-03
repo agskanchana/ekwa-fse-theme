@@ -204,8 +204,10 @@ function ekwa_page_audit_compare_render() {
 	$before    = add_query_arg( array_merge( $base, array( 'ekwa_pa_preview' => 'before' ) ), $link );
 	$after     = add_query_arg( array_merge( $base, array( 'ekwa_pa_preview' => 'after' ) ), $link );
 	$selectors = array();
+	$edits     = array();
 	foreach ( isset( $resolved['fix']['css']['edits'] ) ? (array) $resolved['fix']['css']['edits'] : array() as $edit ) {
 		$selectors[] = (string) $edit['selector'];
+		$edits[]     = array( 'selector' => (string) $edit['selector'], 'property' => (string) $edit['property'] );
 	}
 	$applied = ! empty( $resolved['variants']['applied'] );
 
@@ -213,9 +215,13 @@ function ekwa_page_audit_compare_render() {
 	wp_enqueue_script( 'ekwa-page-audit-compare', get_template_directory_uri() . '/' . $rel, array(), filemtime( get_template_directory() . '/' . $rel ), true );
 	wp_localize_script( 'ekwa-page-audit-compare', 'ekwaPaCompare', array(
 		'selectors' => $selectors,
+		'edits'     => $edits,
 		'i18n'      => array(
 			'loading'  => __( 'Loading…', 'ekwa' ),
 			'notFound' => __( 'The changed elements are not on this page at this width.', 'ekwa' ),
+			/* translators: %d: number of elements */
+			'changed'  => __( '✓ The fix visibly changes %d element(s) on this page.', 'ekwa' ),
+			'noChange' => __( '⚠ No visible change on this page — another rule overrides the fix, or the elements are not on this page.', 'ekwa' ),
 		),
 	) );
 	?>
@@ -262,6 +268,7 @@ function ekwa_page_audit_compare_render() {
 				<label><input type="checkbox" id="ekwa-cmp-sync" checked> <?php esc_html_e( 'Scroll together', 'ekwa' ); ?></label>
 				<label><input type="checkbox" id="ekwa-cmp-hl" checked> <?php esc_html_e( 'Outline changed elements', 'ekwa' ); ?></label>
 				<button type="button" class="button" id="ekwa-cmp-jump"><?php esc_html_e( 'Go to changed element', 'ekwa' ); ?></button>
+				<span class="ekwa-cmp__note" id="ekwa-cmp-effect" aria-live="polite"></span>
 				<span class="ekwa-cmp__note" id="ekwa-cmp-msg" aria-live="polite"></span>
 				<a class="button" href="<?php echo esc_url( get_edit_post_link( $post_id, 'raw' ) . '&ekwa_pa=1' ); ?>"><?php esc_html_e( 'Back to the page', 'ekwa' ); ?></a>
 			</div>

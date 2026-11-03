@@ -165,6 +165,37 @@
 		msg.textContent = found ? '' : ( ( CFG.i18n && CFG.i18n.notFound ) || '' );
 	} );
 
+	// Does the fix actually change anything? Compare the computed style of the
+	// targeted elements in both frames (the browser's own cascade decides).
+	var loaded = 0;
+	function effect() {
+		var out = document.getElementById( 'ekwa-cmp-effect' );
+		var a   = doc( frames[ 0 ] );
+		var b   = doc( frames[ 1 ] );
+		if ( ! out || ! a || ! b ) { return; }
+		var changed = 0;
+		( CFG.edits || [] ).forEach( function ( edit ) {
+			var sel = String( edit.selector ).replace( /::?[a-z-]+(\([^)]*\))?/gi, '' ).trim();
+			if ( ! sel ) { return; }
+			var la, lb;
+			try { la = a.querySelectorAll( sel ); lb = b.querySelectorAll( sel ); } catch ( e ) { return; }
+			for ( var i = 0; i < Math.min( la.length, lb.length, 25 ); i++ ) {
+				var va = a.defaultView.getComputedStyle( la[ i ] ).getPropertyValue( edit.property );
+				var vb = b.defaultView.getComputedStyle( lb[ i ] ).getPropertyValue( edit.property );
+				if ( va !== vb ) { changed++; }
+			}
+		} );
+		var i18n = CFG.i18n || {};
+		out.textContent = changed ? String( i18n.changed || '%d' ).replace( '%d', changed ) : ( i18n.noChange || '' );
+		out.style.color = changed ? '#0a5a2c' : '#8a2424';
+	}
+	frames.forEach( function ( f ) {
+		f.addEventListener( 'load', function () {
+			loaded++;
+			if ( loaded >= frames.length ) { setTimeout( effect, 300 ); }
+		} );
+	} );
+
 	window.addEventListener( 'resize', layout );
 	layout();
 }() );

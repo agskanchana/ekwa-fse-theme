@@ -292,7 +292,7 @@
 	}
 
 	function runTest( postId, strategy ) {
-		setStore( { running: strategy, runStarted: Date.now(), runError: '' } );
+		setStore( { running: strategy, runStarted: Date.now(), runError: '', verifyQueued: false } );
 		apiFetch( { path: '/ekwa/v1/page-audit/run', method: 'POST', data: { post_id: postId, strategy: strategy } } )
 			.then( function ( res ) {
 				var reports    = assign( {}, ( store.data && store.data.reports ) || {} );
@@ -302,7 +302,39 @@
 				patchData( { reports: reports, evaluation: evaluation, scores: res.scores || [] } );
 			} )
 			.catch( function ( err ) { setStore( { runError: errText( err ) } ); } )
-			.then( function () { setStore( { running: '' } ); } );
+			.then( function () {
+				setStore( { running: '' } );
+				if ( store.verifyAgain ) { setStore( { verifyAgain: false } ); scheduleVerify( postId ); }
+			} );
+	}
+
+	// ─── Automatic verification ─────────────────────────────────────────────
+	// After a site-wide fix (and after the page is saved with block fixes), the
+	// page is re-tested automatically; each applied fix then shows whether its
+	// PageSpeed audit passes now — nobody has to check by hand.
+	var verifyTimer = null;
+	function scheduleVerify( postId ) {
+		if ( ! postId ) { return; }
+		if ( store.running ) { setStore( { verifyAgain: true } ); return; }
+		setStore( { verifyQueued: true } );
+		if ( verifyTimer ) { window.clearTimeout( verifyTimer ); }
+		verifyTimer = window.setTimeout( function () {
+			verifyTimer = null;
+			if ( store.running ) { setStore( { verifyAgain: true } ); return; }
+			runTest( postId, store.strategy );
+		}, 6000 );
+	}
+
+	// Did the latest test (after the fix) still report the fix's audit?
+	function auditVerdict( fix, appliedAt ) {
+		var data   = store.data || {};
+		var report = data.reports && data.reports[ store.strategy ];
+		if ( ! fix.audit || ! report || ! appliedAt || ( report.fetched || 0 ) <= appliedAt ) { return null; }
+		var failing = false;
+		Object.keys( report.audits || {} ).forEach( function ( cat ) {
+			( report.audits[ cat ] || [] ).forEach( function ( a ) { if ( a.id === fix.audit ) { failing = true; } } );
+		} );
+		return failing ? 'failing' : 'passing';
 	}
 
 	function analyze( postId, strategy ) {
@@ -379,7 +411,7 @@
 		var defs = ( type && type.attributes ) || {};
 		var out  = {};
 		Object.keys( block.attributes || {} ).forEach( function ( k ) {
-			if ( 'lock' === k || 'metadata' === k ) { return; }
+			if ( 'lock' === k || 'metadata' === k || 'scopedCss' === k ) { return; }
 			var v = block.attributes[ k ];
 			if ( v === undefined || v === null || v === '' ) { return; }
 			var def = defs[ k ];
@@ -428,6 +460,9 @@
 				if ( blocks.length >= 600 || ! b || ! b.name ) { return; }
 				var path = prefix ? prefix + '.' + i : String( i );
 				var row  = { path: path, name: b.name, attrs: compactAttrs( b ) };
+				// Section CSS goes whole: "css" fixes may edit it in place.
+				var scoped = b.attributes && 'string' === typeof b.attributes.scopedCss ? b.attributes.scopedCss : '';
+				if ( scoped.trim() && scoped.length <= 40000 ) { row.css = scoped; }
 				if ( SKIP_INTO[ b.name ] ) {
 					row.note = sprintf( /* translators: %s: "synced pattern" or "template part" */ __( '%s — do not change from here', 'ekwa' ), SKIP_INTO[ b.name ] );
 				}
@@ -533,7 +568,8 @@
 		} )
 			.then( function ( res ) {
 				patchData( { history: res.history || [] } );
-				say( fix.id, 'success', __( 'Applied in the editor. Save the page to publish it, then re-run the test.', 'ekwa' ) );
+				setStore( { pendingSaveVerify: true } );
+				say( fix.id, 'success', __( 'Applied in the editor. Save the page — it is then re-tested automatically.', 'ekwa' ) );
 			} )
 			.catch( function ( err ) {
 				say( fix.id, 'warning', __( 'Applied in the editor, but the undo record could not be saved, so after a reload only the editor’s own Undo can revert it.', 'ekwa' ) + ' ' + errText( err ) );
@@ -584,7 +620,8 @@
 		} )
 			.then( function ( res ) {
 				patchData( { log: ( ( store.data && store.data.log ) || [] ).concat( [ res.entry ] ), settings: res.settings } );
-				say( fix.id, 'success', __( 'Setting changed for the whole site. Re-run the test to measure it (clear any page cache first).', 'ekwa' ) );
+				say( fix.id, 'success', __( 'Setting changed for the whole site. Re-testing automatically to verify it…', 'ekwa' ) );
+				scheduleVerify( postId );
 			} )
 			.catch( function ( err ) { say( fix.id, 'error', errText( err ) ); } )
 			.then( function () { busy( fix.id, false ); } );
@@ -615,9 +652,43 @@
 		} )
 			.then( function ( res ) {
 				patchData( { changes: ( ( store.data && store.data.changes ) || [] ).concat( [ res.entry ] ) } );
-				say( fix.id, 'success', 'css' === fix.kind
-					? __( 'The stylesheet was changed for the whole site. Use Compare to check it, then re-run the test.', 'ekwa' )
-					: __( 'The template part was changed for the whole site. Re-run the test to measure it.', 'ekwa' ) );
+				say( fix.id, 'success', __( 'Applied for the whole site. Checking it on the live page and re-testing automatically…', 'ekwa' ) );
+				scheduleVerify( postId );
+			} )
+			.catch( function ( err ) { say( fix.id, 'error', errText( err ) ); } )
+			.then( function () { busy( fix.id, false ); } );
+	}
+
+	function isBlockCss( fix ) {
+		return 'css' === fix.kind && fix.css && fix.css.in && 'block' === fix.css.in.type;
+	}
+
+	// A css fix on a page block's Section CSS: the server computes the new text
+	// from the block's current CSS (comment-free markers), the editor applies it
+	// like a block fix (its own undo works; the history entry survives reloads).
+	function applyScopedFix( postId, fix ) {
+		var place = fix.css.in;
+		var block = blockAt( place.path );
+		if ( ! block || ( place.block && block.name !== place.block ) ) {
+			say( fix.id, 'error', __( 'That block is no longer at the same place on the page. Analyze again for an up-to-date fix.', 'ekwa' ) );
+			return;
+		}
+		var current = 'string' === typeof block.attributes.scopedCss ? block.attributes.scopedCss : '';
+		busy( fix.id, true );
+		apiFetch( { path: '/ekwa/v1/page-audit/css-compute', method: 'POST', data: { post_id: postId, strategy: store.strategy, fix_id: fix.id, css: current } } )
+			.then( function ( res ) {
+				dispatch( 'core/block-editor' ).updateBlockAttributes( block.clientId, { scopedCss: res.css } );
+				showBlock( place.path );
+				return apiFetch( {
+					path: '/ekwa/v1/page-audit/history', method: 'POST',
+					data: { post_id: postId, op: 'add', entry: { fix_id: fix.id, title: fix.title, category: fix.category, path: place.path, block: block.name, before: { scopedCss: current }, after: { scopedCss: res.css } } },
+				} ).then( function ( h ) {
+					patchData( { history: h.history || [] } );
+					setStore( { pendingSaveVerify: true } );
+					say( fix.id, 'success', __( 'Applied to the block’s Section CSS. Save the page — it is then re-tested automatically.', 'ekwa' ) );
+				}, function () {
+					say( fix.id, 'warning', __( 'Applied in the editor, but the undo record could not be saved, so after a reload only the editor’s own Undo can revert it.', 'ekwa' ) );
+				} );
 			} )
 			.catch( function ( err ) { say( fix.id, 'error', errText( err ) ); } )
 			.then( function () { busy( fix.id, false ); } );
@@ -667,7 +738,7 @@
 			}
 			return {};
 		}
-		if ( 'block' === fix.kind ) {
+		if ( 'block' === fix.kind || isBlockCss( fix ) ) {
 			var h = lastWith( data.history, fix.id );
 			if ( h && ! h.undone ) {
 				var st = entryState( h );
@@ -676,7 +747,7 @@
 				}
 			}
 		}
-		if ( 'css' === fix.kind || 'part' === fix.kind ) {
+		if ( ( 'css' === fix.kind && ! isBlockCss( fix ) ) || 'part' === fix.kind ) {
 			var c = lastWith( data.changes, fix.id );
 			if ( c && ! c.undone ) {
 				return { applied: true, entry: c, undoable: !! c.undoable, blockState: 'changed' === c.state || 'missing' === c.state ? c.state : '' };
@@ -864,11 +935,17 @@
 		var fix    = props.fix;
 		var css    = fix.css || {};
 		var entry  = props.status && props.status.applied ? props.status.entry : null;
-		var target = ( store.data && store.data.cssTarget && store.data.cssTarget.label ) || css.target || __( 'Site stylesheet', 'ekwa' );
+		var place  = css.in || { type: 'site' };
+		var target = 'part' === place.type
+			? sprintf( /* translators: %s: template part slug */ __( 'Template part “%s” → Section CSS', 'ekwa' ), place.part )
+			: ( 'block' === place.type
+				? __( 'Section CSS of a block on this page', 'ekwa' )
+				: ( ( store.data && store.data.cssTarget && store.data.cssTarget.label ) || css.target || __( 'Site stylesheet', 'ekwa' ) ) );
 		var modeLb = { add: __( 'adds', 'ekwa' ), 'new': __( 'new rule', 'ekwa' ) };
 		return el( 'div', { className: 'ekwa-pa-diff' },
 			el( 'div', { className: 'ekwa-pa-diff__target' },
-				el( Badge, { tone: 'site' }, __( 'Site-wide', 'ekwa' ) ), ' ', target ),
+				'block' === place.type ? null : el( Badge, { tone: 'site' }, __( 'Site-wide', 'ekwa' ) ), ' ', target,
+				'block' === place.type ? el( Button, { variant: 'link', onClick: function () { showBlock( place.path ); } }, ' ' + __( 'Show', 'ekwa' ) ) : null ),
 			( css.edits || [] ).map( function ( e, i ) {
 				return el( 'div', { key: i, className: 'ekwa-pa-css' },
 					el( 'code', { className: 'ekwa-pa-css__sel' }, ( e.media ? e.media + ' › ' : '' ) + e.selector ),
@@ -890,9 +967,11 @@
 				} )
 			) : null,
 			( fix.cssNotes || [] ).map( function ( n, i ) { return el( 'p', { key: 'n' + i, className: 'ekwa-pa-risk' }, n ); } ),
-			el( 'p', { className: 'ekwa-pa-muted' }, entry && entry.marker
-				? sprintf( /* translators: %s: marker text */ __( 'The old value is kept in a comment marked “%s” in the stylesheet.', 'ekwa' ), entry.marker )
-				: __( 'The old value is kept in a comment marked “ekwa-fix:” in the stylesheet, so it can be undone or found later.', 'ekwa' ) )
+			el( 'p', { className: 'ekwa-pa-muted' }, 'site' !== place.type
+				? __( 'The old value is kept next to the change as “--ekwa-fix-…” (Section CSS never gets comments: some firewalls block saving them).', 'ekwa' )
+				: ( entry && entry.marker
+					? sprintf( /* translators: %s: marker text */ __( 'The old value is kept in a comment marked “%s” in the stylesheet.', 'ekwa' ), entry.marker )
+					: __( 'The old value is kept in a comment marked “ekwa-fix:” in the stylesheet, so it can be undone or found later.', 'ekwa' ) ) )
 		);
 	}
 
@@ -925,6 +1004,45 @@
 		);
 	}
 
+	// What we know about whether a fix works: the CSS check against the page
+	// (before applying), the live-page check (right after), and the next
+	// PageSpeed test (automatic).
+	function Verification( props ) {
+		var fix    = props.fix;
+		var status = props.status;
+		var lines  = [];
+		if ( ! status.applied && fix.cssCheck && fix.cssCheck.length ) {
+			fix.cssCheck.forEach( function ( c, i ) {
+				if ( 'ok' === c.status ) {
+					lines.push( el( 'li', { key: 'c' + i, className: 'is-ok' }, '✓ ' + __( 'Checked on this page: ', 'ekwa' ) + ( c.detail || '' ) ) );
+				} else if ( c.detail ) {
+					lines.push( el( 'li', { key: 'c' + i, className: 'is-unknown' }, __( 'Not checked: ', 'ekwa' ) + c.detail ) );
+				}
+				if ( c.strengthened_from ) {
+					lines.push( el( 'li', { key: 's' + i, className: 'is-note' }, sprintf( /* translators: 1: original selector, 2: stronger selector, 3: rule it beats */ __( 'Selector strengthened from “%1$s” to “%2$s” so it wins over %3$s.', 'ekwa' ), c.strengthened_from, c.selector, c.beats || '' ) ) );
+				}
+			} );
+		}
+		if ( status.applied && status.entry && status.entry.verify ) {
+			var v = status.entry.verify;
+			lines.push( el( 'li', { key: 'v', className: 'ok' === v.status ? 'is-ok' : ( 'fails' === v.status ? 'is-bad' : 'is-unknown' ) },
+				( 'ok' === v.status ? '✓ ' : ( 'fails' === v.status ? '✕ ' : '' ) ) + __( 'Live page: ', 'ekwa' ) + ( v.detail || '' ) ) );
+		}
+		if ( status.applied && status.entry ) {
+			var verdict = auditVerdict( fix, status.entry.time );
+			if ( 'passing' === verdict ) {
+				lines.push( el( 'li', { key: 'p', className: 'is-ok' }, '✓ ' + __( 'PageSpeed: this audit passes in the latest test.', 'ekwa' ) ) );
+			} else if ( 'failing' === verdict ) {
+				lines.push( el( 'li', { key: 'p', className: 'is-bad' }, '✕ ' + __( 'PageSpeed: still failing in the latest test. Analyze again — the AI is told this fix did not work.', 'ekwa' ) ) );
+			} else if ( fix.audit && ( store.verifyQueued || store.running ) ) {
+				lines.push( el( 'li', { key: 'p', className: 'is-unknown' }, __( 'PageSpeed: re-testing to verify…', 'ekwa' ) ) );
+			} else if ( fix.audit && ( 'block' === fix.kind || isBlockCss( fix ) ) ) {
+				lines.push( el( 'li', { key: 'p', className: 'is-unknown' }, __( 'PageSpeed: save the page — it is re-tested automatically.', 'ekwa' ) ) );
+			}
+		}
+		return lines.length ? el( 'ul', { className: 'ekwa-pa-verify' }, lines ) : null;
+	}
+
 	function FixCard( props ) {
 		var fix    = props.fix;
 		var postId = props.postId;
@@ -941,9 +1059,12 @@
 			part:    __( 'Header / footer', 'ekwa' ),
 			manual:  __( 'Manual', 'ekwa' ),
 		}[ fix.kind ];
-		var isSite   = 'css' === fix.kind || 'part' === fix.kind;
-		var allowed  = 'setting' === fix.kind || 'css' === fix.kind ? CFG.canManage : ( 'part' === fix.kind ? CFG.canParts : true );
-		var compare  = 'css' === fix.kind ? compareHref( postId, fix ) : '';
+		var place    = ( fix.css && fix.css.in ) || { type: 'site' };
+		var isSite   = ( 'css' === fix.kind && 'block' !== place.type ) || 'part' === fix.kind;
+		var allowed  = 'setting' === fix.kind || ( 'css' === fix.kind && 'site' === place.type )
+			? CFG.canManage
+			: ( 'part' === fix.kind || ( 'css' === fix.kind && 'part' === place.type ) ? CFG.canParts : true );
+		var compare  = 'css' === fix.kind && 'site' === place.type ? compareHref( postId, fix ) : '';
 
 		var actions = null;
 		if ( 'manual' !== fix.kind ) {
@@ -958,7 +1079,7 @@
 						onClick: function () {
 							if ( 'setting' === fix.kind ) {
 								undoSetting( status.entry, fix.id );
-							} else if ( isSite ) {
+							} else if ( isSite && ! isBlockCss( fix ) ) {
 								undoChange( status.entry, fix.id );
 							} else {
 								undoBlockEntry( postId, status.entry, fix.id );
@@ -984,13 +1105,15 @@
 							say( fix.id, '', '' );
 							if ( 'setting' === fix.kind ) {
 								applySetting( postId, fix );
+							} else if ( isBlockCss( fix ) ) {
+								applyScopedFix( postId, fix );
 							} else if ( isSite ) {
 								applySiteFix( postId, fix );
 							} else {
 								applyBlockFix( postId, fix );
 							}
 						},
-					}, { setting: __( 'Apply site-wide', 'ekwa' ), css: __( 'Apply to stylesheet', 'ekwa' ), part: __( 'Apply to template part', 'ekwa' ) }[ fix.kind ] || __( 'Apply fix', 'ekwa' ) ),
+					}, isBlockCss( fix ) ? __( 'Apply to Section CSS', 'ekwa' ) : ( 'css' === fix.kind && 'part' === place.type ? __( 'Apply to template part', 'ekwa' ) : ( { setting: __( 'Apply site-wide', 'ekwa' ), css: __( 'Apply to stylesheet', 'ekwa' ), part: __( 'Apply to template part', 'ekwa' ) }[ fix.kind ] || __( 'Apply fix', 'ekwa' ) ) ) ),
 					compare ? el( Button, { variant: 'secondary', href: compare, target: '_blank', rel: 'noopener noreferrer' }, __( 'Compare before / after', 'ekwa' ) ) : null
 				);
 			}
@@ -1021,6 +1144,7 @@
 				} )
 			) : null,
 			fix.audit ? el( 'p', { className: 'ekwa-pa-muted ekwa-pa-audit-id' }, sprintf( /* translators: %s: Lighthouse audit id */ __( 'PageSpeed audit: %s', 'ekwa' ), fix.audit ) ) : null,
+			el( Verification, { fix: fix, status: status } ),
 			actions,
 			el( Message, { message: store.messages[ fix.id ], onRemove: function () { say( fix.id, '', '' ); } } )
 		);
@@ -1210,7 +1334,8 @@
 					onClick: function () { runTest( post.id, s.strategy ); },
 				}, report ? __( 'Re-run test', 'ekwa' ) : __( 'Run PageSpeed test', 'ekwa' ) ),
 				running ? el( 'span', { className: 'ekwa-pa-muted', 'aria-live': 'polite' },
-					sprintf( /* translators: %d: seconds */ __( 'Testing… %ds (usually 20–60s)', 'ekwa' ), elapsed ) ) : null
+					sprintf( /* translators: %d: seconds */ __( 'Testing… %ds (usually 20–60s)', 'ekwa' ), elapsed ) ) : null,
+				! running && s.verifyQueued ? el( 'span', { className: 'ekwa-pa-muted', 'aria-live': 'polite' }, __( 'Re-testing in a few seconds to verify the applied fix…', 'ekwa' ) ) : null
 			),
 			s.runError ? el( Notice, { status: 'error', isDismissible: true, onRemove: function () { setStore( { runError: '' } ); }, className: 'ekwa-pa-notice' }, s.runError ) : null
 		);
@@ -1434,6 +1559,18 @@
 		var post = usePost();
 		// Re-render when blocks change, so fix and change states stay current.
 		useSelect( function ( sel ) { return sel( 'core/block-editor' ).getBlocks(); }, [] );
+		var saving = useSelect( function ( sel ) {
+			var ed = sel( 'core/editor' );
+			return !! ( ed && ed.isSavingPost && ed.isSavingPost() && ! ( ed.isAutosavingPost && ed.isAutosavingPost() ) );
+		}, [] );
+		var wasSaving = wp.element.useRef( false );
+		useEffect( function () {
+			if ( wasSaving.current && ! saving && store.pendingSaveVerify ) {
+				setStore( { pendingSaveVerify: false } );
+				scheduleVerify( post.id );
+			}
+			wasSaving.current = saving;
+		}, [ saving ] );
 		useTicker( !! s.running );
 		useEffect( function () {
 			if ( post.ok ) { load( post.id ); }

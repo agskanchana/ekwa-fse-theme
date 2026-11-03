@@ -282,7 +282,8 @@ function ekwa_page_audit_parts_context( $post ) {
 	$index    = array();
 	$editable = array();
 	$schemas  = array();
-	$budget   = 70000;
+	$css      = array();
+	$budget   = 110000;
 
 	foreach ( ekwa_page_audit_parts_for_post( $post ) as $slug => $part ) {
 		$list = array();
@@ -292,6 +293,14 @@ function ekwa_page_audit_parts_context( $post ) {
 			}
 			$row   = array( 'path' => $block['path'], 'name' => $block['name'] );
 			$attrs = ekwa_page_audit_parts_compact_attrs( $block['name'], $block['attrs'] );
+			// Section CSS goes whole into "css" (editable by css fixes), not
+			// truncated into attrs.
+			$scoped = isset( $block['attrs']['scopedCss'] ) && is_string( $block['attrs']['scopedCss'] ) ? $block['attrs']['scopedCss'] : '';
+			if ( '' !== trim( $scoped ) && strlen( $scoped ) <= 40000 ) {
+				unset( $attrs['scopedCss'] );
+				$row['css']                        = $scoped;
+				$css[ $slug ][ $block['path'] ] = $scoped;
+			}
 			if ( $attrs ) {
 				$row['attrs'] = $attrs;
 			}
@@ -331,6 +340,7 @@ function ekwa_page_audit_parts_context( $post ) {
 		'schemas'  => $schemas,
 		'index'    => $index,
 		'editable' => $editable,
+		'css'      => $css,
 	);
 }
 
@@ -536,6 +546,7 @@ function ekwa_page_audit_parts_apply_fix( $post_id, $fix ) {
 			'fix_id'        => isset( $fix['id'] ) ? (string) $fix['id'] : '',
 			'title'         => isset( $fix['title'] ) ? (string) $fix['title'] : '',
 			'category'      => isset( $fix['category'] ) ? (string) $fix['category'] : 'accessibility',
+			'audit'         => isset( $fix['audit'] ) ? (string) $fix['audit'] : '',
 			'part'          => $fix['part'],
 			'part_id'       => (int) $part_post->ID,
 			'part_title'    => get_the_title( $part_post ),
