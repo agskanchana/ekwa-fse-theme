@@ -1118,6 +1118,53 @@ function ekwa_page_audit_css_validate( $fix, $ctx = array() ) {
 		}
 	}
 
+	// Colour options that are guaranteed to pass against the backgrounds
+	// Lighthouse measured (see inc/ekwa-page-audit-color.php). Only for a fix
+	// with exactly one text-colour change — the common case, and one choice
+	// the person can make at a glance.
+	$color_options = array();
+	$color_edit    = null;
+	$color_targets = null;
+	$color_idx     = array();
+	foreach ( $edits as $i => $edit ) {
+		if ( 'color' === $edit['property'] ) {
+			$color_idx[] = $i;
+		}
+	}
+	$items = ! empty( $ctx['report'] ) && function_exists( 'ekwa_page_audit_contrast_items' ) ? ekwa_page_audit_contrast_items( $ctx['report'] ) : array();
+	if ( 1 === count( $color_idx ) && $items ) {
+		$color_edit    = $color_idx[0];
+		$edit          = $edits[ $color_edit ];
+		$color_targets = ekwa_page_audit_color_targets( $edit, $items, ( $snap && ! is_wp_error( $snap ) ) ? $snap : null );
+		if ( $color_targets['bgs'] ) {
+			$base = '';
+			if ( preg_match( '/^var\(\s*(--[a-z0-9_-]+)\s*\)$/i', trim( (string) $edit['from'] ), $bm ) ) {
+				$base = strtolower( $bm[1] );
+			}
+			$color_options = ekwa_page_audit_color_options( $edit, $color_targets, $all_tokens, $scoped, $vars, $base );
+			if ( ! $color_options ) {
+				return array( 'ok' => false, 'reason' => sprintf(
+					/* translators: %s: list of background colours */
+					__( 'No single colour reaches the required contrast against every background this text sits on (%s). The background itself needs to change — or split the rule so each background gets its own colour.', 'ekwa' ),
+					implode( ', ', $color_targets['bgs'] )
+				) );
+			}
+			$worst = ekwa_pa_worst_ratio( $edit['to'], $color_targets['bgs'], $all_tokens );
+			if ( $worst > 0 ) {
+				if ( $worst < $color_targets['required'] ) {
+					$notes[] = sprintf(
+						/* translators: 1: colour, 2: ratio, 3: background, 4: required ratio */
+						__( 'The AI’s colour %1$s would reach only %2$s:1 against %3$s (needs %4$s:1), so it is not offered. Every option below passes.', 'ekwa' ),
+						$edit['to'],
+						number_format( $worst, 2 ),
+						implode( ', ', $color_targets['bgs'] ),
+						$color_targets['required']
+					);
+				}
+			}
+		}
+	}
+
 	// Colours for the before/after samples: computed here, not taken on trust.
 	$colors = array();
 	$given  = isset( $fix['colors'] ) && is_array( $fix['colors'] ) ? $fix['colors'] : array();
@@ -1153,7 +1200,19 @@ function ekwa_page_audit_css_validate( $fix, $ctx = array() ) {
 		$note = ekwa_page_audit_css_comment_text( $fix['title'], 80 );
 	}
 
-	return array(
+	// With options, the samples use the real background Lighthouse measured.
+	if ( $color_options && $color_targets ) {
+		$colors = array(
+			array(
+				'role'    => 'text',
+				'before'  => ! empty( $edits[ $color_edit ]['before_hex'] ) ? $edits[ $color_edit ]['before_hex'] : $color_targets['fgs'][0],
+				'after'   => $color_options[0]['hex'],
+				'against' => $color_targets['bgs'][0],
+			),
+		);
+	}
+
+	$out = array(
 		'ok'     => true,
 		'css'    => array(
 			'edits'        => $edits,
@@ -1168,6 +1227,16 @@ function ekwa_page_audit_css_validate( $fix, $ctx = array() ) {
 		'notes'  => $notes,
 		'checks' => $checks,
 	);
+	if ( $color_options ) {
+		$out['colorOptions'] = $color_options;
+		$out['colorEdit']    = $color_edit;
+		$out['colorTargets'] = array(
+			'bgs'      => $color_targets['bgs'],
+			'required' => $color_targets['required'],
+			'items'    => $color_targets['items'],
+		);
+	}
+	return $out;
 }
 
 /**

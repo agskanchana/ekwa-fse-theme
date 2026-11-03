@@ -213,7 +213,28 @@
 
 	var BIG_COLOUR_CHANGE = 20;
 
+	// The colour option the person picked, or the recommended one.
+	function chosenOption( fix ) {
+		var list = fix.colorOptions || [];
+		if ( ! list.length ) { return null; }
+		var want = store.choice[ fix.id ];
+		var found = null;
+		list.forEach( function ( o ) { if ( ( want && o.id === want ) || ( ! want && o.recommended ) ) { found = o; } } );
+		return found || list[ 0 ];
+	}
+
+	// The css spec as it will be applied (chosen option swapped in).
+	function cssWithOption( fix ) {
+		var css = fix.css || {};
+		var opt = chosenOption( fix );
+		if ( ! opt || undefined === fix.colorEdit || ! css.edits || ! css.edits[ fix.colorEdit ] ) { return css; }
+		var edits = css.edits.map( function ( e, i ) { return i === fix.colorEdit ? assign( {}, e, { to: opt.to, after_hex: opt.hex } ) : e; } );
+		return assign( {}, css, { edits: edits, vars: opt.vars || [] } );
+	}
+
 	function bigColourChange( fix ) {
+		var opt = chosenOption( fix );
+		if ( opt ) { return opt.delta >= BIG_COLOUR_CHANGE; }
 		return ( fix.colors || [] ).some( function ( c ) { return deltaE( c.before, c.after ) >= BIG_COLOUR_CHANGE; } );
 	}
 
@@ -237,6 +258,7 @@
 		messages:     {},
 		ack:          {},
 		groups:       { accessibility: true },
+		choice:       {},
 	};
 	var listeners = [];
 
@@ -648,7 +670,7 @@
 		apiFetch( {
 			path:   '/ekwa/v1/page-audit/' + route,
 			method: 'POST',
-			data:   { post_id: postId, strategy: store.strategy, fix_id: fix.id },
+			data:   { post_id: postId, strategy: store.strategy, fix_id: fix.id, option: chosenOption( fix ) ? chosenOption( fix ).id : '' },
 		} )
 			.then( function ( res ) {
 				patchData( { changes: ( ( store.data && store.data.changes ) || [] ).concat( [ res.entry ] ) } );
@@ -675,7 +697,7 @@
 		}
 		var current = 'string' === typeof block.attributes.scopedCss ? block.attributes.scopedCss : '';
 		busy( fix.id, true );
-		apiFetch( { path: '/ekwa/v1/page-audit/css-compute', method: 'POST', data: { post_id: postId, strategy: store.strategy, fix_id: fix.id, css: current } } )
+		apiFetch( { path: '/ekwa/v1/page-audit/css-compute', method: 'POST', data: { post_id: postId, strategy: store.strategy, fix_id: fix.id, css: current, option: chosenOption( fix ) ? chosenOption( fix ).id : '' } } )
 			.then( function ( res ) {
 				dispatch( 'core/block-editor' ).updateBlockAttributes( block.clientId, { scopedCss: res.css } );
 				showBlock( place.path );
@@ -709,7 +731,8 @@
 
 	function compareHref( postId, fix ) {
 		if ( ! CFG.compareUrl ) { return ''; }
-		return CFG.compareUrl + '&post=' + encodeURIComponent( postId ) + '&strategy=' + encodeURIComponent( store.strategy ) + '&fix=' + encodeURIComponent( fix.id );
+		var opt = chosenOption( fix );
+		return CFG.compareUrl + '&post=' + encodeURIComponent( postId ) + '&strategy=' + encodeURIComponent( store.strategy ) + '&fix=' + encodeURIComponent( fix.id ) + ( opt ? '&option=' + encodeURIComponent( opt.id ) : '' );
 	}
 
 	function logUndoable( entry ) {
@@ -931,10 +954,53 @@
 		);
 	}
 
+	// Verified colour choices: every option passes against the background
+	// Lighthouse measured; the person picks (the closest one is preselected).
+	function ColourOptions( props ) {
+		var fix    = props.fix;
+		var t      = fix.colorTargets || {};
+		var bg     = ( t.bgs && t.bgs[ 0 ] ) || '#ffffff';
+		var chosen = chosenOption( fix );
+		var before = fix.colors && fix.colors[ 0 ] ? fix.colors[ 0 ].before : '';
+		var now    = before ? contrast( before, bg ) : null;
+		return el( 'fieldset', { className: 'ekwa-pa-opts' },
+			el( 'legend', null, __( 'Choose the new colour', 'ekwa' ) ),
+			el( 'p', { className: 'ekwa-pa-muted' }, sprintf(
+				/* translators: 1: required ratio, 2: background colour(s) */
+				__( 'Every option reaches %1$s:1 against the background measured on the page (%2$s).', 'ekwa' ),
+				t.required, ( t.bgs || [] ).join( ', ' ) ) ),
+			before ? el( 'div', { className: 'ekwa-pa-opt is-current' },
+				el( 'span', { className: 'ekwa-pa-opt__sample', style: { color: before, background: bg } }, 'Aa' ),
+				el( 'span', { className: 'ekwa-pa-opt__body' },
+					el( 'strong', null, __( 'Now', 'ekwa' ) ),
+					el( 'code', null, before ),
+					null !== now ? el( 'span', { className: 'ekwa-pa-ratio is-fail' }, now.toFixed( 2 ) + ':1 ' + __( 'fails', 'ekwa' ) ) : null
+				)
+			) : null,
+			( fix.colorOptions || [] ).map( function ( o ) {
+				var id     = 'ekwa-pa-opt-' + fix.id + '-' + o.id;
+				var isMine = !! chosen && chosen.id === o.id;
+				var change = o.delta < 10 ? __( 'very close to today’s colour', 'ekwa' ) : ( o.delta < BIG_COLOUR_CHANGE ? __( 'a little different', 'ekwa' ) : __( 'clearly different', 'ekwa' ) );
+				return el( 'label', { key: o.id, className: 'ekwa-pa-opt' + ( isMine ? ' is-chosen' : '' ), htmlFor: id },
+					el( 'input', {
+						type: 'radio', id: id, name: 'ekwa-pa-opt-' + fix.id, checked: isMine,
+						onChange: function () { setIn( 'choice', fix.id, o.id ); setIn( 'ack', fix.id, undefined ); },
+					} ),
+					el( 'span', { className: 'ekwa-pa-opt__sample', style: { color: o.sample || o.hex, background: bg }, 'aria-hidden': 'true' }, 'Aa' ),
+					el( 'span', { className: 'ekwa-pa-opt__body' },
+						el( 'strong', null, o.label, o.recommended ? el( 'span', { className: 'ekwa-pa-opt__rec' }, __( 'Recommended', 'ekwa' ) ) : null ),
+						el( 'code', null, o.to + ( o.vars && o.vars.length ? ' = ' + o.vars[ 0 ].value : '' ) + ( o.to.charAt( 0 ) !== '#' && ( ! o.vars || ! o.vars.length ) ? ' (' + o.hex + ')' : '' ) ),
+						el( 'span', { className: 'ekwa-pa-ratio is-pass' }, Number( o.ratio ).toFixed( 2 ) + ':1 ✓ · ' + change )
+					)
+				);
+			} )
+		);
+	}
+
 	function CssDiff( props ) {
 		var fix    = props.fix;
-		var css    = fix.css || {};
 		var entry  = props.status && props.status.applied ? props.status.entry : null;
+		var css    = entry && entry.css ? entry.css : cssWithOption( fix );
 		var place  = css.in || { type: 'site' };
 		var target = 'part' === place.type
 			? sprintf( /* translators: %s: template part slug */ __( 'Template part “%s” → Section CSS', 'ekwa' ), place.part )
@@ -1043,6 +1109,15 @@
 		return lines.length ? el( 'ul', { className: 'ekwa-pa-verify' }, lines ) : null;
 	}
 
+	// Before/after samples; once applied, "after" is the option that was used.
+	function appliedColours( fix, status ) {
+		var cols = fix.colors || [];
+		if ( ! status.applied || ! status.entry || ! status.entry.css || undefined === fix.colorEdit ) { return cols; }
+		var e = status.entry.css.edits && status.entry.css.edits[ fix.colorEdit ];
+		if ( ! e || ! e.after_hex || ! cols[ 0 ] ) { return cols; }
+		return [ assign( {}, cols[ 0 ], { after: e.after_hex } ) ].concat( cols.slice( 1 ) );
+	}
+
 	function FixCard( props ) {
 		var fix    = props.fix;
 		var postId = props.postId;
@@ -1126,7 +1201,9 @@
 			),
 			el( 'h4', { className: 'ekwa-pa-fix__title' }, fix.title ),
 			fix.why ? el( 'p', { className: 'ekwa-pa-fix__why' }, fix.why ) : null,
-			fix.colors && fix.colors.length ? el( ColourPreview, { colors: fix.colors } ) : null,
+			fix.colorOptions && fix.colorOptions.length && ! status.applied ? el( ColourOptions, { fix: fix } ) : null,
+			( ! fix.colorOptions || ! fix.colorOptions.length || status.applied ) && fix.colors && fix.colors.length
+				? el( ColourPreview, { colors: appliedColours( fix, status ) } ) : null,
 			'block' === fix.kind ? el( AttrDiff, { fix: fix, status: status } ) : null,
 			'setting' === fix.kind ? el( SettingDiff, { fix: fix, status: status } ) : null,
 			'css' === fix.kind ? el( CssDiff, { fix: fix, status: status } ) : null,

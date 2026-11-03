@@ -57,7 +57,7 @@ add_action( 'admin_head', 'ekwa_page_audit_compare_hide_menu' );
  * @param string $change_id
  * @return array|WP_Error {post_id, fix, entry, variants}
  */
-function ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id ) {
+function ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id, $option = '' ) {
 	$entry = null;
 	$fix   = null;
 	if ( '' !== $change_id ) {
@@ -85,6 +85,13 @@ function ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_
 			return new WP_Error( 'ekwa_page_audit_compare', __( 'That stylesheet fix is not in the latest analysis any more.', 'ekwa' ) );
 		}
 		$entry = ekwa_page_audit_change_for_fix( $fix_id );
+		if ( ! $entry ) {
+			// Preview the colour option the person picked (or the recommended one).
+			$fix = ekwa_page_audit_css_fix_with_option( $fix, $option );
+			if ( is_wp_error( $fix ) ) {
+				return $fix;
+			}
+		}
 	}
 
 	$variants = ekwa_page_audit_css_variants( $fix, $entry );
@@ -129,13 +136,14 @@ function ekwa_page_audit_preview_init() {
 	$fix_id    = isset( $_GET['ekwa_pa_fix'] ) ? sanitize_text_field( wp_unslash( $_GET['ekwa_pa_fix'] ) ) : '';
 	$change_id = isset( $_GET['ekwa_pa_change'] ) ? sanitize_text_field( wp_unslash( $_GET['ekwa_pa_change'] ) ) : '';
 	$nonce     = isset( $_GET['ekwa_pa_n'] ) ? sanitize_text_field( wp_unslash( $_GET['ekwa_pa_n'] ) ) : '';
+	$option    = isset( $_GET['ekwa_pa_option'] ) ? sanitize_key( wp_unslash( $_GET['ekwa_pa_option'] ) ) : '';
 	// phpcs:enable
 
 	if ( ! is_user_logged_in() || ! $post_id || ! current_user_can( 'edit_post', $post_id )
 		|| ! wp_verify_nonce( $nonce, ekwa_page_audit_compare_nonce_action( $post_id, $fix_id, $change_id ) ) ) {
 		return;
 	}
-	$resolved = ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id );
+	$resolved = ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id, $option );
 	if ( is_wp_error( $resolved ) ) {
 		return;
 	}
@@ -177,9 +185,10 @@ function ekwa_page_audit_compare_render() {
 	$strategy  = isset( $_GET['strategy'] ) ? sanitize_key( wp_unslash( $_GET['strategy'] ) ) : 'mobile';
 	$fix_id    = isset( $_GET['fix'] ) ? sanitize_text_field( wp_unslash( $_GET['fix'] ) ) : '';
 	$change_id = isset( $_GET['change'] ) ? sanitize_text_field( wp_unslash( $_GET['change'] ) ) : '';
+	$option    = isset( $_GET['option'] ) ? sanitize_key( wp_unslash( $_GET['option'] ) ) : '';
 	// phpcs:enable
 
-	$resolved = ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id );
+	$resolved = ekwa_page_audit_compare_resolve( $post_id, $strategy, $fix_id, $change_id, $option );
 	echo '<div class="wrap">';
 	if ( is_wp_error( $resolved ) ) {
 		echo '<h1>' . esc_html__( 'Compare fix', 'ekwa' ) . '</h1><div class="notice notice-error"><p>' . esc_html( $resolved->get_error_message() ) . '</p></div></div>';
@@ -198,6 +207,7 @@ function ekwa_page_audit_compare_render() {
 		'ekwa_pa_strategy' => $strategy,
 		'ekwa_pa_fix'      => $fix_id,
 		'ekwa_pa_change'   => $change_id,
+		'ekwa_pa_option'   => $option,
 		'ekwa_pa_n'        => $nonce,
 	);
 	$link      = get_permalink( $post );

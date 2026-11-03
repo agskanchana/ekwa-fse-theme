@@ -1236,6 +1236,7 @@ function ekwa_page_audit_register_routes() {
 	$fix_args = $post_arg + array(
 		'strategy' => array( 'required' => false, 'type' => 'string', 'default' => 'mobile' ),
 		'fix_id'   => array( 'required' => true, 'type' => 'string' ),
+		'option'   => array( 'required' => false, 'type' => 'string', 'default' => '' ),
 	);
 	register_rest_route( 'ekwa/v1', '/page-audit/apply-css', array(
 		'methods'             => WP_REST_Server::CREATABLE,
@@ -1295,6 +1296,10 @@ function ekwa_page_audit_rest_apply_css( $request ) {
 	if ( ekwa_page_audit_change_for_fix( $fix['id'] ) ) {
 		return new WP_Error( 'ekwa_page_audit_same', __( 'This fix is already applied.', 'ekwa' ), array( 'status' => 409 ) );
 	}
+	$fix = ekwa_page_audit_css_fix_with_option( $fix, sanitize_key( (string) $request->get_param( 'option' ) ) );
+	if ( is_wp_error( $fix ) ) {
+		return $fix;
+	}
 	$entry = ekwa_page_audit_css_apply_fix( $post_id, $fix );
 	if ( is_wp_error( $entry ) ) {
 		return $entry;
@@ -1314,6 +1319,10 @@ function ekwa_page_audit_rest_css_compute( $request ) {
 	$fix     = ekwa_page_audit_find_fix( $post_id, (string) $request->get_param( 'strategy' ), (string) $request->get_param( 'fix_id' ) );
 	if ( ! $fix || 'css' !== ( isset( $fix['kind'] ) ? $fix['kind'] : '' ) || ! isset( $fix['css']['in']['type'] ) || 'block' !== $fix['css']['in']['type'] ) {
 		return new WP_Error( 'ekwa_page_audit_fix', __( 'That fix is not in the latest analysis any more. Analyze again.', 'ekwa' ), array( 'status' => 404 ) );
+	}
+	$fix = ekwa_page_audit_css_fix_with_option( $fix, sanitize_key( (string) $request->get_param( 'option' ) ) );
+	if ( is_wp_error( $fix ) ) {
+		return $fix;
 	}
 	$marker = 'ekwa-fix-' . ekwa_page_audit_id();
 	$result = ekwa_page_audit_css_apply(
@@ -1690,7 +1699,7 @@ RULES
 - Base every fix on an audit in REPORT and put that audit's id in "audit". Do not invent problems or repeat one problem as several fixes.
 - BLOCKS is only the page body. Elements of the header, footer or other template parts are in PARTS — fix them with "part" (block attributes) or "css" (visual). Blocks in BLOCKS with a "note" saying they are synced patterns or template parts must not be changed with "block".
 - Match report nodes (selector, snippet, label) to blocks by className, anchor, text, image URL/alt or position. If you cannot identify the block with confidence, make the fix "manual" instead of guessing a path.
-- Colour contrast: reach 4.5:1 (3:1 for text at least 24px, or at least 18.66px bold), reading the foreground, background and font size from the audit item's explanation. Prefer a "css" fix (see COLOURS). Use a "block"/"part" colour attribute only when the colour is set on that block itself (style.color, textColor or the block's own colour attribute). Always fill "colors" with before/after values and the colour they are measured against ("against"), set "visual": true and describe the visible change in "visualNote".
+- Colour contrast: reach 4.5:1 (3:1 for text at least 24px, or at least 18.66px bold), reading the foreground, background and font size from the audit item's explanation. CONTRAST lists every failing element with the background Lighthouse measured and the existing tokens that already pass against it — pick from "tokens_that_pass" when one fits, and set "against" to that measured background (never assume white). The person is shown verified colour options for the fix as well. Prefer a "css" fix (see COLOURS). Use a "block"/"part" colour attribute only when the colour is set on that block itself (style.color, textColor or the block's own colour attribute). Always fill "colors" with before/after values and the colour they are measured against ("against"), set "visual": true and describe the visible change in "visualNote".
 - SEO: document title, meta description, link text, crawlable links, image alt, hreflang, robots and canonical audits. Most are "manual" (SEO plugin fields, page settings) unless a block or part attribute fixes them.
 - PREVIOUS lists fixes already applied from this page: "still_failing": true means its audit still fails in the latest test, "live_check" says whether a CSS change really takes effect on the page. Never propose the same change again; if a previous fix did not work, fix the reason (a stronger selector, the overriding rule, a different property) or explain in a "manual" fix.
 - Image alt text: concise and specific, from the file name, caption, nearby text and the page topic. Never "image of". Use "" only for an image inside a link or button that already has its own text.
@@ -1883,6 +1892,7 @@ function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp, $ctx = array(
 				? array( 'ok' => false, 'reason' => __( 'The site stylesheet was not available to this analysis.', 'ekwa' ) )
 				: ekwa_page_audit_css_validate( $fix, array(
 					'url'        => isset( $ctx['url'] ) ? $ctx['url'] : '',
+					'report'     => isset( $ctx['report'] ) ? $ctx['report'] : array(),
 					'blocks'     => $index,
 					'blocks_css' => isset( $ctx['blocks_css'] ) ? $ctx['blocks_css'] : array(),
 					'parts'      => isset( $ctx['parts'] ) ? $ctx['parts'] : array(),
@@ -1903,6 +1913,12 @@ function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp, $ctx = array(
 				}
 				if ( $check['notes'] ) {
 					$out['cssNotes'] = $check['notes'];
+				}
+				if ( ! empty( $check['colorOptions'] ) ) {
+					$out['colorOptions'] = $check['colorOptions'];
+					$out['colorEdit']    = $check['colorEdit'];
+					$out['colorTargets'] = $check['colorTargets'];
+					$out['visual']       = true;
 				}
 			}
 		}
@@ -1925,7 +1941,7 @@ function ekwa_page_audit_validate_fixes( $decoded, $index, $stamp, $ctx = array(
 				}
 			}
 			$out['steps'] = trim( ( '' !== $manual_reason ? $manual_reason . "\n" : '' ) . $steps );
-			unset( $out['setting'], $out['value'], $out['path'], $out['block'], $out['attrs'], $out['part'], $out['partTitle'], $out['css'], $out['cssNotes'], $out['cssCheck'] );
+			unset( $out['setting'], $out['value'], $out['path'], $out['block'], $out['attrs'], $out['part'], $out['partTitle'], $out['css'], $out['cssNotes'], $out['cssCheck'], $out['colorOptions'], $out['colorEdit'], $out['colorTargets'] );
 		}
 
 		$fixes[] = $out;
@@ -2054,6 +2070,7 @@ function ekwa_page_audit_rest_analyze( $request ) {
 	if ( ! $report ) {
 		return new WP_Error( 'ekwa_page_audit_no_report', __( 'Run the PageSpeed test first — the AI reads its report.', 'ekwa' ), array( 'status' => 400 ) );
 	}
+	$full_report = $report;
 	if ( isset( $report['audits'] ) && is_array( $report['audits'] ) ) {
 		// Best Practices is recorded for the dashboard, not part of the fixes.
 		unset( $report['audits']['best-practices'] );
@@ -2124,6 +2141,14 @@ function ekwa_page_audit_rest_analyze( $request ) {
 		}
 	}
 
+	// Each failing contrast element with its real background (as Lighthouse
+	// measured it) and the site tokens that already pass against it.
+	$contrast = ekwa_page_audit_contrast_items( $full_report );
+	if ( $contrast ) {
+		$site_t = ekwa_page_audit_css_target();
+		$payload['CONTRAST'] = ekwa_page_audit_contrast_hints( $contrast, ekwa_page_audit_css_tokens( $site_t, ekwa_page_audit_css_texts( $site_t ) ) );
+	}
+
 	// What was already tried from this page, and whether it worked.
 	$previous = ekwa_page_audit_previous_attempts( $post_id, $report );
 	if ( $previous ) {
@@ -2169,6 +2194,7 @@ function ekwa_page_audit_rest_analyze( $request ) {
 		'css'        => (bool) $css,
 		'url'        => $page_url,
 		'blocks_css' => $outline['css'],
+		'report'     => $full_report,
 	) );
 	$provider = function_exists( 'ekwa_ai_relay_applies' ) && ekwa_ai_relay_applies() ? 'mcp' : 'gemini';
 
@@ -2709,6 +2735,7 @@ add_action( 'enqueue_block_editor_assets', 'ekwa_page_audit_enqueue_editor' );
 
 require_once __DIR__ . '/ekwa-page-audit-css.php';
 require_once __DIR__ . '/ekwa-page-audit-cascade.php';
+require_once __DIR__ . '/ekwa-page-audit-color.php';
 require_once __DIR__ . '/ekwa-page-audit-parts.php';
 require_once __DIR__ . '/ekwa-page-audit-compare.php';
 require_once __DIR__ . '/ekwa-page-audit-dashboard.php';
