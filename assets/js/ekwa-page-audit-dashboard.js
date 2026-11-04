@@ -1,11 +1,16 @@
 /**
- * Ekwa — Page Speed & Accessibility dashboard (admin page "Page Speed").
+ * Ekwa — PageSpeed & Accessibility dashboard (Site Audit → PageSpeed).
  *
  * Lists every published page and post (separately) with PASS/FAIL per device
  * against the team's sitemap-tool criteria, the four Lighthouse scores and
  * the lab metrics, plus charts of where the site stands. Tests run from here
  * in the browser, a few at a time, through POST /ekwa/v1/page-audit/run —
  * each result is saved on the server the moment it lands.
+ *
+ * PASS/FAIL is judged on Performance, Accessibility and SEO together (the
+ * stored status — the sitemap tool's rules) unless this browser picked fewer
+ * ("Judge PASS/FAIL on"). Blog, thank-you and policy pages are left out of the
+ * charts, totals and "test all" scopes unless someone includes them.
  *
  * Plain wp.element (no build step), like the theme's other admin scripts.
  */
@@ -47,6 +52,17 @@
 		[ 'tbt', 'TBT' ],
 	];
 
+	// What PASS/FAIL is judged on. All three (the default) = the stored status,
+	// i.e. the team's sitemap tool. A narrower choice ("Performance only", or
+	// "without SEO" on the hidden test server) re-judges in this browser from
+	// the failing criteria each summary keeps — nothing stored changes.
+	var JUDGE_GROUPS = [
+		[ 'performance', __( 'Performance', 'ekwa' ), [ 'performance', 'fcp', 'lcp', 'cls', 'tbt' ] ],
+		[ 'accessibility', __( 'Accessibility', 'ekwa' ), [ 'accessibility' ] ],
+		[ 'seo', __( 'SEO', 'ekwa' ), [ 'seo' ] ],
+	];
+	var JUDGE_ALL = JUDGE_GROUPS.map( function ( g ) { return g[ 0 ]; } );
+
 	// ─── Helpers ────────────────────────────────────────────────────────────
 
 	function store( key, value ) {
@@ -55,6 +71,27 @@
 			window.localStorage.setItem( 'ekwaPad:' + key, String( value ) );
 		} catch ( e ) {}
 		return null;
+	}
+
+	function readJudge() {
+		var raw  = store( 'judge' );
+		var list = raw ? String( raw ).split( ',' ).filter( function ( k ) { return -1 !== JUDGE_ALL.indexOf( k ); } ) : [];
+		return list.length ? list : JUDGE_ALL.slice();
+	}
+	var JUDGE = readJudge();
+
+	function judgeAll() { return JUDGE.length === JUDGE_ALL.length; }
+
+	// Does a failing criterion key count under the current choice?
+	function keyCounts( key ) {
+		if ( judgeAll() ) { return true; }
+		return JUDGE_GROUPS.some( function ( g ) { return -1 !== JUDGE.indexOf( g[ 0 ] ) && -1 !== g[ 2 ].indexOf( key ); } );
+	}
+
+	// Left out of the dashboard: blog, thank-you and policy pages (automatic),
+	// or any page someone excluded; a manual "include" brings one back.
+	function isExcluded( item ) {
+		return 'exclude' === item.exclude || ( !! item.kind && 'include' !== item.exclude );
 	}
 
 	function errText( err ) {
@@ -76,9 +113,16 @@
 		return '';
 	}
 
+	// A stored summary's PASS/FAIL under the current choice.
+	function summaryStatus( s ) {
+		if ( ! s ) { return 'none'; }
+		var st = s.status || 'none';
+		if ( judgeAll() || 'none' === st ) { return st; }
+		return ( s.keys || [] ).some( keyCounts ) ? 'fail' : 'pass';
+	}
+
 	function deviceStatus( item, device ) {
-		var s = item[ device ];
-		return s ? ( s.status || 'none' ) : 'none';
+		return summaryStatus( item[ device ] );
 	}
 
 	// Overall: FAIL if any tested device fails, PASS if every tested device passes.
@@ -106,14 +150,14 @@
 	function criteriaText( t ) {
 		t = t || {};
 		var out = [];
-		if ( null != t.performance ) { out.push( sprintf( __( 'Performance ≥ %s', 'ekwa' ), t.performance ) ); }
-		if ( null != t.accessibility ) { out.push( sprintf( __( 'Accessibility %s', 'ekwa' ), t.accessibility ) ); }
-		if ( null != t.seo ) { out.push( sprintf( __( 'SEO %s', 'ekwa' ), t.seo ) ); }
-		if ( null != t[ 'best-practices' ] ) { out.push( sprintf( __( 'Best Practices ≥ %s', 'ekwa' ), t[ 'best-practices' ] ) ); }
-		if ( null != t.fcp ) { out.push( 'FCP ≤ ' + t.fcp + ' s' ); }
-		if ( null != t.lcp ) { out.push( 'LCP ≤ ' + t.lcp + ' s' ); }
-		if ( null != t.cls ) { out.push( 'CLS ≤ ' + t.cls ); }
-		if ( null != t.tbt ) { out.push( 'TBT ≤ ' + t.tbt + ' s' ); }
+		if ( null != t.performance && keyCounts( 'performance' ) ) { out.push( sprintf( __( 'Performance ≥ %s', 'ekwa' ), t.performance ) ); }
+		if ( null != t.accessibility && keyCounts( 'accessibility' ) ) { out.push( sprintf( __( 'Accessibility %s', 'ekwa' ), t.accessibility ) ); }
+		if ( null != t.seo && keyCounts( 'seo' ) ) { out.push( sprintf( __( 'SEO %s', 'ekwa' ), t.seo ) ); }
+		if ( null != t[ 'best-practices' ] && keyCounts( 'best-practices' ) ) { out.push( sprintf( __( 'Best Practices ≥ %s', 'ekwa' ), t[ 'best-practices' ] ) ); }
+		if ( null != t.fcp && keyCounts( 'fcp' ) ) { out.push( 'FCP ≤ ' + t.fcp + ' s' ); }
+		if ( null != t.lcp && keyCounts( 'lcp' ) ) { out.push( 'LCP ≤ ' + t.lcp + ' s' ); }
+		if ( null != t.cls && keyCounts( 'cls' ) ) { out.push( 'CLS ≤ ' + t.cls ); }
+		if ( null != t.tbt && keyCounts( 'tbt' ) ) { out.push( 'TBT ≤ ' + t.tbt + ' s' ); }
 		return out.join( ' · ' );
 	}
 
@@ -299,7 +343,7 @@
 		tested.forEach( function ( i ) {
 			( i[ device ].keys || [] ).forEach( function ( k ) { why[ k ] = ( why[ k ] || 0 ) + 1; } );
 		} );
-		var whyRows = CRITERIA.filter( function ( c ) { return why[ c[ 0 ] ]; } ).map( function ( c ) {
+		var whyRows = CRITERIA.filter( function ( c ) { return why[ c[ 0 ] ] && keyCounts( c[ 0 ] ); } ).map( function ( c ) {
 			return { key: c[ 0 ], label: c[ 1 ], value: why[ c[ 0 ] ], onPick: function () { props.onFilter( { status: 'fail', criterion: c[ 0 ] } ); } };
 		} ).sort( function ( a, b ) { return b.value - a.value; } );
 
@@ -308,6 +352,7 @@
 		tested.forEach( function ( i ) {
 			var f = i[ device ].failing || {};
 			[ [ 'accessibility', __( 'A11y', 'ekwa' ) ], [ 'seo', __( 'SEO', 'ekwa' ) ] ].forEach( function ( cat ) {
+				if ( ! keyCounts( cat[ 0 ] ) ) { return; }
 				( f[ cat[ 0 ] ] || [] ).forEach( function ( a ) {
 					var k = cat[ 0 ] + ':' + ( a.id || a.title );
 					if ( ! checks[ k ] ) { checks[ k ] = { label: a.title, tag: cat[ 1 ], value: 0, id: a.id }; }
@@ -419,7 +464,7 @@
 		var sc = s.scores || {};
 		return el( 'div', { className: 'ekwa-pad-cell' },
 			el( 'div', { className: 'ekwa-pad-cell__top' },
-				el( Status, { status: s.status } ),
+				el( Status, { status: summaryStatus( s ) } ),
 				el( 'span', { className: 'ekwa-pad-muted' }, ago( s.t ) )
 			),
 			el( 'div', { className: 'ekwa-pad-scores' },
@@ -441,12 +486,16 @@
 			}
 			var m = s.metrics || {};
 			var f = s.failing || {};
+			var keys    = s.keys || [];
+			var counted = ( s.issues || [] ).filter( function ( t, i ) { return keyCounts( keys[ i ] ); } );
+			var ignored = ( s.issues || [] ).filter( function ( t, i ) { return ! keyCounts( keys[ i ] ); } );
 			return el( 'div', { key: d[ 0 ], className: 'ekwa-pad-details__col' },
-				el( 'h4', null, d[ 1 ], ' ', el( Status, { status: s.status } ) ),
+				el( 'h4', null, d[ 1 ], ' ', el( Status, { status: deviceStatus( item, d[ 0 ] ) } ) ),
 				el( 'p', { className: 'ekwa-pad-metrics' },
 					'FCP ' + ( null == m.fcp ? '–' : m.fcp + ' s' ) + ' · LCP ' + ( null == m.lcp ? '–' : m.lcp + ' s' ) +
 					' · CLS ' + ( null == m.cls ? '–' : m.cls ) + ' · TBT ' + ( null == m.tbt ? '–' : Math.round( m.tbt * 1000 ) + ' ms' ) ),
-				( s.issues || [] ).length ? el( 'ul', { className: 'ekwa-pad-issues' }, s.issues.map( function ( t, i ) { return el( 'li', { key: i }, t ); } ) ) : el( 'p', { className: 'ekwa-pad-muted' }, __( 'Meets every criterion.', 'ekwa' ) ),
+				counted.length ? el( 'ul', { className: 'ekwa-pad-issues' }, counted.map( function ( t, i ) { return el( 'li', { key: i }, t ); } ) ) : el( 'p', { className: 'ekwa-pad-muted' }, judgeAll() ? __( 'Meets every criterion.', 'ekwa' ) : __( 'Meets every criterion it is judged on.', 'ekwa' ) ),
+				ignored.length ? el( 'p', { className: 'ekwa-pad-muted' }, __( 'Not counted here: ', 'ekwa' ) + ignored.join( ' · ' ) ) : null,
 				( f.accessibility || [] ).length ? el( Fragment, null, el( 'h5', null, __( 'Failing accessibility checks', 'ekwa' ) ), el( 'ul', null, f.accessibility.map( function ( a, i ) { return el( 'li', { key: i }, a.title ); } ) ) ) : null,
 				( f.seo || [] ).length ? el( Fragment, null, el( 'h5', null, __( 'Failing SEO checks', 'ekwa' ) ), el( 'ul', null, f.seo.map( function ( a, i ) { return el( 'li', { key: i }, a.title ); } ) ) ) : null,
 				( f.performance || [] ).length ? el( Fragment, null, el( 'h5', null, __( 'Top performance opportunities', 'ekwa' ) ), el( 'ul', null, f.performance.map( function ( a, i ) { return el( 'li', { key: i }, a.title ); } ) ) ) : null,
@@ -460,8 +509,10 @@
 		var open   = props.open;
 		var status = overall( item );
 		var detail = 'ekwa-pad-row-' + item.id;
+		var left   = isExcluded( item );
+		var kinds  = props.kinds || {};
 		return el( Fragment, null,
-			el( 'tr', { className: 'ekwa-pad-row is-' + status + ( open ? ' is-open' : '' ) },
+			el( 'tr', { className: 'ekwa-pad-row is-' + status + ( open ? ' is-open' : '' ) + ( left ? ' is-excluded' : '' ) },
 				el( 'td', { className: 'ekwa-pad-col-title' },
 					el( 'button', { type: 'button', className: 'ekwa-pad-expand', 'aria-expanded': open, 'aria-controls': detail, onClick: props.onToggle },
 						el( 'span', { 'aria-hidden': 'true' }, open ? '▾' : '▸' ),
@@ -470,7 +521,10 @@
 					el( 'div', { className: 'ekwa-pad-title' },
 						el( 'a', { href: item.url, target: '_blank', rel: 'noopener noreferrer', className: 'ekwa-pad-title__link' }, item.title ),
 						item.front ? el( 'span', { className: 'ekwa-pad-tag' }, __( 'Front page', 'ekwa' ) ) : null,
-						item.blog ? el( 'span', { className: 'ekwa-pad-tag' }, __( 'Blog', 'ekwa' ) ) : null,
+						item.blog && 'blog' !== item.kind ? el( 'span', { className: 'ekwa-pad-tag' }, __( 'Blog', 'ekwa' ) ) : null,
+						item.kind ? el( 'span', { className: 'ekwa-pad-tag' }, kinds[ item.kind ] || item.kind ) : null,
+						item.soon ? el( 'span', { className: 'ekwa-pad-tag' }, __( 'Coming soon', 'ekwa' ) ) : ( item.empty && 'blog' !== item.kind ? el( 'span', { className: 'ekwa-pad-tag' }, __( 'No content', 'ekwa' ) ) : null ),
+						left ? el( 'span', { className: 'ekwa-pad-tag ekwa-pad-tag--left' }, __( 'Left out', 'ekwa' ) ) : null,
 						el( 'div', { className: 'ekwa-pad-row-links' },
 							item.edit ? el( 'a', { href: item.edit }, __( 'Open audit', 'ekwa' ) ) : null,
 							el( 'span', { className: 'ekwa-pad-url' }, item.url.replace( /^https?:\/\//, '' ) )
@@ -489,7 +543,11 @@
 						variant: 'secondary', size: 'small',
 						disabled: !! ( props.running[ item.id + ':mobile' ] || props.running[ item.id + ':desktop' ] ),
 						onClick: props.onTest,
-					}, 'none' === status ? __( 'Test', 'ekwa' ) : __( 'Retest', 'ekwa' ) )
+					}, 'none' === status ? __( 'Test', 'ekwa' ) : __( 'Retest', 'ekwa' ) ),
+					props.onExclude ? el( 'div', null, el( Button, {
+						variant: 'link', className: 'ekwa-pad-exclude', disabled: !! props.excluding, onClick: props.onExclude,
+						title: left ? __( 'Count this page in the dashboard again', 'ekwa' ) : __( 'Leave this page out of the dashboard (charts, totals and “test all”)', 'ekwa' ),
+					}, left ? __( 'Include', 'ekwa' ) : __( 'Leave out', 'ekwa' ) ) ) : null
 				)
 			),
 			open ? el( 'tr', { className: 'ekwa-pad-detail-row', id: detail }, el( 'td', { colSpan: 4 }, el( Details, { item: item } ) ) ) : null
@@ -518,7 +576,12 @@
 		var _devs    = useState( 'both' );
 		var _conc    = useState( parseInt( store( 'conc' ), 10 ) || 2 );
 		var _confirm = useState( null );
+		var _judge   = useState( JUDGE );
+		var _showEx  = useState( '1' === store( 'showExcluded' ) );
+		var _kinds   = useState( {} );
+		var _excl    = useState( {} );
 		var thresholds = useRef( CFG.thresholds || {} );
+		JUDGE = _judge[ 0 ];
 
 		var queue  = useRef( [] );
 		var active = useRef( 0 );
@@ -530,6 +593,7 @@
 			apiFetch( { path: '/ekwa/v1/page-audit/overview' } )
 				.then( function ( res ) {
 					thresholds.current = res.thresholds || thresholds.current;
+					_kinds[ 1 ]( res.kinds || {} );
 					setItems( res.items || [] );
 				} )
 				.catch( function ( err ) { _error[ 1 ]( errText( err ) ); } );
@@ -554,6 +618,27 @@
 				} );
 			} );
 		}
+		function setJudge( list ) {
+			list = JUDGE_ALL.filter( function ( k ) { return -1 !== list.indexOf( k ); } );
+			if ( ! list.length ) { return; } // At least one category.
+			JUDGE = list;
+			store( 'judge', list.join( ',' ) );
+			_judge[ 1 ]( list );
+		}
+
+		function toggleExclude( item ) {
+			var mode = isExcluded( item ) ? 'include' : 'exclude';
+			setFlag( _excl[ 1 ], item.id, true );
+			apiFetch( { path: '/ekwa/v1/page-audit/exclude', method: 'POST', data: { post_id: item.id, mode: mode } } )
+				.then( function ( res ) {
+					setItems( function ( list ) {
+						return ( list || [] ).map( function ( i ) { return i.id === item.id ? assign( {}, i, { exclude: res.exclude || '', kind: res.kind || '' } ) : i; } );
+					} );
+				} )
+				.catch( function ( err ) { _notice[ 1 ]( { type: 'error', text: errText( err ) } ); } )
+				.then( function () { setFlag( _excl[ 1 ], item.id, undefined ); } );
+		}
+
 		function setFlag( setter, key, value ) {
 			setter( function ( m ) {
 				var n = assign( {}, m );
@@ -615,7 +700,10 @@
 			_prog[ 1 ]( function ( p ) { return p ? assign( {}, p, { stopped: true, finished: 0 === active.current } ) : p; } );
 		}
 
-		var all = items || [];
+		var everything = items || [];
+		var all        = everything.filter( function ( i ) { return ! isExcluded( i ); } );
+		var leftOut    = everything.length - all.length;
+		var listed     = _showEx[ 0 ] ? everything : all;
 
 		function devicesFor( choice ) {
 			return 'both' === choice ? [ 'mobile', 'desktop' ] : [ choice ];
@@ -643,7 +731,7 @@
 
 		// Filtering for the table.
 		var q = _search[ 0 ].trim().toLowerCase();
-		var visible = all.filter( function ( i ) {
+		var visible = listed.filter( function ( i ) {
 			if ( i.type !== tab ) { return false; }
 			if ( q && -1 === ( i.title + ' ' + i.url ).toLowerCase().indexOf( q ) ) { return false; }
 			var st = overall( i );
@@ -661,7 +749,26 @@
 			return true;
 		} );
 
-		var countBy = function ( type ) { return all.filter( function ( i ) { return i.type === type; } ).length; };
+		var countBy = function ( type ) { return listed.filter( function ( i ) { return i.type === type; } ).length; };
+
+		// SEO fails everywhere on a site hidden from search engines (the test
+		// server): Lighthouse's "Page is blocked from indexing". Offer to judge
+		// without SEO.
+		var testedN = 0;
+		var blocked = 0;
+		all.forEach( function ( i ) {
+			var tested = false;
+			var hit    = false;
+			DEVICES.forEach( function ( d ) {
+				var s = i[ d[ 0 ] ];
+				if ( ! s ) { return; }
+				tested = true;
+				if ( ( ( s.failing || {} ).seo || [] ).some( function ( a ) { return 'is-crawlable' === a.id; } ) ) { hit = true; }
+			} );
+			if ( tested ) { testedN++; }
+			if ( hit ) { blocked++; }
+		} );
+		var seoHint = -1 !== JUDGE.indexOf( 'seo' ) && JUDGE.length > 1 && ( blocked >= Math.max( 2, Math.ceil( testedN / 2 ) ) || ( false === CFG.blogPublic && testedN > 0 ) );
 		var prog    = _prog[ 0 ];
 
 		function applyFilter( f ) {
@@ -683,7 +790,7 @@
 			[ 'failing', __( 'Failing only', 'ekwa' ) ],
 			[ 'visible', __( 'Rows shown below', 'ekwa' ) ],
 			[ 'tab', 'page' === tab ? __( 'All pages', 'ekwa' ) : __( 'All posts', 'ekwa' ) ],
-			[ 'everything', __( 'Every page and post', 'ekwa' ) ],
+			[ 'everything', leftOut ? __( 'Every page and post (not the left-out ones)', 'ekwa' ) : __( 'Every page and post', 'ekwa' ) ],
 		];
 		var pending = tasksFor( _scope[ 0 ], _devs[ 0 ], visible );
 		var minutes = Math.max( 1, Math.round( ( pending.length * 35 ) / 60 / Math.max( 1, _conc[ 0 ] ) ) );
@@ -694,9 +801,33 @@
 				__( 'No PageSpeed Insights API key is set, so Google allows only a few tests. ', 'ekwa' ),
 				CFG.canManage ? el( 'a', { href: CFG.settingsUrl }, __( 'Add one in Ekwa Settings → Performance', 'ekwa' ) ) : null
 			) : null,
+			seoHint ? el( Notice, { status: 'info', isDismissible: false, className: 'ekwa-pad-notice' },
+				blocked
+					? sprintf( __( 'SEO fails on %d pages because they are blocked from indexing (“Page is blocked from indexing”) — expected while the site is hidden from search engines, e.g. on the test server.', 'ekwa' ), blocked )
+					: __( 'This site asks search engines not to index it (Settings → Reading), so Lighthouse’s SEO score fails on every page — expected on the test server.', 'ekwa' ),
+				' ',
+				el( Button, { variant: 'link', onClick: function () { setJudge( JUDGE.filter( function ( k ) { return 'seo' !== k; } ) ); } }, __( 'Judge PASS/FAIL without SEO', 'ekwa' ) )
+			) : null,
+			el( 'div', { className: 'ekwa-pad-toolbar ekwa-pad-judge' },
+				el( 'span', { className: 'ekwa-pad-toolbar__label', id: 'ekwa-pad-judge-label' }, __( 'Judge PASS/FAIL on', 'ekwa' ) ),
+				el( 'div', { className: 'ekwa-pad-seg-control', role: 'group', 'aria-labelledby': 'ekwa-pad-judge-label' },
+					JUDGE_GROUPS.map( function ( g ) {
+						var on = -1 !== JUDGE.indexOf( g[ 0 ] );
+						return el( 'button', {
+							key: g[ 0 ], type: 'button', 'aria-pressed': on,
+							disabled: on && 1 === JUDGE.length,
+							title: on && 1 === JUDGE.length ? __( 'At least one category is needed.', 'ekwa' ) : undefined,
+							onClick: function () { setJudge( on ? JUDGE.filter( function ( k ) { return k !== g[ 0 ]; } ) : JUDGE.concat( [ g[ 0 ] ] ) ); },
+						}, ( on ? '✓ ' : '' ) + g[ 1 ] );
+					} )
+				),
+				! judgeAll() ? el( Button, { variant: 'link', onClick: function () { setJudge( JUDGE_ALL ); } }, __( 'All three (sitemap tool)', 'ekwa' ) ) : null
+			),
 			el( 'p', { className: 'ekwa-pad-criteria' },
 				el( 'strong', null, __( 'Pass criteria', 'ekwa' ) + ': ' ), criteriaText( thresholds.current ),
-				el( 'span', { className: 'ekwa-pad-muted' }, ' — ' + __( 'same rules as the team’s PageSpeed sitemap tool. Best Practices and TBT are recorded, not enforced.', 'ekwa' ) )
+				el( 'span', { className: 'ekwa-pad-muted' }, ' — ' + ( judgeAll()
+					? __( 'same rules as the team’s PageSpeed sitemap tool. Best Practices and TBT are recorded, not enforced.', 'ekwa' )
+					: __( 'your choice, in this browser only (the page editor’s sidebar follows it). The stored results and the team’s sitemap tool still judge Performance, Accessibility and SEO together.', 'ekwa' ) ) )
 			),
 
 			el( 'div', { className: 'ekwa-pad-toolbar' },
@@ -762,7 +893,13 @@
 					el( 'input', { type: 'search', className: 'ekwa-pad-search', placeholder: __( 'Search title or URL…', 'ekwa' ), 'aria-label': __( 'Search title or URL', 'ekwa' ), value: _search[ 0 ], onChange: function ( e ) { _search[ 1 ]( e.target.value ); } } ),
 					filter.criterion || filter.audit ? el( Button, { variant: 'tertiary', onClick: function () { _filter[ 1 ]( { status: filter.status, criterion: '', audit: '' } ); } },
 						__( 'Clear chart filter ✕', 'ekwa' ) ) : null,
-					el( 'span', { className: 'ekwa-pad-muted' }, sprintf( __( '%d shown', 'ekwa' ), visible.length ) )
+					el( 'span', { className: 'ekwa-pad-muted' }, sprintf( __( '%d shown', 'ekwa' ), visible.length ) ),
+					leftOut ? el( Button, {
+						variant: 'tertiary', className: 'ekwa-pad-leftout',
+						onClick: function () { var v = ! _showEx[ 0 ]; _showEx[ 1 ]( v ); store( 'showExcluded', v ? '1' : '0' ); },
+					}, _showEx[ 0 ]
+						? sprintf( __( 'Hide the %d left-out pages', 'ekwa' ), leftOut )
+						: sprintf( __( '%d left out (blog, thank-you and policy pages…) — show', 'ekwa' ), leftOut ) ) : null
 				),
 				el( 'table', { className: 'widefat ekwa-pad-table' },
 					el( 'thead', null, el( 'tr', null,
@@ -778,8 +915,11 @@
 							open: !! _open[ 0 ][ item.id ],
 							running: _running[ 0 ],
 							errors: _errors[ 0 ],
+							kinds: _kinds[ 0 ],
+							excluding: !! _excl[ 0 ][ item.id ],
 							onToggle: function () { setFlag( _open[ 1 ], item.id, _open[ 0 ][ item.id ] ? undefined : true ); },
 							onTest: function () { start( [ { id: item.id, device: 'mobile' }, { id: item.id, device: 'desktop' } ] ); },
+							onExclude: function () { toggleExclude( item ); },
 						} );
 					} ) : el( 'tr', null, el( 'td', { colSpan: 4, className: 'ekwa-pad-muted' }, __( 'Nothing matches.', 'ekwa' ) ) ) )
 				)

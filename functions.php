@@ -602,6 +602,13 @@ require_once get_template_directory() . '/inc/ekwa-interlink.php';
 require_once get_template_directory() . '/inc/ekwa-page-audit.php';
 
 /**
+ * Site Audit (the admin menu around the PageSpeed dashboard): content & SEO
+ * (empty / coming-soon pages, Yoast titles, descriptions, search visibility),
+ * broken links, image alt text and an AI spelling check. Admin only.
+ */
+require_once get_template_directory() . '/inc/ekwa-site-audit.php';
+
+/**
  * Site Logo "Load first (LCP image)" option — fetchpriority + preload for a
  * logo that is the page's LCP (e.g. in the mobile header). Off by default.
  */

@@ -72,10 +72,72 @@ summary rather than letting it ship silently.
 and never reuse or go below a number that was ever on `live` (3.4.0 was on
 `live` twice, so sites that took the first one never got the second).
 
+## Site Audit — the admin menu around the PageSpeed dashboard
+
+Top level **Site Audit** (slug `ekwa-page-audit`, unchanged), one screen each:
+
+| Screen | Code | What it does |
+|---|---|---|
+| PageSpeed | `inc/ekwa-page-audit-dashboard.php`, `assets/js/ekwa-page-audit-dashboard.js` | The PageSpeed dashboard (see the next section) + "Judge PASS/FAIL on" Performance / Accessibility / SEO in any combination, and pages left out (blog page, thank-you pages, policy pages automatically; any page by hand) |
+| Content & SEO | `inc/ekwa-site-audit.php`, `assets/js/ekwa-site-audit.js` | Pages with no content or "coming soon", no Yoast SEO title, no meta description, which pages search engines may show; copy the filtered links; hide/show pages in search through Yoast |
+| Broken Links | `inc/ekwa-site-audit-links.php` | Every link and image URL in posts, pages, any public post type, templates, template parts, synced patterns, block and classic menus, the appointment and social links — with an Edit link to the place it is in |
+| Image Alt Text | `inc/ekwa-site-audit-images.php` | Every image in the same places (core Image/Gallery, ekwa/image, HTML, classic) judged missing / empty / file-name alt; media-library images without alt, editable on the screen (core `/wp/v2/media`, AI suggestion via `/generate-alt`) |
+| Spelling | `inc/ekwa-site-audit-spelling.php` | AI proofreading of the same places + Yoast title/description, told to leave medical/dental/cosmetic terms, brands, names alone; site ignore list |
+| (editor) | `assets/js/ekwa-site-audit-editor.js` | After a save: "this page is hidden from search engines but has content now" → Show it (Yoast's own field) |
+
+Shared helpers in `inc/ekwa-site-audit.php`: `ekwa_site_audit_each_source()`
+(every place content lives — the Site Editor copy of a template when saved,
+else the theme file), `ekwa_site_audit_parse()` (blocks → text, links, images),
+`ekwa_site_audit_content_state()` (empty / coming soon),
+`ekwa_site_audit_page_kind()` (blog / thank-you / policy, filterable),
+`ekwa_site_audit_set_hidden()` (Yoast noindex, exactly reversible).
+
+### Invariants
+
+- **Screens only read** (GET). Writes happen on a click, each reversible:
+  Yoast's `_yoast_wpseo_meta-robots-noindex` (the value it replaced is kept in
+  `_ekwa_site_audit_noindex`; "show" restores it exactly), the PageSpeed
+  exclusion override `_ekwa_page_audit_exclude` (`exclude`/`include`, stored
+  only when it differs from automatic), link results
+  (`ekwa_site_audit_links`), spelling results (`ekwa_site_audit_spelling`), the
+  ignore list (`ekwa_site_audit_dictionary`) — all options not autoloaded.
+- **Hiding from search uses only Yoast's per-page setting** — no robots tag or
+  code of our own (the user asked for exactly that). Yoast rebuilds its
+  indexable and sitemap itself (meta watcher at shutdown).
+- **In the editor, read Yoast's hidden field `#yoast_wpseo_meta-robots-noindex`,
+  not `select('yoast-seo/editor').getNoIndex()`** — the store reads `''` until
+  Yoast's Advanced panel loads. Change it with `setNoIndex()` + the field, then
+  `savePost()`: Yoast's metabox request saves it.
+- **PASS/FAIL judged on fewer categories is a browser choice**
+  (`localStorage` `ekwaPad:judge`, shared by the dashboard and the editor
+  sidebar) re-derived from each summary's `keys`. All three = the stored status
+  = the sitemap tool. Never store a narrowed status.
+- **Left-out pages** are hidden from the dashboard's charts, totals and
+  "test all" scopes by default; their stored results are untouched.
+- **Spelling: no side effects before the AI call** (the MCP relay re-sends the
+  request). The server drops any reported word that is not in the text it was
+  reported for; ignored words are filtered again on every read.
+- **Link check:** only http(s) URLs that pass `wp_http_validate_url()` are
+  requested (no private networks); a domain without DNS is "broken"; internal
+  links are answered without HTTP when that is conclusive (published post,
+  uploaded file). Root-relative links on a site in a subfolder (the test server)
+  are flagged with the address they should have.
+- The block sets in `ekwa_site_audit_block_sets()` (layout / text / page
+  furniture) are localized to the editor script — change them in PHP only.
+
+### Testing notes
+
+- The local Gemini key had no credits on 2026-11-04: mock `pre_http_request`
+  for `generativelanguage.googleapis.com` to drive `/site-audit/spelling/check`.
+- Playwright + the editor: Yoast's field is saved by the metabox request that
+  follows the REST save — wait for the "can now show in search results" notice,
+  not for `isSavingPost()` to turn false.
+
 ## Page audit — PageSpeed, accessibility and SEO with AI fixes
 
 Every page/post editor has a "Page Speed & Accessibility" sidebar; the admin
-menu has a **Page Speed** dashboard for all pages and posts. Google PageSpeed
+menu **Site Audit → PageSpeed** is the dashboard for all pages and posts (the
+menu was called "Page Speed" before 3.5.0 — same slug and URL). Google PageSpeed
 Insights tests the published page; the site's AI provider (Gemini key or the
 MCP connector) reads the report plus the page, its template parts and the site
 CSS, and proposes fixes. The user applies them one by one; every change is

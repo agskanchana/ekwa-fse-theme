@@ -124,6 +124,13 @@
 .ekwa-pad-url { color: var(--pad-ink-2); overflow-wrap: anywhere; }
 .ekwa-pad-row.is-fail { box-shadow: inset 3px 0 0 var(--pad-critical); }
 .ekwa-pad-row.is-pass { box-shadow: inset 3px 0 0 var(--pad-good); }
+.ekwa-pad-row.is-excluded > td { background: var(--pad-plane); }
+.ekwa-pad-row.is-excluded .ekwa-pad-title__link { color: var(--pad-ink-2); }
+.ekwa-pad-tag--left { background: #fcf3e0; color: #8a5a00; }
+.ekwa-pad-exclude.components-button.is-link { font-size: 12px; margin-top: 6px; }
+.ekwa-pad-leftout.components-button { margin-left: auto; }
+.ekwa-pad-judge { margin-top: 12px; margin-bottom: 0; }
+.ekwa-pad-judge .ekwa-pad-seg-control button:disabled { cursor: not-allowed; opacity: 1; }
 
 .ekwa-pad-cell { display: flex; flex-direction: column; gap: 6px; }
 .ekwa-pad-cell__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

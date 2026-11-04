@@ -2518,7 +2518,7 @@ function ekwa_page_audit_render_settings_section() {
 			<?php esc_html_e( 'Every page and post editor has a “Page Speed & Accessibility” panel (the gauge icon in the top toolbar, and a summary in the Page sidebar). It tests the published page with Google PageSpeed Insights, and your AI provider (Ekwa Settings → AI: the Gemini key or the MCP connector) suggests fixes you can apply and undo one by one.', 'ekwa' ); ?>
 		</p>
 		<?php if ( function_exists( 'ekwa_page_audit_dashboard_url' ) ) : ?>
-			<p><a class="button" href="<?php echo esc_url( ekwa_page_audit_dashboard_url() ); ?>"><span class="dashicons dashicons-performance" style="margin-top:4px;" aria-hidden="true"></span> <?php esc_html_e( 'Open the site-wide Page Speed dashboard', 'ekwa' ); ?></a></p>
+			<p><a class="button" href="<?php echo esc_url( ekwa_page_audit_dashboard_url() ); ?>"><span class="dashicons dashicons-performance" style="margin-top:4px;" aria-hidden="true"></span> <?php esc_html_e( 'Open Site Audit → PageSpeed (all pages)', 'ekwa' ); ?></a></p>
 		<?php endif; ?>
 		<?php if ( 'ok' === $change_code ) : ?>
 			<div class="notice notice-success inline"><p><?php esc_html_e( 'The change was undone.', 'ekwa' ); ?></p></div>

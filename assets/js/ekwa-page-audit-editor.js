@@ -827,9 +827,30 @@
 		return el( 'span', { className: 'ekwa-pa-badge is-' + props.tone }, props.children );
 	}
 
+	// What PASS/FAIL is judged on — chosen on Site Audit → PageSpeed ("Judge
+	// PASS/FAIL on"), kept in this browser. All three (the default) = the
+	// server's evaluation unchanged, i.e. the team's sitemap tool.
+	var JUDGE_KEYS = { performance: [ 'performance', 'fcp', 'lcp', 'cls', 'tbt' ], accessibility: [ 'accessibility' ], seo: [ 'seo' ] };
+	var JUDGE_LABELS = { performance: __( 'Performance', 'ekwa' ), accessibility: __( 'Accessibility', 'ekwa' ), seo: __( 'SEO', 'ekwa' ) };
+	function judgeList() {
+		var raw = '';
+		try { raw = window.localStorage.getItem( 'ekwaPad:judge' ) || ''; } catch ( e ) {}
+		var list = raw.split( ',' ).filter( function ( k ) { return !! JUDGE_KEYS[ k ]; } );
+		return list.length ? list : Object.keys( JUDGE_KEYS );
+	}
+	function judged( ev ) {
+		if ( ! ev || ! ev.status || 'none' === ev.status ) { return ev; }
+		var list = judgeList();
+		if ( list.length === Object.keys( JUDGE_KEYS ).length ) { return ev; }
+		var all    = ev.issues || [];
+		var issues = all.filter( function ( i ) { return list.some( function ( g ) { return -1 !== JUDGE_KEYS[ g ].indexOf( i.key ); } ); } );
+		return assign( {}, ev, { status: issues.length ? 'fail' : 'pass', issues: issues, ignored: all.length - issues.length, judge: list } );
+	}
+
 	// PASS / FAIL against the sitemap-tool criteria (judged on the server).
 	function StatusChip( props ) {
-		var st = props.evaluation ? props.evaluation.status : 'none';
+		var ev = judged( props.evaluation );
+		var st = ev ? ev.status : 'none';
 		var lb = { pass: __( 'PASS', 'ekwa' ), fail: __( 'FAIL', 'ekwa' ), none: __( 'Not tested', 'ekwa' ) }[ st ] || st;
 		return el( 'span', { className: 'ekwa-pa-status is-' + st + ( props.small ? ' is-small' : '' ) },
 			el( 'span', { 'aria-hidden': 'true' }, 'pass' === st ? '✓ ' : ( 'fail' === st ? '✕ ' : '' ) ),
@@ -851,7 +872,7 @@
 	}
 
 	function Verdict( props ) {
-		var ev = props.evaluation;
+		var ev = judged( props.evaluation );
 		if ( ! ev || 'none' === ev.status ) { return null; }
 		var issues = ev.issues || [];
 		return el( 'div', { className: 'ekwa-pa-verdict is-' + ev.status },
@@ -862,6 +883,11 @@
 					: sprintf( /* translators: %d: number of criteria missed */ __( '%d criteria missed:', 'ekwa' ), issues.length ) )
 			),
 			issues.length ? el( 'ul', { className: 'ekwa-pa-verdict__list' }, issues.map( function ( i, n ) { return el( 'li', { key: n }, i.text ); } ) ) : null,
+			ev.judge ? el( 'p', { className: 'ekwa-pa-muted' }, sprintf(
+				/* translators: %s: categories, e.g. "Performance + Accessibility" */
+				__( 'Judged on %s only (chosen on Site Audit → PageSpeed).', 'ekwa' ),
+				ev.judge.map( function ( k ) { return JUDGE_LABELS[ k ]; } ).join( ' + ' )
+			) + ( ev.ignored ? ' ' + sprintf( __( '%d other criteria not counted.', 'ekwa' ), ev.ignored ) : '' ) ) : null,
 			el( 'p', { className: 'ekwa-pa-muted ekwa-pa-verdict__criteria' }, sprintf( /* translators: %s: list of criteria */ __( 'Criteria: %s', 'ekwa' ), criteriaText( props.thresholds ) ) )
 		);
 	}
@@ -1716,7 +1742,7 @@
 				)
 				: el( 'p', { className: 'ekwa-pa-muted' }, __( 'Not tested yet. Test the published page and get AI fixes for speed, accessibility and SEO.', 'ekwa' ) ),
 			el( Button, { variant: 'secondary', icon: ICON, onClick: openSidebar }, __( 'Open the audit', 'ekwa' ) ),
-			CFG.dashboardUrl ? el( 'p', { className: 'ekwa-pa-muted' }, el( 'a', { href: CFG.dashboardUrl }, __( 'All pages: Page Speed dashboard', 'ekwa' ) ) ) : null
+			CFG.dashboardUrl ? el( 'p', { className: 'ekwa-pa-muted' }, el( 'a', { href: CFG.dashboardUrl }, __( 'All pages: Site Audit → PageSpeed', 'ekwa' ) ) ) : null
 		);
 	}
 

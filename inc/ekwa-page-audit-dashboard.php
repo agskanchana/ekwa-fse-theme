@@ -1,6 +1,7 @@
 <?php
 /**
- * Page audit — site-wide dashboard (its own admin page: "Page Speed").
+ * Page audit — site-wide dashboard (admin menu Site Audit → PageSpeed; the
+ * menu was called "Page Speed" before 3.5.0 — same slug and URL).
  *
  * Every published page and post, grouped separately, with PASS/FAIL per
  * device against the team's sitemap-tool criteria (ekwa_page_audit_thresholds())
@@ -39,17 +40,27 @@ function ekwa_page_audit_dashboard_cap() {
 }
 
 /**
- * Register the menu page.
+ * Register the menu page: "Site Audit" (same slug and URL as the old
+ * "Page Speed" menu), whose first entry is this dashboard. The other Site
+ * Audit screens are added by inc/ekwa-site-audit.php.
  */
 function ekwa_page_audit_dashboard_menu() {
 	add_menu_page(
-		__( 'Page Speed & Accessibility', 'ekwa' ),
-		__( 'Page Speed', 'ekwa' ),
+		__( 'PageSpeed & Accessibility', 'ekwa' ),
+		__( 'Site Audit', 'ekwa' ),
 		ekwa_page_audit_dashboard_cap(),
 		'ekwa-page-audit',
 		'ekwa_page_audit_dashboard_render',
 		'dashicons-performance',
 		'58.7'
+	);
+	add_submenu_page(
+		'ekwa-page-audit',
+		__( 'PageSpeed & Accessibility', 'ekwa' ),
+		__( 'PageSpeed', 'ekwa' ),
+		ekwa_page_audit_dashboard_cap(),
+		'ekwa-page-audit',
+		'ekwa_page_audit_dashboard_render'
 	);
 }
 add_action( 'admin_menu', 'ekwa_page_audit_dashboard_menu' );
@@ -60,7 +71,7 @@ add_action( 'admin_menu', 'ekwa_page_audit_dashboard_menu' );
 function ekwa_page_audit_dashboard_render() {
 	?>
 	<div class="wrap ekwa-pad-wrap">
-		<h1 class="wp-heading-inline"><?php esc_html_e( 'Page Speed & Accessibility', 'ekwa' ); ?></h1>
+		<h1 class="wp-heading-inline"><?php esc_html_e( 'PageSpeed & Accessibility', 'ekwa' ); ?></h1>
 		<div id="ekwa-pad-app" class="ekwa-pad"><p><span class="spinner is-active" style="float:none;"></span> <?php esc_html_e( 'Loading…', 'ekwa' ); ?></p></div>
 		<noscript><p><?php esc_html_e( 'This dashboard needs JavaScript.', 'ekwa' ); ?></p></noscript>
 	</div>
@@ -86,6 +97,8 @@ function ekwa_page_audit_dashboard_enqueue( $hook ) {
 		'psiKey'      => '' !== ekwa_page_audit_psi_key(),
 		'canManage'   => current_user_can( 'manage_options' ),
 		'settingsUrl' => admin_url( 'themes.php?page=ekwa-settings&ekwa_tab=performance#ekwa-page-audit-settings' ),
+		'blogPublic'  => '0' !== (string) get_option( 'blog_public', '1' ),
+		'contentUrl'  => function_exists( 'ekwa_site_audit_url' ) ? ekwa_site_audit_url( 'content' ) : '',
 	) );
 }
 add_action( 'admin_enqueue_scripts', 'ekwa_page_audit_dashboard_enqueue' );
@@ -163,6 +176,9 @@ function ekwa_page_audit_rest_overview() {
 		}
 	}
 
+	// Exclusion overrides (Site Audit: leave a page out / bring it back).
+	$overrides = function_exists( 'ekwa_site_audit_meta_map' ) && $ids ? ekwa_site_audit_meta_map( $ids, array( EKWA_SITE_AUDIT_META_EXCLUDE ) ) : array();
+
 	foreach ( $all as $id => $type ) {
 		$post = get_post( $id );
 		if ( ! $post ) {
@@ -170,6 +186,8 @@ function ekwa_page_audit_rest_overview() {
 		}
 		$sum     = isset( $summaries[ $id ] ) ? $summaries[ $id ] : array();
 		$edit    = get_edit_post_link( $id, 'raw' );
+		$state   = function_exists( 'ekwa_site_audit_content_state' ) ? ekwa_site_audit_content_state( $post->post_content ) : null;
+		$over    = isset( $overrides[ $id ][ EKWA_SITE_AUDIT_META_EXCLUDE ] ) ? $overrides[ $id ][ EKWA_SITE_AUDIT_META_EXCLUDE ] : '';
 		$items[] = array(
 			'id'      => $id,
 			'type'    => $type,
@@ -181,11 +199,18 @@ function ekwa_page_audit_rest_overview() {
 			'blog'    => $id === $blog,
 			'mobile'  => isset( $sum['mobile'] ) && is_array( $sum['mobile'] ) ? $sum['mobile'] : null,
 			'desktop' => isset( $sum['desktop'] ) && is_array( $sum['desktop'] ) ? $sum['desktop'] : null,
+			// Site Audit: what kind of page (blog / thank-you / policy pages are
+			// left out by default), the manual override, and whether it has content.
+			'kind'    => function_exists( 'ekwa_site_audit_page_kind' ) ? ekwa_site_audit_page_kind( $post ) : '',
+			'exclude' => in_array( $over, array( 'exclude', 'include' ), true ) ? $over : '',
+			'empty'   => $state ? $state['empty'] : false,
+			'soon'    => $state ? $state['soon'] : false,
 		);
 	}
 
 	return rest_ensure_response( array(
 		'items'      => $items,
+		'kinds'      => function_exists( 'ekwa_site_audit_kind_labels' ) ? ekwa_site_audit_kind_labels() : array(),
 		'thresholds' => ekwa_page_audit_thresholds(),
 		'psiKey'     => '' !== ekwa_page_audit_psi_key(),
 		'time'       => time(),

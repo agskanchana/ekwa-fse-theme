@@ -568,6 +568,7 @@ function ekwa_ai_relay_context() {
 		'ask-docs'    => __( 'Docs assistant', 'ekwa' ),
 		'test'        => __( 'Connection test', 'ekwa' ),
 		'page-audit'  => __( 'Page speed & accessibility fixes', 'ekwa' ),
+		'spelling'    => __( 'Spelling check', 'ekwa' ),
 	);
 
 	// Handlers that never name themselves, by route — and the ones whose answer
@@ -577,7 +578,7 @@ function ekwa_ai_relay_context() {
 		'/ekwa/v1/dp-suggest-featured' => array( 'stock-suggest', __( 'Stock photo search terms', 'ekwa' ) ),
 		'ajax:ekwa_fonts_ai_detect'    => array( 'fonts-detect', __( 'Font detection', 'ekwa' ) ),
 	);
-	$json_features = array( 'interlink-refine', 'stock-suggest', 'fonts-detect', 'page-audit' );
+	$json_features = array( 'interlink-refine', 'stock-suggest', 'fonts-detect', 'page-audit', 'spelling' );
 
 	if ( ( '' === $feature || 'ai' === $feature ) && isset( $by_route[ $route ] ) ) {
 		$feature = $by_route[ $route ][0];
