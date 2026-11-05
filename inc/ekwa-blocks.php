@@ -3883,6 +3883,46 @@ function ekwa_carousel_unhook_inliner_for_prerender( $pre_render, $parsed_block 
 add_filter( 'pre_render_block', 'ekwa_carousel_unhook_inliner_for_prerender', 10, 2 );
 
 /**
+ * Whether the blocks rendering right now are inside core's discarded first pass
+ * over an ekwa/carousel's inner blocks (see ekwa_carousel_unhook_inliner_for_prerender()).
+ *
+ * Anything a block emits only once per page behind a static flag must not spend
+ * that flag in this pass: the output is thrown away, so the copy that reaches the
+ * page would go out without it. ekwa_video_transcript_assets_once() checks this —
+ * otherwise a transcript video inside a carousel (or after one) gets a toggle with
+ * no script or style, and the button does nothing.
+ *
+ * A depth, not a flag, so a carousel nested in a carousel's slides stays in the
+ * discarded pass until the outer one's own render callback runs.
+ *
+ * @param int $delta +1 entering the pass, -1 leaving it, 0 to only read.
+ * @return bool True while the output being rendered will be discarded.
+ */
+function ekwa_carousel_discarded_render( $delta = 0 ) {
+	static $depth = 0;
+	$depth = max( 0, $depth + (int) $delta );
+	return $depth > 0;
+}
+
+/**
+ * Enter the discarded pass for an ekwa/carousel that core is about to render.
+ *
+ * Runs last and only when no filter short-circuited the render, so every entry
+ * is matched by ekwa_render_carousel_block() leaving it.
+ *
+ * @param mixed $pre_render Existing filter value (passed through unchanged).
+ * @param array $parsed_block
+ * @return mixed
+ */
+function ekwa_carousel_enter_discarded_render( $pre_render, $parsed_block ) {
+	if ( null === $pre_render && isset( $parsed_block['blockName'] ) && 'ekwa/carousel' === $parsed_block['blockName'] ) {
+		ekwa_carousel_discarded_render( 1 );
+	}
+	return $pre_render;
+}
+add_filter( 'pre_render_block', 'ekwa_carousel_enter_discarded_render', PHP_INT_MAX, 2 );
+
+/**
  * Build the inner markup of a carousel arrow button.
  *
  * With no custom markup this returns the original Font Awesome chevron, so
@@ -3928,6 +3968,8 @@ function ekwa_render_carousel_block( $attrs, $content, $block ) {
 	// Restore the inliner (see ekwa_carousel_unhook_inliner_for_prerender()) before
 	// we do the one render pass whose output is actually kept.
 	add_filter( 'render_block', 'ekwa_inline_block_assets', 10, 2 );
+	// Core's discarded pass over the inner blocks is over; the slides below are kept.
+	ekwa_carousel_discarded_render( -1 );
 
 	$desktop      = isset( $attrs['desktopItems'] )     ? max( 1, absint( $attrs['desktopItems'] ) )     : 3;
 	$tablet       = isset( $attrs['tabletItems'] )      ? max( 1, absint( $attrs['tabletItems'] ) )      : 2;
@@ -4955,6 +4997,12 @@ function ekwa_video_transcript_chevron() {
 function ekwa_video_transcript_assets_once() {
 	static $emitted = false;
 	if ( $emitted ) {
+		return '';
+	}
+	// Inside a carousel, core first renders the slides into output it discards;
+	// emitting there would leave the kept copy with a dead toggle. Leave the flag
+	// unspent so the kept render emits the assets.
+	if ( ekwa_carousel_discarded_render() ) {
 		return '';
 	}
 	$emitted = true;
