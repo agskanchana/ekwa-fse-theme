@@ -593,10 +593,13 @@ function ekwa_site_audit_rest_links_check( $request ) {
 			$keep[ $h ] = $res;
 		}
 	}
+	// array_replace, not array_merge: a hash made only of digits is an integer
+	// key to PHP, and array_merge renumbers integer keys (that link's result
+	// would be saved under 0, 1, 2… and never found again).
 	update_option( EKWA_SITE_AUDIT_LINKS_OPTION, array(
 		'v' => 1,
 		't' => $now,
-		'r' => array_merge( $keep, $results ),
+		'r' => array_replace( $keep, $results ),
 	), false );
 	ekwa_site_audit_unlock( $lock );
 

@@ -478,6 +478,7 @@
 		var _prog    = useState( null );
 		var _running = useState( {} );
 		var _msg     = useState( null );
+		var _reading = useState( false );
 		var runner   = useRef( null );
 
 		useEffect( function () {
@@ -513,11 +514,74 @@
 			return results[ l.h ] || null;
 		}
 
-		function check( list ) {
+		function isCheckable( l ) { return ! l.pre && 'empty' !== l.h; }
+
+		// Read the site's links again before a check: pages may have been
+		// edited since this screen opened, and a fixed link must leave the list
+		// instead of being re-checked at its old address. Resolves with the
+		// fresh data plus the results known so far, or null on an error.
+		function reread( busyHash ) {
+			var before = links;
+			_reading[ 1 ]( true );
+			_msg[ 1 ]( null );
+			if ( busyHash ) {
+				var b = {};
+				b[ busyHash ] = true;
+				_running[ 1 ]( b );
+			}
+			return apiFetch( { path: '/ekwa/v1/site-audit/links' } ).then( function ( res ) {
+				var known = assign( {}, results, res.results || {} );
+				var now   = {};
+				( res.links || [] ).forEach( function ( l ) { now[ l.h ] = true; } );
+				var gone  = before.filter( function ( l ) { return ! now[ l.h ]; } ).length;
+				_data[ 1 ]( res );
+				_results[ 1 ]( known );
+				_reading[ 1 ]( false );
+				_running[ 1 ]( {} );
+				return { data: res, known: known, gone: gone };
+			}, function ( e ) {
+				_reading[ 1 ]( false );
+				_running[ 1 ]( {} );
+				_msg[ 1 ]( { type: 'error', text: errText( e ) } );
+				return null;
+			} );
+		}
+
+		function goneNote( n ) {
+			return n ? { type: 'info', text: sprintf( _n( '%d link is no longer on the site (fixed or removed) and has left the list.', '%d links are no longer on the site (fixed or removed) and have left the list.', n, 'ekwa' ), n ) } : null;
+		}
+
+		function recheckAll( onlyUnchecked ) {
+			reread().then( function ( r ) {
+				if ( ! r ) { return; }
+				var list = ( r.data.links || [] ).filter( isCheckable );
+				if ( onlyUnchecked ) { list = list.filter( function ( l ) { return ! r.known[ l.h ]; } ); }
+				check( list, goneNote( r.gone ) );
+			} );
+		}
+
+		function recheckOne( l ) {
+			reread( l.h ).then( function ( r ) {
+				if ( ! r ) { return; }
+				var fresh = null;
+				( r.data.links || [] ).forEach( function ( x ) { if ( x.h === l.h ) { fresh = x; } } );
+				if ( ! fresh ) {
+					_msg[ 1 ]( { type: 'success', text: 'empty' === l.h
+						? __( 'There is no empty link (href="") on the site any more.', 'ekwa' )
+						: sprintf( __( '%s is no longer on the site (fixed or removed) and has left the list.', 'ekwa' ), shortUrl( l.u ) ) } );
+					return;
+				}
+				// Judged while reading the site (a chosen page that is trashed or
+				// unpublished, href=""): re-reading was the check.
+				if ( isCheckable( fresh ) ) { check( [ fresh ], goneNote( r.gone ) ); } else { _msg[ 1 ]( goneNote( r.gone ) ); }
+			} );
+		}
+
+		function check( list, note ) {
 			var tasks = [];
 			for ( var i = 0; i < list.length; i += 10 ) { tasks.push( list.slice( i, i + 10 ) ); }
-			if ( ! tasks.length ) { _msg[ 1 ]( { type: 'info', text: __( 'Nothing to check.', 'ekwa' ) } ); return; }
-			_msg[ 1 ]( null );
+			if ( ! tasks.length ) { _msg[ 1 ]( note || { type: 'info', text: __( 'Nothing to check.', 'ekwa' ) } ); return; }
+			_msg[ 1 ]( note || null );
 			_prog[ 1 ]( { total: list.length, done: 0, failed: 0 } );
 			var busy = {};
 			list.forEach( function ( l ) { busy[ l.h ] = true; } );
@@ -544,7 +608,7 @@
 			} );
 		}
 
-		var checkable = links.filter( function ( l ) { return ! l.pre && 'empty' !== l.h; } );
+		var checkable = links.filter( isCheckable );
 		var unchecked = checkable.filter( function ( l ) { return ! results[ l.h ]; } );
 
 		var q = _q[ 0 ].trim().toLowerCase();
@@ -575,6 +639,8 @@
 
 		var prog    = _prog[ 0 ];
 		var running = prog && ! prog.finished;
+		var reading = _reading[ 0 ];
+		var idle    = ! running && ! reading;
 
 		return el( 'div', null,
 			el( 'section', { className: 'ekwa-pad-card ekwa-pad-run' },
@@ -584,14 +650,15 @@
 					data.checked ? ' ' + sprintf( __( 'Last check: %s.', 'ekwa' ), ago( data.checked ) ) : ''
 				),
 				el( 'div', { className: 'ekwa-pad-run__row' },
-					el( Button, { variant: 'primary', disabled: running || ! unchecked.length, onClick: function () { check( unchecked ); } },
+					el( Button, { variant: 'primary', disabled: ! idle || ! unchecked.length, onClick: function () { recheckAll( true ); } },
 						unchecked.length
 							? sprintf( _n( 'Check %d unchecked link', 'Check %d unchecked links', unchecked.length, 'ekwa' ), unchecked.length )
 							: __( 'Every link is checked', 'ekwa' ) ),
-					el( Button, { variant: 'secondary', disabled: running || ! checkable.length, onClick: function () { check( checkable ); } },
+					el( Button, { variant: 'secondary', disabled: ! idle || ! links.length, onClick: function () { recheckAll( false ); } },
 						sprintf( __( 'Check all %d again', 'ekwa' ), checkable.length ) ),
 					running ? el( Button, { variant: 'secondary', isDestructive: true, onClick: function () { if ( runner.current ) { runner.current.stop(); } } }, __( 'Stop', 'ekwa' ) ) : null
 				),
+				reading ? el( Loading, { text: __( 'Reading the site again for its current links…', 'ekwa' ) } ) : null,
 				el( Progress, { progress: prog, runningText: __( '%1$d of %2$d links checked…', 'ekwa' ) } ),
 				el( Message, { message: _msg[ 0 ], onRemove: function () { _msg[ 1 ]( null ); } } )
 			),
@@ -626,7 +693,7 @@
 				el( 'ul', { className: 'ekwa-sa-list' }, rows.length ? rows.map( function ( l ) {
 					return el( LinkRow, {
 						key: l.h, link: l, state: stateOf( l ), info: infoOf( l ), sources: sources, busy: !! _running[ 0 ][ l.h ],
-						onRecheck: running ? null : function () { check( [ l ] ); },
+						onRecheck: idle ? function () { recheckOne( l ); } : null,
 					} );
 				} ) : el( 'li', { className: 'ekwa-pad-muted' }, 'problems' === filter && unchecked.length ? __( 'No problems among the links checked so far.', 'ekwa' ) : __( 'Nothing here.', 'ekwa' ) ) )
 			)
@@ -648,7 +715,7 @@
 					: el( 'a', { className: 'ekwa-sa-url', href: l.u, target: '_blank', rel: 'noopener noreferrer' }, shortUrl( l.u ) ),
 				'image' === l.k ? el( Tag, null, __( 'Image', 'ekwa' ) ) : null,
 				el( Tag, null, l.internal ? __( 'This site', 'ekwa' ) : __( 'Other site', 'ekwa' ) ),
-				props.onRecheck && ! l.pre && 'empty' !== l.h ? el( Button, { variant: 'link', className: 'ekwa-sa-item__act', onClick: props.onRecheck }, __( 'Check again', 'ekwa' ) ) : null
+				props.onRecheck ? el( Button, { variant: 'link', className: 'ekwa-sa-item__act', onClick: props.onRecheck }, __( 'Check again', 'ekwa' ) ) : null
 			),
 			info && info.e ? el( 'p', { className: 'ekwa-sa-item__why' }, info.e ) : null,
 			info && 'redirect' === info.s && info.f ? el( 'p', { className: 'ekwa-sa-item__why' }, __( 'Goes to ', 'ekwa' ), el( 'a', { href: info.f, target: '_blank', rel: 'noopener noreferrer' }, shortUrl( info.f ) ), ' — ', __( 'link straight to it to save a redirect.', 'ekwa' ) ) : null,
