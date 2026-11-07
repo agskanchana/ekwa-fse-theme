@@ -151,6 +151,102 @@ function ekwa_render_blog_grid_li( $post_id ) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Check a load-more query that came from the browser before it is run.
+ *
+ * The endpoint is public (wp_ajax_nopriv_) and its nonce is printed on every
+ * page that has a load-more block, so the query JSON is whatever the visitor
+ * sends. Unchecked, it listed any post type with published rows — template
+ * parts, Shortcode Blocks, ACF field groups, and the form entries some plugins
+ * store as published posts (Flamingo does, for Contact Form 7) — and
+ * `posts_per_page: -1` returned the whole site in one response.
+ *
+ * What ekwa_inject_query_data() prints passes through untouched, so pages
+ * rendered (and cached) by any earlier version behave exactly as before:
+ *
+ *  - post_type: only viewable types — the only ones the Query Loop block lets
+ *    an editor pick. Any other type (or 'any') is replaced with 'post', which
+ *    is exactly what core renders on page 1 for such a block
+ *    (build_query_vars_from_query_block() ignores a non-viewable postType), so
+ *    a block saved with a type that later stopped being viewable — its plugin
+ *    deactivated, say — keeps loading what its first page shows instead of
+ *    failing. `ekwa_load_more_post_type_allowed` can admit a type a site needs.
+ *  - posts_per_page: up to the larger of 100 (the Query Loop block's maximum)
+ *    and the Reading setting (the injector's fallback). -1 and larger values
+ *    are clamped to that ceiling, not refused, so "show all" still pages.
+ *  - tax_query: only viewable taxonomies. The injector never prints one; this
+ *    keeps it usable for child-theme scripts posting their own queries.
+ *
+ * @param array $args Query args, already reduced to the allowed keys.
+ * @return array|WP_Error The args to run, or an error for a query no page prints.
+ */
+function ekwa_load_more_validate_query( $args ) {
+	if ( array_key_exists( 'post_type', $args ) ) {
+		$is_list = is_array( $args['post_type'] );
+		$kept    = array();
+		foreach ( $is_list ? $args['post_type'] : array( $args['post_type'] ) as $type ) {
+			$allowed = is_string( $type ) && is_post_type_viewable( $type );
+			/**
+			 * Whether load more may list this post type.
+			 *
+			 * @param bool  $allowed True for viewable post types.
+			 * @param mixed $type    The post type the request asked for.
+			 */
+			if ( apply_filters( 'ekwa_load_more_post_type_allowed', $allowed, $type ) ) {
+				$kept[] = $type;
+			}
+		}
+		if ( ! $kept ) {
+			// Core's fallback for a Query Loop whose postType isn't viewable.
+			$args['post_type'] = 'post';
+		} elseif ( $is_list && count( $kept ) !== count( $args['post_type'] ) ) {
+			$args['post_type'] = $kept;
+		}
+		// Otherwise the value is left exactly as sent (string stays string).
+	}
+
+	if ( array_key_exists( 'posts_per_page', $args ) ) {
+		$max      = max( 100, (int) get_option( 'posts_per_page', 10 ) );
+		$per_page = (int) $args['posts_per_page'];
+		// 0 is left alone: WP_Query reads it as the Reading setting, which is
+		// within $max by construction.
+		if ( $per_page < 0 || $per_page > $max ) {
+			$args['posts_per_page'] = $max;
+		}
+	}
+
+	if ( array_key_exists( 'tax_query', $args ) && ! ekwa_load_more_tax_query_viewable( $args['tax_query'] ) ) {
+		return new WP_Error( 'ekwa_load_more_taxonomy', 'Invalid query.' );
+	}
+
+	return $args;
+}
+
+/**
+ * Whether every taxonomy a tax_query names (at any nesting depth) is viewable.
+ *
+ * Only the `taxonomy` keys are judged; the rest of the structure is left for
+ * WP_Tax_Query to interpret (it already yields no rows for a malformed clause).
+ *
+ * @param mixed $tax_query
+ * @return bool
+ */
+function ekwa_load_more_tax_query_viewable( $tax_query ) {
+	if ( ! is_array( $tax_query ) ) {
+		return true; // WP_Query ignores a tax_query that isn't an array.
+	}
+	if ( array_key_exists( 'taxonomy', $tax_query )
+		&& ( ! is_string( $tax_query['taxonomy'] ) || ! is_taxonomy_viewable( $tax_query['taxonomy'] ) ) ) {
+		return false;
+	}
+	foreach ( $tax_query as $value ) {
+		if ( is_array( $value ) && ! ekwa_load_more_tax_query_viewable( $value ) ) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
  * Handle AJAX load-more requests.
  */
 function ekwa_ajax_load_more() {
@@ -165,7 +261,12 @@ function ekwa_ajax_load_more() {
 
 	// Whitelist allowed query keys.
 	$allowed = array( 'post_type', 'posts_per_page', 'orderby', 'order', 'category_name', 'tag', 's', 'tax_query', 'author' );
-	$args    = array_intersect_key( $query, array_flip( $allowed ) );
+	$args    = ekwa_load_more_validate_query( array_intersect_key( $query, array_flip( $allowed ) ) );
+
+	if ( is_wp_error( $args ) ) {
+		wp_send_json_error( 'Invalid query.' );
+	}
+
 	$args['paged']  = $page;
 	$args['post_status'] = 'publish';
 
