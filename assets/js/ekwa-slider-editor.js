@@ -67,6 +67,12 @@
 							min: 2000, max: 15000, step: 500,
 							onChange: function ( v ) { set( { interval: v } ); },
 						} ) : null,
+						a.autoplay ? el( ToggleControl, {
+							label: __( 'Show pause button', 'ekwa' ),
+							help: __( 'A visible pause/play button. Accessibility guidelines (WCAG 2.2.2) ask for one on anything that moves on its own for more than five seconds.', 'ekwa' ),
+							checked: !! a.showPause,
+							onChange: function ( v ) { set( { showPause: v } ); },
+						} ) : null,
 						el( ToggleControl, {
 							label: __( 'Show arrows', 'ekwa' ),
 							checked: a.showArrows,

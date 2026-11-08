@@ -213,6 +213,42 @@
 .ekwa-slider--single .ekwa-slider__arrow,
 .ekwa-slider--single .ekwa-slider__dots { display: none; }
 
+/* ── Pause button (opt-in "Show pause button") ─────────────────────────── */
+.ekwa-slider__pause {
+	position: absolute;
+	right: 20px;
+	bottom: 12px;
+	z-index: 10;
+	width: 44px;
+	height: 44px;
+	border-radius: 50%;
+	border: 1px solid rgba(255, 255, 255, .35);
+	background: rgba(10, 16, 24, .3);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	cursor: pointer;
+	transition: background .25s, border-color .25s;
+	-webkit-backdrop-filter: blur(4px);
+	backdrop-filter: blur(4px);
+}
+.ekwa-slider__pause:hover,
+.ekwa-slider__pause:focus-visible {
+	background: rgba(10, 16, 24, .6);
+	border-color: rgba(255, 255, 255, .75);
+}
+.ekwa-slider__pause:focus-visible {
+	outline: 2px solid #fff;
+	outline-offset: 2px;
+}
+.ekwa-slider__pause[hidden] { display: none; }
+.ekwa-slider__pause .ekwa-slider__play-icon,
+.ekwa-slider__pause[aria-pressed="true"] .ekwa-slider__pause-icon { display: none; }
+.ekwa-slider__pause[aria-pressed="true"] .ekwa-slider__play-icon { display: block; }
+.ekwa-slider--single .ekwa-slider__pause { display: none; }
+
 /* ── Dots ──────────────────────────────────────────────────────────────── */
 .ekwa-slider__dots {
 	position: absolute;

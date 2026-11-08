@@ -144,6 +144,9 @@ function ekwa_render_slider_block( $attrs, $content ) {
 	$dots       = ! isset( $attrs['showDots'] ) || (bool) $attrs['showDots'];
 	$loop       = ! isset( $attrs['loop'] ) || (bool) $attrs['loop'];
 	$pause      = ! isset( $attrs['pauseOnHover'] ) || (bool) $attrs['pauseOnHover'];
+	// Opt-in, off for every slider saved before it existed: a visible
+	// pause/play button (WCAG 2.2.2 — autoplay needs a way to stop it).
+	$pause_btn  = $autoplay && ! empty( $attrs['showPause'] );
 	$min_h      = sanitize_text_field( $attrs['minHeight'] ?? '80vh' );
 	$align      = isset( $attrs['align'] ) ? sanitize_html_class( $attrs['align'] ) : '';
 	$class_name = isset( $attrs['className'] ) ? sanitize_text_field( $attrs['className'] ) : '';
@@ -195,6 +198,16 @@ function ekwa_render_slider_block( $attrs, $content ) {
 
 	if ( $dots ) {
 		$html .= '<div class="ekwa-slider__dots" role="tablist" aria-label="' . esc_attr__( 'Choose slide', 'ekwa' ) . '"></div>';
+	}
+
+	if ( $pause_btn ) {
+		$html .= '<button type="button" class="ekwa-slider__pause" aria-pressed="false"'
+			. ' aria-label="' . esc_attr__( 'Pause slideshow', 'ekwa' ) . '"'
+			. ' data-label-pause="' . esc_attr__( 'Pause slideshow', 'ekwa' ) . '"'
+			. ' data-label-play="' . esc_attr__( 'Play slideshow', 'ekwa' ) . '">'
+			. '<svg class="ekwa-slider__pause-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14M16 5v14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>'
+			. '<svg class="ekwa-slider__play-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>'
+			. '</button>';
 	}
 
 	$html .= '</div>';

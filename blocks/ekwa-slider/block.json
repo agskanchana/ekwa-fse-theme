@@ -23,6 +23,7 @@
 		"showDots":     { "type": "boolean", "default": true },
 		"loop":         { "type": "boolean", "default": true },
 		"pauseOnHover": { "type": "boolean", "default": true },
+		"showPause":    { "type": "boolean", "default": false },
 		"minHeight":    { "type": "string",  "default": "80vh" }
 	},
 	"editorScript": "ekwa-slider-editor"

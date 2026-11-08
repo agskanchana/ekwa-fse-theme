@@ -32,6 +32,9 @@
 		var current = 0;
 		var timer   = null;
 		var busy    = false;
+		// Set only by the opt-in pause button: while true nothing restarts
+		// autoplay (hover-out, focus-out, tab return, navigation).
+		var userStopped = false;
 
 		// Single slide: nothing to navigate — hide arrows/dots via CSS.
 		if ( slides.length < 2 ) {
@@ -178,7 +181,7 @@
 			root.classList.add( 'is-paused' );
 		}
 		function start() {
-			if ( ! autoplay || reduced || slides.length < 2 ) { return; }
+			if ( ! autoplay || reduced || slides.length < 2 || userStopped ) { return; }
 			root.classList.remove( 'is-paused' );
 			if ( ! timer ) {
 				timer = window.setInterval( next, interval );
@@ -202,6 +205,22 @@
 		document.addEventListener( 'visibilitychange', function () {
 			if ( document.hidden ) { stop(); } else { start(); }
 		} );
+
+		// ── Pause button (opt-in: rendered only with "Show pause button") ──
+		var pauseBtn = root.querySelector( '.ekwa-slider__pause' );
+		if ( pauseBtn ) {
+			if ( ! autoplay || reduced || slides.length < 2 ) {
+				pauseBtn.hidden = true; // Nothing would ever play.
+			} else {
+				pauseBtn.addEventListener( 'click', function () {
+					userStopped = ! userStopped;
+					pauseBtn.setAttribute( 'aria-pressed', userStopped ? 'true' : 'false' );
+					pauseBtn.setAttribute( 'aria-label', pauseBtn.getAttribute( userStopped ? 'data-label-play' : 'data-label-pause' ) || '' );
+					root.classList.toggle( 'is-stopped', userStopped );
+					if ( userStopped ) { stop(); } else { start(); }
+				} );
+			}
+		}
 
 		// ── Go ───────────────────────────────────────────────────────
 		root.classList.add( 'ekwa-slider--ready' );
