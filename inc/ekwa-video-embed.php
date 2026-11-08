@@ -121,6 +121,18 @@ function ekwa_video_extract_info( $url, $provider ) {
 /**
  * Fetch (and cache) title/description/duration/upload date/thumbnail for a video.
  *
+ * A page used to wait on YouTube/Vimeo (up to ~35 s when they are slow or
+ * blocked) every time a video's cached data expired (daily) and, while lookups
+ * failed, every 5 minutes. Now:
+ *   - the first lookup, and the retry 5 minutes after one failed lookup, still
+ *     happen while the page renders, exactly as before;
+ *   - data older than a day is served as it is and refreshed by a one-off cron
+ *     event, and a refresh that fails keeps the data it had;
+ *   - a lookup that has failed twice in a row is retried by cron every 30
+ *     minutes instead of by visitors' page loads;
+ *   - where cron doesn't run (a refresh over an hour overdue), the page
+ *     refreshes it, as it always did.
+ *
  * @param string $provider 'youtube' | 'vimeo'.
  * @param string $video_id
  * @return array<string,string>
@@ -130,23 +142,98 @@ function ekwa_video_get_metadata( $provider, $video_id ) {
 		return array();
 	}
 
-	$cache_key = 'ekwa_vid_meta_' . md5( $provider . '|' . $video_id );
-	$cached    = get_transient( $cache_key );
-	if ( false !== $cached ) {
-		return $cached;
+	$cached = get_transient( ekwa_video_metadata_cache_key( $provider, $video_id ) );
+
+	if ( is_array( $cached ) && isset( $cached['_fetched'] ) ) {
+		$fetched  = (int) $cached['_fetched'];
+		$fails    = (int) ( $cached['_fails'] ?? 0 );
+		$metadata = $cached;
+		unset( $metadata['_fetched'], $metadata['_fails'] );
+		$has_data = ! empty( $metadata['videoTitle'] );
+
+		if ( ! $has_data && $fails < 2 ) {
+			// One failed lookup: served empty for 5 minutes, then retried right
+			// here — as before, so a brief API hiccup costs nothing.
+			return time() <= $fetched + 5 * MINUTE_IN_SECONDS
+				? $metadata
+				: ekwa_video_refresh_metadata( $provider, $video_id );
+		}
+
+		$due = $fetched + ( $has_data ? DAY_IN_SECONDS : 30 * MINUTE_IN_SECONDS );
+		if ( time() <= $due ) {
+			return $metadata;
+		}
+		if ( time() <= $due + HOUR_IN_SECONDS ) {
+			ekwa_video_schedule_metadata_refresh( $provider, $video_id );
+			return $metadata;
+		}
+		return ekwa_video_refresh_metadata( $provider, $video_id );
 	}
 
-	$metadata = ( 'youtube' === $provider )
-		? ekwa_video_get_youtube_metadata( $video_id )
-		: ekwa_video_get_vimeo_metadata( $video_id );
+	if ( false !== $cached ) {
+		return $cached; // Cached by an earlier version: served until it expires, as before.
+	}
 
-	// Cache positive results for a day; empty/failed lookups for 5 minutes only,
-	// so a transient API hiccup doesn't lock the block out of metadata for a day.
-	$has_data = ! empty( $metadata['videoTitle'] );
-	set_transient( $cache_key, $metadata, $has_data ? DAY_IN_SECONDS : 5 * MINUTE_IN_SECONDS );
+	return ekwa_video_refresh_metadata( $provider, $video_id );
+}
+
+/**
+ * Transient key for a video's metadata.
+ *
+ * @param string $provider
+ * @param string $video_id
+ * @return string
+ */
+function ekwa_video_metadata_cache_key( $provider, $video_id ) {
+	return 'ekwa_vid_meta_' . md5( $provider . '|' . $video_id );
+}
+
+/**
+ * Look a video's metadata up now and store it with the time it was fetched.
+ * A lookup that fails keeps the data already stored, if any, and otherwise
+ * counts the consecutive failures. Also the cron callback of
+ * ekwa_video_schedule_metadata_refresh().
+ *
+ * @param string $provider 'youtube' | 'vimeo'.
+ * @param string $video_id
+ * @return array<string,string>
+ */
+function ekwa_video_refresh_metadata( $provider, $video_id ) {
+	$cache_key = ekwa_video_metadata_cache_key( $provider, $video_id );
+	$metadata  = (array) ( ( 'youtube' === $provider )
+		? ekwa_video_get_youtube_metadata( $video_id )
+		: ekwa_video_get_vimeo_metadata( $video_id ) );
+	$stamp     = array( '_fetched' => time() );
+
+	if ( empty( $metadata['videoTitle'] ) ) {
+		$previous = get_transient( $cache_key );
+		if ( is_array( $previous ) && ! empty( $previous['videoTitle'] ) ) {
+			$metadata = $previous;
+			unset( $metadata['_fetched'], $metadata['_fails'] );
+		} else {
+			$stamp['_fails'] = ( is_array( $previous ) ? (int) ( $previous['_fails'] ?? 0 ) : 0 ) + 1;
+		}
+	}
+
+	// Kept long after it is due, so a stale copy can be served while it refreshes.
+	set_transient( $cache_key, $metadata + $stamp, 30 * DAY_IN_SECONDS );
 
 	return $metadata;
 }
+
+/**
+ * Queue a background refresh of a video's metadata (once per video).
+ *
+ * @param string $provider
+ * @param string $video_id
+ */
+function ekwa_video_schedule_metadata_refresh( $provider, $video_id ) {
+	$args = array( (string) $provider, (string) $video_id );
+	if ( ! wp_next_scheduled( 'ekwa_video_refresh_metadata', $args ) ) {
+		wp_schedule_single_event( time(), 'ekwa_video_refresh_metadata', $args );
+	}
+}
+add_action( 'ekwa_video_refresh_metadata', 'ekwa_video_refresh_metadata', 10, 2 );
 
 /**
  * YouTube metadata via the Data API (if a key is configured), else scraped
