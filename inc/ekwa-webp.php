@@ -625,6 +625,12 @@ function ekwa_webp_rest_regen_one( WP_REST_Request $request ) {
 		return new WP_Error( 'not_attachment', 'Attachment not found.', array( 'status' => 404 ) );
 	}
 
+	// Rewrites this image's .webp files, so it takes the right to edit the image
+	// itself — the same rule as the Media Library's own edit screen.
+	if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+		return new WP_Error( 'rest_forbidden', __( 'You can only regenerate WebP files for images you are allowed to edit.', 'ekwa' ), array( 'status' => 403 ) );
+	}
+
 	$mime = get_post_mime_type( $attachment_id );
 	if ( ! ekwa_webp_supported_mime( $mime ) ) {
 		return new WP_Error( 'unsupported_mime', 'Only JPEG and PNG can be converted.', array( 'status' => 400 ) );
@@ -704,6 +710,11 @@ function ekwa_webp_rest_upload_one( WP_REST_Request $request ) {
 	$post = get_post( $attachment_id );
 	if ( ! $post || 'attachment' !== $post->post_type ) {
 		return new WP_Error( 'not_attachment', 'Attachment not found.', array( 'status' => 404 ) );
+	}
+
+	// Replaces the file this image is served as — only for images the user may edit.
+	if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+		return new WP_Error( 'rest_forbidden', __( 'You can only replace the WebP file of an image you are allowed to edit.', 'ekwa' ), array( 'status' => 403 ) );
 	}
 
 	if ( empty( $_FILES['file'] ) || ! is_array( $_FILES['file'] ) ) {
