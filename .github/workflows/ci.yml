@@ -1,0 +1,75 @@
+name: CI
+
+# Checks that run on every push and pull request. .github/ is export-ignored,
+# so none of this ships to sites.
+#
+#   lint     php -l on every PHP file, on the oldest PHP the theme supports
+#            (style.css "Requires PHP") through the newest — a syntax error
+#            or newer-PHP syntax takes a whole site down after an update.
+#   version  pushes to live must raise style.css "Version": sites only update
+#            when it goes up (see CLAUDE.md → Releasing).
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: php -l (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '7.4', '8.0', '8.1', '8.2', '8.3', '8.4' ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+
+      - name: Lint every PHP file
+        run: |
+          fail=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count + 1))
+            if ! out=$(php -d display_errors=stderr -d error_reporting=-1 -l "$f" 2>&1); then
+              echo "::error file=${f#./}::${out//$'\n'/ }"
+              fail=1
+            elif printf '%s' "$out" | grep -q 'Deprecated'; then
+              echo "::warning file=${f#./}::${out//$'\n'/ }"
+            fi
+          done < <(find . -type f -name '*.php' -not -path './.git/*' -print0)
+          if [ "$count" -eq 0 ]; then echo "::error::No PHP files found to lint."; exit 1; fi
+          echo "::notice::Linted $count PHP files on PHP ${{ matrix.php }}."
+          exit $fail
+
+  version:
+    name: style.css Version went up
+    if: github.event_name == 'push' && github.ref == 'refs/heads/live'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compare with the commit live pointed at before this push
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          new=$(sed -n 's/^Version:[[:space:]]*//p' style.css | head -n 1 | tr -d '\r ')
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "New branch, nothing to compare (Version $new)."
+            exit 0
+          fi
+          old=$(git show "$BEFORE:style.css" | sed -n 's/^Version:[[:space:]]*//p' | head -n 1 | tr -d '\r ')
+          echo "live was at $old, now $new"
+          if ! php -r 'exit( version_compare( $argv[1], $argv[2], ">" ) ? 0 : 1 );' "$new" "$old"; then
+            echo "::error file=style.css::Version $new is not higher than $old. Sites only update when it goes up — bump it (never reuse a number that was on live)."
+            exit 1
+          fi

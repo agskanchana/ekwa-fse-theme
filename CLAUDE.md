@@ -72,6 +72,12 @@ summary rather than letting it ship silently.
 and never reuse or go below a number that was ever on `live` (3.4.0 was on
 `live` twice, so sites that took the first one never got the second).
 
+CI (`.github/workflows/ci.yml`) runs `php -l` on every PHP file under PHP 7.4
+(the `Requires PHP` floor) through 8.4, and on pushes to `live` fails when
+`Version` did not go up. It reports after the push — the updater reads the
+branch directly, so a red run means sites may already be updating: fix
+forward at once. Lint locally before pushing; CI is the safety net, not the gate.
+
 ## Site Audit — the admin menu around the PageSpeed dashboard
 
 Top level **Site Audit** (slug `ekwa-page-audit`, unchanged), one screen each:
