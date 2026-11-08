@@ -3548,7 +3548,9 @@ function ekwa_render_faq_block( $attrs, $content, $block = null ) {
 				'@type'      => 'FAQPage',
 				'mainEntity' => $entities,
 			);
-			$schema_json = wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			// JSON_HEX_TAG writes < and > as hex escapes, so no string can end
+			// the <script> early; the JSON parses to exactly the same data.
+			$schema_json = wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG );
 			// Keep later shortcode passes out of strings while preserving array brackets.
 			$schema_json = ekwa_faq_schema_escape_brackets( $schema_json );
 			$schema_html = '<script type="application/ld+json">'
@@ -6196,8 +6198,9 @@ function ekwa_emit_faq_container_schema() {
 		'mainEntity' => $entities,
 	);
 
+	// JSON_HEX_TAG: see ekwa_render_faq_block() — same data, safe inside <script>.
 	echo '<script type="application/ld+json">'
-		. wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+		. wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG )
 		. '</script>';
 }
 add_action( 'wp_footer', 'ekwa_emit_faq_container_schema', 99 );
