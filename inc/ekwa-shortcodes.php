@@ -44,6 +44,32 @@ function ekwa_set_ad_tracking_cookie() {
 add_action( 'init', 'ekwa_set_ad_tracking_cookie' );
 
 /**
+ * Keep pages rendered for an ad visitor out of page caches.
+ *
+ * With ?ads or the adward_number cookie, the phone blocks and shortcodes show the
+ * tracking number (and hide existing-patient numbers; ekwa/conditional switches).
+ * A page cache that stored that render under the plain URL would hand the
+ * tracking number to every later visitor. So the ad variant is marked
+ * uncacheable — DONOTCACHEPAGE (WP Rocket, W3 Total Cache, WP Super Cache…),
+ * LiteSpeed's own API, and no-cache headers for proxies and CDNs — the same
+ * signals as the page-audit compare preview. Ordinary visitors are unaffected.
+ */
+function ekwa_ad_tracking_nocache() {
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( ! isset( $_GET['ads'] ) && ! isset( $_COOKIE['adward_number'] ) ) {
+		return;
+	}
+	if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+		define( 'DONOTCACHEPAGE', true );
+	}
+	if ( ! headers_sent() ) {
+		nocache_headers();
+	}
+	do_action( 'litespeed_control_set_nocache', 'ekwa ad-tracking phone number' );
+}
+add_action( 'template_redirect', 'ekwa_ad_tracking_nocache', 0 );
+
+/**
  * Build a dialable tel: number from a human-readable phone string.
  *
  * Mirrors the old theme's mobile_number() function:
