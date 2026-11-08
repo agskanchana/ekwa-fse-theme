@@ -280,7 +280,7 @@ function ekwa_block_overrides_card() {
 									<?php if ( $drift ) : ?><span title="<?php esc_attr_e( 'Parent is newer than your copy', 'ekwa' ); ?>" style="color:#b32d2e;font-weight:700;">&nbsp;&#9679;</span><?php endif; ?>
 								</td>
 								<td>
-									<?php if ( $ai_available ) : ?>
+									<?php if ( $ai_available && ( ! function_exists( 'ekwa_ai_edit_block_can_write_files' ) || ekwa_ai_edit_block_can_write_files() ) ) : ?>
 										<button type="button" class="button button-small ekwa-ai-edit-block" data-slug="<?php echo esc_attr( $slug ); ?>"><?php esc_html_e( 'Edit with AI', 'ekwa' ); ?></button>
 									<?php endif; ?>
 									<a href="<?php echo esc_url( $re_url ); ?>" class="button button-small" onclick="return confirm('<?php echo esc_js( __( 'Overwrite the child copy with the current parent version? Your edits to this block in the child theme will be lost.', 'ekwa' ) ); ?>');"><?php esc_html_e( 'Re-copy', 'ekwa' ); ?></a>

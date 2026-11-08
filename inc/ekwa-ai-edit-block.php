@@ -62,13 +62,30 @@ function ekwa_ai_edit_block_is_child_override( $slug ) {
 }
 
 /**
+ * May the current user write this feature's files?
+ *
+ * It writes JavaScript, CSS and block.json into the child theme, so on top of
+ * edit_theme_options it takes a right that already allows the same: posting
+ * unfiltered HTML (scripts) or editing theme files. A single-site administrator
+ * has both. A multisite site administrator has neither, and a site that switched
+ * both off (DISALLOW_UNFILTERED_HTML and DISALLOW_FILE_EDIT) keeps this closed too,
+ * like WordPress's own theme file editor.
+ *
+ * @return bool
+ */
+function ekwa_ai_edit_block_can_write_files() {
+	return current_user_can( 'edit_theme_options' )
+		&& ( current_user_can( 'unfiltered_html' ) || current_user_can( 'edit_themes' ) );
+}
+
+/**
  * REST permission for the AI edit route: must be able to edit theme files AND
  * pass the shared AI role-gate / rate-limit.
  *
  * @return true|WP_Error
  */
 function ekwa_ai_edit_block_permission() {
-	if ( ! current_user_can( 'edit_theme_options' ) ) {
+	if ( ! ekwa_ai_edit_block_can_write_files() ) {
 		return new WP_Error( 'forbidden', __( 'You need permission to edit themes.', 'ekwa' ), array( 'status' => 403 ) );
 	}
 	if ( function_exists( 'ekwa_ai_rest_permission' ) ) {
@@ -78,12 +95,13 @@ function ekwa_ai_edit_block_permission() {
 }
 
 /**
- * REST permission for the write/revert routes (no AI call): edit_theme_options only.
+ * REST permission for the write/revert routes (no AI call): see
+ * ekwa_ai_edit_block_can_write_files().
  *
  * @return bool
  */
 function ekwa_ai_edit_block_write_permission() {
-	return current_user_can( 'edit_theme_options' );
+	return ekwa_ai_edit_block_can_write_files();
 }
 
 add_action( 'rest_api_init', 'ekwa_ai_edit_block_routes' );
@@ -285,6 +303,28 @@ function ekwa_ai_edit_block_validate_json( $new, $old ) {
 	if ( null !== $old_name && $new_name !== $old_name ) {
 		return new WP_Error( 'name_changed', __( 'Skipped block.json — the AI changed the block "name" (that would break the block).', 'ekwa' ) );
 	}
+
+	// Keys that tell WordPress which files to load for the block stay exactly as
+	// they are: "render" and a "variations" file are PHP that core require()s, and
+	// the script/style keys load code by path. The edit is to the block's own files,
+	// never to what gets loaded. Inline (array) variations are plain data.
+	$old_data = is_array( $old_data ) ? $old_data : array();
+	foreach ( array( 'render', 'variations', 'editorScript', 'script', 'viewScript', 'viewScriptModule', 'scriptModule', 'editorStyle', 'style', 'viewStyle' ) as $key ) {
+		$old_has = array_key_exists( $key, $old_data );
+		$new_has = array_key_exists( $key, $new_data );
+		if ( 'variations' === $key
+			&& ( ! $old_has || is_array( $old_data[ $key ] ) )
+			&& ( ! $new_has || is_array( $new_data[ $key ] ) ) ) {
+			continue;
+		}
+		if ( $old_has !== $new_has || ( $new_has && $old_data[ $key ] !== $new_data[ $key ] ) ) {
+			return new WP_Error(
+				'file_key_changed',
+				/* translators: %s: block.json key, e.g. "render". */
+				sprintf( __( 'Skipped block.json — the AI changed "%s", which tells WordPress which files to load for the block.', 'ekwa' ), $key )
+			);
+		}
+	}
 	return true;
 }
 
@@ -418,7 +458,7 @@ function ekwa_ai_edit_block_enqueue( $hook_suffix ) {
 	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 	$on_settings = ( $screen && false !== strpos( (string) $screen->id, 'ekwa-settings' ) )
 		|| ( is_string( $hook_suffix ) && false !== strpos( $hook_suffix, 'ekwa-settings' ) );
-	if ( ! $on_settings || ! current_user_can( 'edit_theme_options' ) ) {
+	if ( ! $on_settings || ! ekwa_ai_edit_block_can_write_files() ) {
 		return;
 	}
 	if ( ! ( function_exists( 'ekwa_ai_is_configured' ) ? ekwa_ai_is_configured() : ( function_exists( 'ekwa_get_ai_api_key' ) && ekwa_get_ai_api_key() ) ) ) {
