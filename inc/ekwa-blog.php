@@ -332,18 +332,35 @@ function ekwa_inject_query_data( $block_content, $block ) {
 		}
 	}
 
-	// Calculate max pages.
-	$count_args = $args;
-	$count_args['posts_per_page'] = -1;
-	$count_args['fields'] = 'ids';
-	$total      = count( get_posts( $count_args ) );
-	$max_pages  = (int) ceil( $total / $per_page );
+	// Calculate max pages. The total comes from found_posts on a one-row query
+	// built with get_posts()'s own defaults (published, no filters, sticky posts
+	// ignored), so it equals the old count of every matching ID without loading
+	// them all on each render.
+	$count_args = wp_parse_args( $args, array( 'suppress_filters' => true ) );
+	if ( empty( $count_args['post_status'] ) ) {
+		$count_args['post_status'] = ( 'attachment' === $count_args['post_type'] ) ? 'inherit' : 'publish';
+	}
+	$count_args['posts_per_page']         = 1;
+	$count_args['fields']                 = 'ids';
+	$count_args['ignore_sticky_posts']    = true;
+	$count_args['no_found_rows']          = false;
+	$count_args['update_post_meta_cache'] = false;
+	$count_args['update_post_term_cache'] = false;
+	$count_query = new WP_Query( $count_args );
+	$total       = (int) $count_query->found_posts;
+
+	// A perPage of 0 (or anything not a number) divided by zero — a fatal error
+	// on PHP 8 that took the whole page down. Such a block gets one page.
+	$per_page_num = is_numeric( $per_page ) ? 0 + $per_page : 0;
+	$max_pages    = ( 0 == $per_page_num ) ? 1 : (int) ceil( $total / $per_page_num ); // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- 0 and 0.0 alike.
 
 	// Cache perPage for numbered pagination so pre_get_posts can prevent 404s
 	// when the block's perPage is smaller than the Reading Settings posts_per_page.
 	// WordPress main query 404s on page N when N > ceil(total/main_per_page),
 	// even though N is valid for the block's smaller perPage.
-	if ( 'numbered' === $pagination_type ) {
+	// Not for a perPage of 0 / not a number: before the guard above such a page
+	// never got this far, and storing it would undo another block's value.
+	if ( 'numbered' === $pagination_type && 0 != $per_page_num ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual
 		update_option( 'ekwa_numbered_pagination_per_page', $per_page, false );
 	}
 
