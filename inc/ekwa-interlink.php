@@ -74,8 +74,10 @@ function ekwa_interlink_register_routes() {
 	register_rest_route( 'ekwa/v1', '/interlink-refine', array(
 		'methods'             => WP_REST_Server::CREATABLE,
 		'callback'            => 'ekwa_interlink_rest_refine',
+		// A billable AI call: the same role gate, daily cap and payload ceiling as
+		// every other AI route (Ekwa Settings → AI).
 		'permission_callback' => function () {
-			return current_user_can( 'edit_posts' );
+			return function_exists( 'ekwa_ai_rest_permission' ) ? ekwa_ai_rest_permission() : current_user_can( 'edit_posts' );
 		},
 		'args'                => array(
 			'candidates' => array(
