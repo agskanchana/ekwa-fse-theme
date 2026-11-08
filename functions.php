@@ -210,6 +210,65 @@ function ekwa_github_clear_last_error( $update, $http_result = null ) {
 $ekwa_theme_updater->addFilter( 'request_update_result', 'ekwa_github_clear_last_error', 10, 2 );
 
 /**
+ * Note which scopes GitHub says the token has. Classic tokens report them in
+ * X-OAuth-Scopes on every API response. The repository is public, so the updater
+ * needs none — and a token with scopes ("repo" reaches every private repository of
+ * its owner) sits in each site's database, so the settings screen warns about it
+ * (ekwa_github_token_scope_warning()). Only responses to requests carrying OUR
+ * token are read; nothing is sent anywhere.
+ *
+ * @param array|WP_Error $response HTTP response.
+ * @param string         $context  'response' once the request completed.
+ * @param string         $class    Transport class.
+ * @param array          $args     Request arguments.
+ * @param string         $url      Request URL.
+ */
+function ekwa_github_note_token_scopes( $response, $context, $class, $args, $url ) {
+	if ( 'response' !== $context || is_wp_error( $response ) || ! is_array( $response ) ) {
+		return;
+	}
+	if ( 'api.github.com' !== wp_parse_url( (string) $url, PHP_URL_HOST ) ) {
+		return;
+	}
+	$token = ekwa_github_token();
+	$auth  = ( is_array( $args ) && isset( $args['headers'] ) && is_array( $args['headers'] ) && isset( $args['headers']['Authorization'] ) )
+		? (string) $args['headers']['Authorization']
+		: '';
+	if ( '' === $token || 'Bearer ' . $token !== $auth ) {
+		return;
+	}
+	$scopes = wp_remote_retrieve_header( $response, 'x-oauth-scopes' );
+	set_transient(
+		'ekwa_github_token_scopes',
+		array(
+			'token'  => md5( $token ), // Which token this describes — a new token starts clean.
+			'scopes' => trim( is_array( $scopes ) ? implode( ', ', $scopes ) : (string) $scopes ),
+		),
+		WEEK_IN_SECONDS
+	);
+}
+add_action( 'http_api_debug', 'ekwa_github_note_token_scopes', 10, 5 );
+
+/**
+ * Warning for the settings screen when the current token has scopes, or ''.
+ *
+ * @return string
+ */
+function ekwa_github_token_scope_warning() {
+	$token = ekwa_github_token();
+	$seen  = get_transient( 'ekwa_github_token_scopes' );
+	if ( '' === $token || ! is_array( $seen ) || ! isset( $seen['token'], $seen['scopes'] )
+		|| md5( $token ) !== $seen['token'] || '' === $seen['scopes'] ) {
+		return '';
+	}
+	return sprintf(
+		/* translators: %s: the token's scopes as GitHub lists them, e.g. "repo, workflow". */
+		__( 'This GitHub token has scopes (%s). The theme repository is public, so updates need a token with no scopes at all. Anyone who reads this site\'s database could use this token with those permissions — create a classic token with nothing ticked, paste it here, and revoke this one on GitHub.', 'ekwa' ),
+		$seen['scopes']
+	);
+}
+
+/**
  * Human-readable explanation of the last update-check failure, or '' when the
  * last check was fine.
  *
@@ -236,7 +295,7 @@ function ekwa_github_last_error_message() {
 	if ( 401 === $code ) {
 		return sprintf(
 			/* translators: %s: the message GitHub returned. */
-			__( 'GitHub rejected the access token%s. It is invalid, expired, or revoked — generate a new token and paste it again. Clearing the field also works: update checks fall back to anonymous requests.', 'ekwa' ),
+			__( 'GitHub rejected the access token%s. It is invalid, expired, or revoked — generate a new token and paste it again. Removing it also works (tick "Remove the saved token" and save): update checks fall back to anonymous requests.', 'ekwa' ),
 			$detail
 		);
 	}

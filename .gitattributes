@@ -3,3 +3,8 @@
 # so live sites never download CI config or dev tooling.
 .github/ export-ignore
 .gitattributes export-ignore
+# Working notes for the people/agents developing the theme, and the CLI-only
+# mockup converter — neither is used by a site, and every packaged file is
+# publicly readable under wp-content/themes/ekwa/.
+CLAUDE.md export-ignore
+tools/ export-ignore

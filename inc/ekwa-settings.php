@@ -505,8 +505,14 @@ function ekwa_save_settings() {
 
 	// GitHub access token for theme updates (ignored when the constant is set).
 	if ( ! defined( 'EKWA_GITHUB_TOKEN' ) && isset( $_POST['ekwa_github_token'] ) ) {
+		$old_token = (string) get_option( 'ekwa_github_token', '' );
 		$new_token = sanitize_text_field( wp_unslash( $_POST['ekwa_github_token'] ) );
-		if ( $new_token !== get_option( 'ekwa_github_token', '' ) ) {
+		// The field is never filled with the saved token (it would sit in the page
+		// source), so left empty it keeps the token; removing it takes the checkbox.
+		if ( '' === $new_token && empty( $_POST['ekwa_github_token_clear'] ) ) {
+			$new_token = $old_token;
+		}
+		if ( $new_token !== $old_token ) {
 			update_option( 'ekwa_github_token', $new_token );
 
 			// A cached check — including a failed one — survives 12 hours, so
@@ -1542,6 +1548,11 @@ function ekwa_render_settings_page() {
 						if ( '' !== $update_error ) {
 							echo '<div class="notice notice-warning inline"><p>' . esc_html( $update_error ) . '</p></div>';
 						}
+
+						$scope_warning = function_exists( 'ekwa_github_token_scope_warning' ) ? ekwa_github_token_scope_warning() : '';
+						if ( '' !== $scope_warning ) {
+							echo '<div class="notice notice-warning inline"><p>' . esc_html( $scope_warning ) . '</p></div>';
+						}
 						?>
 						<table class="form-table">
 							<tr>
@@ -1551,7 +1562,20 @@ function ekwa_render_settings_page() {
 										<input type="text" id="ekwa_github_token" class="regular-text" value="<?php esc_attr_e( 'Set via EKWA_GITHUB_TOKEN constant', 'ekwa' ); ?>" disabled />
 										<p class="description"><?php esc_html_e( 'A token is defined in wp-config.php (EKWA_GITHUB_TOKEN); it takes precedence over this field.', 'ekwa' ); ?></p>
 									<?php else : ?>
-										<input type="password" id="ekwa_github_token" name="ekwa_github_token" value="<?php echo esc_attr( get_option( 'ekwa_github_token', '' ) ); ?>" class="regular-text" autocomplete="off" spellcheck="false" placeholder="ghp_…" />
+										<?php
+										// Never print the saved token back into the page: show that one is
+										// saved (and its last four characters, to tell tokens apart). An
+										// empty field keeps it — see ekwa_save_settings().
+										$ekwa_saved_token = (string) get_option( 'ekwa_github_token', '' );
+										$ekwa_token_hint  = '' !== $ekwa_saved_token
+											/* translators: %s: last four characters of the saved token. */
+											? sprintf( __( 'Saved (…%s) — paste a new token to replace it', 'ekwa' ), substr( $ekwa_saved_token, -4 ) )
+											: 'ghp_…';
+										?>
+										<input type="password" id="ekwa_github_token" name="ekwa_github_token" value="" class="regular-text" autocomplete="new-password" spellcheck="false" placeholder="<?php echo esc_attr( $ekwa_token_hint ); ?>" />
+										<?php if ( '' !== $ekwa_saved_token ) : ?>
+											<label style="display:block;margin-top:6px;"><input type="checkbox" name="ekwa_github_token_clear" value="1" /> <?php esc_html_e( 'Remove the saved token (update checks go back to anonymous requests)', 'ekwa' ); ?></label>
+										<?php endif; ?>
 										<p class="description"><?php esc_html_e( 'Theme updates are pulled from GitHub. Anonymous requests are limited to 60/hour per server, so update checks can fail. Add a Personal Access Token to raise the limit to 5,000/hour. Leave empty to use anonymous requests.', 'ekwa' ); ?></p>
 										<p class="description"><?php esc_html_e( 'The repository is public, so the token needs no scopes at all: a classic token with nothing ticked is enough. A fine-grained token must list this repository under "Repository access" with Contents: Read — otherwise GitHub answers 404 and no update is ever offered.', 'ekwa' ); ?></p>
 									<?php endif; ?>
