@@ -1,0 +1,4 @@
+enshrined/svg-sanitize 1.1.1 (https://github.com/darylldoyle/svg-sanitizer, tag 1.1.1,
+GPL-2.0-or-later) - the src/ directory only, unmodified. Loaded on demand by
+ekwa_svg_sanitizer() in functions.php. To update: replace these files with a
+newer tag's src/ and re-run the SVG checks described in that function.

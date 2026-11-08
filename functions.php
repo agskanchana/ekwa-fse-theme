@@ -1344,7 +1344,99 @@ function ekwa_sanitize_svg_markup( $svg ) {
 	return trim( $svg );
 }
 
+/**
+ * May the current user's SVG uploads go in as before (the light clean-up below)?
+ *
+ * Someone who may post unfiltered HTML can already put a script on a page, so
+ * for them that clean-up is a courtesy, not a safety boundary, and their uploads
+ * behave exactly as they always did. Everyone else who can upload — Authors,
+ * and site administrators on multisite — gets the DOM sanitizer
+ * (ekwa_sanitize_untrusted_svg_upload()).
+ *
+ * @return bool
+ */
+function ekwa_svg_upload_is_trusted() {
+	return current_user_can( 'unfiltered_html' );
+}
+
+/**
+ * The DOM-based SVG sanitizer — enshrined/svg-sanitize, bundled unmodified in
+ * includes/svg-sanitizer/ and loaded only when needed (a copy another plugin
+ * already loaded is used instead) — set to also drop remote references. Null
+ * where it can't run (no DOM extension); callers then refuse the file.
+ *
+ * Before updating the bundled copy, re-run the checks it shipped with: XSS
+ * payloads must not survive, and real logos must render the same.
+ *
+ * @return \enshrined\svgSanitize\Sanitizer|null
+ */
+function ekwa_svg_sanitizer() {
+	static $autoloader = false;
+	if ( ! class_exists( 'DOMDocument' ) ) {
+		return null;
+	}
+	if ( ! $autoloader && ! class_exists( 'enshrined\svgSanitize\Sanitizer' ) ) {
+		$autoloader = true;
+		spl_autoload_register( static function ( $class ) {
+			$prefix = 'enshrined\\svgSanitize\\';
+			if ( 0 !== strpos( $class, $prefix ) ) {
+				return;
+			}
+			$path = get_template_directory() . '/includes/svg-sanitizer/' . str_replace( '\\', '/', substr( $class, strlen( $prefix ) ) ) . '.php';
+			if ( is_readable( $path ) ) {
+				require_once $path;
+			}
+		} );
+	}
+	if ( ! class_exists( 'enshrined\svgSanitize\Sanitizer' ) ) {
+		return null;
+	}
+	$sanitizer = new \enshrined\svgSanitize\Sanitizer();
+	$sanitizer->removeRemoteReferences( true );
+	return $sanitizer;
+}
+
+/**
+ * SVG uploads by users who are not trusted with scripts, through either path —
+ * form uploads (wp_handle_upload) and the REST API's raw-body uploads
+ * (wp_handle_sideload) — recognised by the file name, not by the type the
+ * browser claims (the sender chooses that). The file is replaced by what the
+ * DOM sanitizer keeps; one it can't parse or check is refused, as is a .svgz
+ * (compressed, so it can't be checked here).
+ *
+ * @param array $file An upload's $_FILES-style array.
+ * @return array
+ */
+function ekwa_sanitize_untrusted_svg_upload( $file ) {
+	if ( ! is_array( $file ) || ! empty( $file['error'] ) || ekwa_svg_upload_is_trusted() ) {
+		return $file;
+	}
+	$ext = strtolower( pathinfo( (string) ( $file['name'] ?? '' ), PATHINFO_EXTENSION ) );
+	if ( 'svg' !== $ext && 'svgz' !== $ext ) {
+		return $file;
+	}
+	if ( 'svgz' === $ext ) {
+		$file['error'] = __( 'Compressed SVG files (.svgz) can only be uploaded by administrators. Upload the plain .svg instead.', 'ekwa' );
+		return $file;
+	}
+
+	$sanitizer = ekwa_svg_sanitizer();
+	$contents  = ! empty( $file['tmp_name'] ) ? file_get_contents( $file['tmp_name'] ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions
+	$clean     = ( $sanitizer && is_string( $contents ) ) ? $sanitizer->sanitize( $contents ) : false;
+	if ( ! is_string( $clean ) || false === stripos( $clean, '<svg' ) ) {
+		$file['error'] = __( 'This SVG could not be checked for unsafe content, so it was not uploaded.', 'ekwa' );
+		return $file;
+	}
+
+	file_put_contents( $file['tmp_name'], $clean ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	return $file;
+}
+add_filter( 'wp_handle_sideload_prefilter', 'ekwa_sanitize_untrusted_svg_upload' );
+
 function ekwa_sanitize_svg_on_upload( $file ) {
+	if ( ! ekwa_svg_upload_is_trusted() ) {
+		return ekwa_sanitize_untrusted_svg_upload( $file );
+	}
 	if ( 'image/svg+xml' !== $file['type'] ) {
 		return $file;
 	}
