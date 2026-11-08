@@ -374,6 +374,12 @@ function ekwa_tpl_block_data( $name, array $attrs ) {
 			$pid = 'specific' === ( $attrs['postSource'] ?? 'current' )
 				? (int) ( $attrs['postId'] ?? 0 )
 				: (int) get_the_ID();
+			// The block's own read rule (ekwa_field_can_read()): a template must not
+			// print what the plain block may not.
+			if ( '' !== $key && 'specific' === ( $attrs['postSource'] ?? 'current' )
+				&& function_exists( 'ekwa_field_can_read' ) && ! ekwa_field_can_read( $pid, $key ) ) {
+				return null;
+			}
 			$value = '' !== $key ? ekwa_field_value( $key, $pid, (string) ( $attrs['source'] ?? 'auto' ) ) : '';
 			// Empty field → null → the render filter emits nothing, which is the
 			// whole contract of this block and must survive a custom template.
